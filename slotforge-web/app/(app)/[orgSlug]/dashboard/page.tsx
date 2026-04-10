@@ -341,6 +341,7 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [showMembers, setShowMembers] = useState(false)
+  const [createError, setCreateError] = useState('')
   const { organization } = useOrganization()
 
   async function load() {
@@ -362,16 +363,25 @@ export default function DashboardPage() {
     e.preventDefault()
     if (!newName.trim()) return
     setCreating(true)
-    const res = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName.trim() }),
-    })
-    if (res.ok) {
-      setNewName('')
-      load()
+    setCreateError('')
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() }),
+      })
+      if (res.ok) {
+        setNewName('')
+        load()
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setCreateError(body?.error || `Server error (${res.status})`)
+      }
+    } catch {
+      setCreateError('Network error — please try again')
+    } finally {
+      setCreating(false)
     }
-    setCreating(false)
   }
 
   async function deleteProject(id: string) {
@@ -449,6 +459,16 @@ export default function DashboardPage() {
             {creating ? 'Creating…' : '+ New Project'}
           </button>
         </form>
+        {createError && (
+          <div style={{
+            marginTop: -28, marginBottom: 24,
+            padding: '8px 12px', borderRadius: 6,
+            background: '#2a1010', border: '1px solid #5a2020',
+            color: '#ef7a7a', fontSize: 12,
+          }}>
+            ⚠ {createError}
+          </div>
+        )}
 
         {/* Project list */}
         {loading ? (
