@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   // Ensure a workspace exists for this user
   const workspaceId = await ensurePersonalWorkspace(userId)
   if (!workspaceId) {
-    return NextResponse.json({ error: 'Could not find or create workspace' }, { status: 500 })
+    return NextResponse.json({ error: 'Could not find or create workspace — check SUPABASE_SERVICE_ROLE_KEY env var' }, { status: 500 })
   }
 
   // Build a URL-safe slug from the name

@@ -373,11 +373,13 @@ export default function DashboardPage() {
         setNewName('')
         load()
       } else {
-        const body = await res.json().catch(() => ({}))
-        setCreateError(body?.error || `Server error (${res.status})`)
+        const text = await res.text().catch(() => '')
+        let msg = `Status ${res.status}`
+        try { const j = JSON.parse(text); msg = j?.error || j?.message || text || msg } catch { msg = text || msg }
+        setCreateError(msg.slice(0, 300))
       }
-    } catch {
-      setCreateError('Network error — please try again')
+    } catch (err) {
+      setCreateError(`Network error: ${String(err)}`)
     } finally {
       setCreating(false)
     }
