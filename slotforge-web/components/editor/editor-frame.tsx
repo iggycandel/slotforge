@@ -58,6 +58,32 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         }, '*')
       }
       if (msg.type === 'SF_DIRTY') setSaveState(s => s.status !== 'saving' ? { ...s, status: 'dirty' } : s)
+      // Asset upload: editor sends a file blob + metadata, we upload to Supabase Storage
+      // and reply with the public URL so the editor can store URLs instead of base64
+      if (msg.type === 'SF_UPLOAD_ASSET' && msg.file && msg.assetKey) {
+        const form = new FormData()
+        form.append('file', msg.file as Blob)
+        form.append('projectId', projectId)
+        form.append('assetKey', msg.assetKey as string)
+        fetch('/api/assets/upload', { method: 'POST', body: form })
+          .then(r => r.json())
+          .then(({ url, error }) => {
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'SF_UPLOAD_ASSET_RESULT',
+              assetKey: msg.assetKey,
+              url: url ?? null,
+              error: error ?? null,
+            }, '*')
+          })
+          .catch(err => {
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'SF_UPLOAD_ASSET_RESULT',
+              assetKey: msg.assetKey,
+              url: null,
+              error: String(err),
+            }, '*')
+          })
+      }
       if (msg.type === 'SF_AUTOSAVE' && msg.payload) {
         payloadRef.current = msg.payload
         // Live-update the shell toolbar name from the editor's gameName

@@ -5244,7 +5244,13 @@ function poolAsset(url){
 // ── Smart asset replacement: preserve width, fit height to natural aspect ratio ──
 function applyAssetToLayer(k, dataUrl, afterFn){
   const isBg = k==='bg' || k.startsWith('bg_');
+  // Store dataUrl immediately for instant canvas preview
   EL_ASSETS[k] = dataUrl;
+
+  // Upload to Supabase Storage in the background — swap the dataUrl for a CDN URL.
+  // This keeps the save payload small (URLs instead of base64).
+  _sfUploadDataUrlToStorage(k, dataUrl);
+
   if(isBg){
     buildCanvas(); renderLayers(); renderLibrary(); markDirty();
     pushHistory('upload '+k);
@@ -5254,7 +5260,6 @@ function applyAssetToLayer(k, dataUrl, afterFn){
   tmpImg.onload = ()=>{
     if(tmpImg.naturalWidth>0 && tmpImg.naturalHeight>0){
       ['portrait','landscape'].forEach(vp=>{
-        // getPos() only reads P.viewport — bypass it and read each vp directly
         const curW = EL_VP[vp]?.[k]?.w ?? EL_COMPUTED[vp]?.[k]?.w ?? PSD[k]?.[vp]?.w;
         if(!curW) return;
         const newH = Math.round(curW * tmpImg.naturalHeight / tmpImg.naturalWidth);
@@ -5272,6 +5277,35 @@ function applyAssetToLayer(k, dataUrl, afterFn){
   };
   tmpImg.onerror = ()=>{ buildCanvas(); renderLayers(); renderLibrary(); markDirty(); pushHistory('upload '+k); if(afterFn) afterFn(); };
   tmpImg.src = dataUrl;
+}
+
+// Convert a base64 dataUrl → Blob → send to parent for Storage upload.
+// When the parent replies with a CDN URL, swap it in EL_ASSETS.
+function _sfUploadDataUrlToStorage(assetKey, dataUrl){
+  try{
+    if(!dataUrl || dataUrl.indexOf('data:') !== 0) return; // already a URL, nothing to do
+    const parts = dataUrl.split(',');
+    const mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/png';
+    const binary = atob(parts[1]);
+    const arr = new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++) arr[i]=binary.charCodeAt(i);
+    const blob = new Blob([arr], {type: mime});
+    const ext = mime.split('/')[1] || 'png';
+    const file = new File([blob], assetKey+'.'+ext, {type: mime});
+    // Register callback: when Storage URL comes back, update EL_ASSETS
+    window._sfUploadCallbacks[assetKey] = function(url){
+      if(url && url.startsWith('http')){
+        EL_ASSETS[assetKey] = url;
+        // No need to rebuild canvas — it already shows the correct image
+      }
+    };
+    window.parent.postMessage({
+      type: 'SF_UPLOAD_ASSET',
+      assetKey: assetKey,
+      file: file,
+      _fallbackDataUrl: dataUrl,
+    }, '*');
+  }catch(e){ /* fail silently — base64 stays as fallback */ }
 }
 
 // ── Mask / clip-path helpers ──
@@ -9631,25 +9665,14 @@ function hideSnapGuides(){
 
   // ── Symbol upload: dynamic input per click (most reliable cross-browser) ──
   function rsUploadSymbol(symId){
-    var inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'image/*';
-    inp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
-    document.body.appendChild(inp);
-    inp.addEventListener('change', function(){
-      var file = inp.files[0];
-      document.body.removeChild(inp);
-      if(!file) return;
-      var reader = new FileReader();
-      reader.onload = function(ev){
-        EL_ASSETS['sym_'+symId] = ev.target.result;
-        try{ buildCanvas(); }catch(e){}
-        try{ renderLayers(); }catch(e){}
-        try{ markDirty(); }catch(e){}
-        try{ rsBuildSymGrid(); }catch(e){}
-      };
-      reader.readAsDataURL(file);
+    var assetKey = 'sym_'+symId;
+    _sfPickAndUpload(assetKey, function(urlOrDataUrl){
+      EL_ASSETS[assetKey] = urlOrDataUrl;
+      try{ buildCanvas(); }catch(e){}
+      try{ renderLayers(); }catch(e){}
+      try{ markDirty(); }catch(e){}
+      try{ rsBuildSymGrid(); }catch(e){}
     });
-    inp.click();
   }
 
   document.addEventListener('DOMContentLoaded', function(){
@@ -9700,6 +9723,60 @@ function hideSnapGuides(){
 // Direct payload applier — used by both bridge IIFEs.
 // Safer than restoreVersion(): each step is individually try-caught so one
 // failure cannot prevent buildCanvas/renderLayers from running.
+// ── Asset upload helper ───────────────────────────────────────────────────────
+// Opens a file picker, then tries to upload via Supabase Storage (through the
+// parent shell). Falls back to plain base64 dataURL if Storage is unavailable.
+// Usage: _sfPickAndUpload('sym_Wild', function(urlOrDataUrl){ ... })
+window._sfUploadCallbacks = window._sfUploadCallbacks || {};
+window.addEventListener('message', function(evt){
+  var msg = evt.data;
+  if(!msg || msg.type !== 'SF_UPLOAD_ASSET_RESULT') return;
+  var cb = window._sfUploadCallbacks[msg.assetKey];
+  if(!cb) return;
+  delete window._sfUploadCallbacks[msg.assetKey];
+  if(msg.url){ cb(msg.url); }
+  else if(msg._fallbackDataUrl){ cb(msg._fallbackDataUrl); }
+});
+
+window._sfPickAndUpload = function(assetKey, onDone){
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(inp);
+  inp.addEventListener('change', function(){
+    var file = inp.files && inp.files[0];
+    document.body.removeChild(inp);
+    if(!file) return;
+
+    // Always load as dataURL first (for immediate canvas preview)
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var dataUrl = ev.target.result;
+      // Show immediately in the canvas via base64 while upload happens
+      EL_ASSETS[assetKey] = dataUrl;
+      try{ buildCanvas(); }catch(e){}
+      try{ renderLayers(); }catch(e){}
+
+      // Try to upload to Supabase Storage via the parent shell
+      window._sfUploadCallbacks[assetKey] = onDone;
+      try{
+        window.parent.postMessage({
+          type: 'SF_UPLOAD_ASSET',
+          assetKey: assetKey,
+          file: file,
+          _fallbackDataUrl: dataUrl,
+        }, '*');
+      } catch(e){
+        // Parent not available — stay with base64
+        delete window._sfUploadCallbacks[assetKey];
+        onDone(dataUrl);
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+  inp.click();
+};
+
 window._sfApplyPayload = function(payload){
   var s = payload;
   try { if(s.gameName !== undefined) P.gameName = s.gameName; } catch(e){}
@@ -10112,7 +10189,7 @@ window._sfBridge = (function() {
 </div>
 
 <!-- BUILD STAMP — remove once cache issue confirmed resolved -->
-<div id="sf-build-stamp" style="position:fixed;bottom:6px;left:50%;transform:translateX(-50%);z-index:99999;background:#c9a84c;color:#1a1200;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.06em;pointer-events:none;font-family:monospace">SF BUILD 2026-04-09-G</div>
+<div id="sf-build-stamp" style="position:fixed;bottom:6px;left:50%;transform:translateX(-50%);z-index:99999;background:#c9a84c;color:#1a1200;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.06em;pointer-events:none;font-family:monospace">SF BUILD 2026-04-09-H</div>
 
 <!-- CLIPBOARD INDICATOR -->
 <div id="clipboard-indicator">

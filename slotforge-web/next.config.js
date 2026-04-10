@@ -2,9 +2,9 @@
 const nextConfig = {
   experimental: {
     serverActions: {
-      // Default is 1MB — raised to 10MB for large project payloads
-      // (user-uploaded backgrounds, symbol images stored as base64, etc.)
-      bodySizeLimit: '100mb',
+      // Assets are now uploaded to Supabase Storage (URLs only in payload).
+      // 4MB covers the remaining JSON payload comfortably on Vercel.
+      bodySizeLimit: '4mb',
     },
   },
 }
