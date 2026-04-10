@@ -7,6 +7,22 @@ const nextConfig = {
       bodySizeLimit: '4mb',
     },
   },
+  webpack: (config, { nextRuntime }) => {
+    if (nextRuntime === 'edge') {
+      // Prefer edge-compatible exports for all packages (fixes Clerk #crypto,
+      // #safe-node-apis, and @clerk/shared/buildAccountsBaseUrl on Vercel Edge)
+      config.resolve.conditionNames = [
+        'edge-light',
+        'workerd',
+        'worker',
+        'browser',
+        'module',
+        'import',
+        'require',
+      ]
+    }
+    return config
+  },
 }
 
 module.exports = nextConfig
