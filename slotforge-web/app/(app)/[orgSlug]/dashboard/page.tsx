@@ -9,7 +9,6 @@ interface Project {
   name: string
   updated_at: string
   thumbnail_url?: string | null
-  payload?: Record<string, unknown> | null
 }
 
 // ─── User avatar initials ────────────────────────────────
@@ -490,7 +489,7 @@ export default function DashboardPage() {
             gap: 16,
           }}>
             {projects.map(p => {
-              const thumb = p.thumbnail_url || (p.payload as Record<string, unknown>)?._thumbnail as string | null || null
+              const thumb = p.thumbnail_url || null
               return (
                 <div
                   key={p.id}
