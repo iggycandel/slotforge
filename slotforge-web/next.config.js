@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
-// fix: set framework preset to Next.js in Vercel
 const nextConfig = {
   experimental: {
     serverActions: {
+      // Assets are now uploaded to Supabase Storage (URLs only in payload).
+      // 4MB covers the remaining JSON payload comfortably on Vercel.
       bodySizeLimit: '4mb',
     },
   },

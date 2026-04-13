@@ -9,6 +9,7 @@ interface Project {
   name: string
   updated_at: string
   thumbnail_url?: string | null
+  payload?: Record<string, unknown> | null
 }
 
 // ─── User avatar initials ────────────────────────────────
@@ -340,7 +341,6 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [showMembers, setShowMembers] = useState(false)
-  const [createError, setCreateError] = useState('')
   const { organization } = useOrganization()
 
   async function load() {
@@ -362,27 +362,16 @@ export default function DashboardPage() {
     e.preventDefault()
     if (!newName.trim()) return
     setCreating(true)
-    setCreateError('')
-    try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim() }),
-      })
-      if (res.ok) {
-        setNewName('')
-        load()
-      } else {
-        const text = await res.text().catch(() => '')
-        let msg = `Status ${res.status}`
-        try { const j = JSON.parse(text); msg = j?.error || j?.message || text || msg } catch { msg = text || msg }
-        setCreateError(msg.slice(0, 300))
-      }
-    } catch (err) {
-      setCreateError(`Network error: ${String(err)}`)
-    } finally {
-      setCreating(false)
+    const res = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim() }),
+    })
+    if (res.ok) {
+      setNewName('')
+      load()
     }
+    setCreating(false)
   }
 
   async function deleteProject(id: string) {
@@ -460,16 +449,6 @@ export default function DashboardPage() {
             {creating ? 'Creating…' : '+ New Project'}
           </button>
         </form>
-        {createError && (
-          <div style={{
-            marginTop: -28, marginBottom: 24,
-            padding: '8px 12px', borderRadius: 6,
-            background: '#2a1010', border: '1px solid #5a2020',
-            color: '#ef7a7a', fontSize: 12,
-          }}>
-            ⚠ {createError}
-          </div>
-        )}
 
         {/* Project list */}
         {loading ? (
@@ -491,7 +470,7 @@ export default function DashboardPage() {
             gap: 16,
           }}>
             {projects.map(p => {
-              const thumb = p.thumbnail_url || null
+              const thumb = p.thumbnail_url || (p.payload as Record<string, unknown>)?._thumbnail as string | null || null
               return (
                 <div
                   key={p.id}

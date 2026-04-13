@@ -8029,6 +8029,34 @@ window._sfBridge = (function(){
       }
     }
     if(msg.type === 'SF_REQUEST_SAVE'){ triggerSave(); }
+
+    // Inject a generated/external image URL into a canvas layer asset slot
+    if(msg.type === 'SF_INJECT_IMAGE_LAYER' && msg.assetType && msg.url){
+      var ASSET_KEY_MAP = {
+        background_base:  'bg',
+        background_bonus: 'bg_bonus',
+        symbol_high_1:    'sym_H1',
+        symbol_high_2:    'sym_H2',
+        symbol_high_3:    'sym_H3',
+        symbol_high_4:    'sym_H4',
+        symbol_high_5:    'sym_H5',
+        symbol_low_1:     'sym_L1',
+        symbol_low_2:     'sym_L2',
+        symbol_low_3:     'sym_L3',
+        symbol_low_4:     'sym_L4',
+        symbol_low_5:     'sym_L5',
+        symbol_wild:      'sym_Wild',
+        symbol_scatter:   'sym_Scatter',
+        logo:             'logo',
+      };
+      var elKey = ASSET_KEY_MAP[msg.assetType] || msg.assetType;
+      try {
+        EL_ASSETS[elKey] = msg.url;
+        if(typeof buildCanvas   === 'function') buildCanvas();
+        if(typeof renderLayers  === 'function') renderLayers();
+        if(typeof markDirty     === 'function') markDirty();
+      } catch(e) { console.warn('[SF] SF_INJECT_IMAGE_LAYER failed:', e); }
+    }
   });
 
   /* ─── 10. Save on navigate away ─── */

@@ -21,7 +21,7 @@ export async function autosaveProject(projectId: string, payload: Record<string,
   const update: Record<string, unknown> = { payload: cleanPayload, updated_at: new Date().toISOString() }
   const gameName = (payload.gameName as string | undefined)?.trim()
   if (gameName) update.name = gameName
-  const { error } = await supabase.from('projects').update(update as any).eq('id', projectId)
+  const { error } = await supabase.from('projects').update(update).eq('id', projectId)
   // Save thumbnail separately (best-effort) — column is thumbnail_path, not thumbnail_url
   if (thumbnail && !error) {
     await supabase.from('projects').update({ thumbnail_path: thumbnail }).eq('id', projectId)
@@ -75,7 +75,7 @@ export async function restoreSnapshot(snapshotId: string) {
   if (snapError || !snapshot) return { error: snapError }
   const { error } = await supabase
     .from('projects')
-    .update({ payload: snapshot.payload as Record<string, unknown>, updated_at: new Date().toISOString() })
+    .update({ payload: snapshot.payload, updated_at: new Date().toISOString() })
     .eq('id', snapshot.project_id)
   return { error }
 }

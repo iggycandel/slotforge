@@ -1,8 +1,5 @@
 import { clerkMiddleware } from '@clerk/nextjs/server'
 
-// clerkMiddleware() with no arguments sets up Clerk auth context on every
-// request so that auth() works in API routes and Server Components.
-// Individual routes/API handlers enforce their own auth as needed.
 export default clerkMiddleware()
 
 export const config = {

@@ -45,3 +45,56 @@ CREATE POLICY "Authenticated users can delete project assets"
 ON storage.objects FOR DELETE
 TO authenticated
 USING (bucket_id = 'project-assets');
+
+
+-- ── 4. Generated assets metadata table ───────────────────────────────────────
+-- Stores AI generation results linked to projects
+
+CREATE TABLE IF NOT EXISTS generated_assets (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id  uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  type        text        NOT NULL,
+  url         text        NOT NULL,
+  prompt      text        NOT NULL DEFAULT '',
+  theme       text        NOT NULL DEFAULT '',
+  provider    text        NOT NULL DEFAULT 'unknown'
+                          CHECK (provider IN ('runway','openai','mock','unknown')),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- Index for fast project lookups
+CREATE INDEX IF NOT EXISTS idx_generated_assets_project_id
+  ON generated_assets (project_id, created_at DESC);
+
+-- RLS
+ALTER TABLE generated_assets ENABLE ROW LEVEL SECURITY;
+
+-- Users can only see assets belonging to their projects
+CREATE POLICY "Users can view their own generated assets"
+ON generated_assets FOR SELECT
+TO authenticated
+USING (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+);
+
+-- Service role can insert (pipeline runs server-side with service key)
+CREATE POLICY "Service role can insert generated assets"
+ON generated_assets FOR INSERT
+TO service_role
+WITH CHECK (true);
+
+-- Users can delete their own project assets
+CREATE POLICY "Users can delete their own generated assets"
+ON generated_assets FOR DELETE
+TO authenticated
+USING (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+);

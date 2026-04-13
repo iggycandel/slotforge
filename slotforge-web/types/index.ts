@@ -12,15 +12,10 @@ export interface SaveState {
   error?: string
 }
 
-export type ActionResult<T> = {
-  data: T | null
-  error: string | null
-}
-
 export interface Project {
   id: string
   name: string
-  user_id?: string | null
+  user_id: string
   org_id?: string | null
   status: 'draft' | 'review' | 'approved' | 'archived'
   theme?: string | null

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { autosaveProject, createSnapshot, getSnapshots, restoreSnapshot } from '../../actions/editor'
 import type { ProjectSnapshot, SaveState } from '../../types'
+import { AssetsPanel } from '../generate/AssetsPanel'
+import type { AssetType } from '@/types/assets'
 
 interface EditorFrameProps { projectId: string; orgSlug: string; initialPayload: Record<string, unknown> | null; projectName: string }
 
@@ -25,6 +27,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [versionLabel, setVersionLabel] = useState('')
   const [snapshots, setSnapshots] = useState<ProjectSnapshot[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [assetsOpen,  setAssetsOpen]  = useState(false)
   // Live-track the game name as the user edits it in the editor
   const [liveProjectName, setLiveProjectName] = useState(projectName)
 
@@ -118,6 +121,14 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     setSaveState({ status: 'saved', lastSaved: new Date() })
   }
 
+  function handleAddToCanvas(assetType: AssetType, url: string) {
+    iframeRef.current?.contentWindow?.postMessage({
+      type:      'SF_INJECT_IMAGE_LAYER',
+      assetType,
+      url,
+    }, '*')
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#13131e' }}>
       <div style={{ height: 44, background: '#1a1a2e', borderBottom: '1px solid #2a2a3e', display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', fontFamily: "'Space Grotesk', sans-serif", flexShrink: 0 }}>
@@ -128,10 +139,16 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         <SaveBadge state={saveState} />
         <input type="text" placeholder="Version label (optional)" value={versionLabel} onChange={e => setVersionLabel(e.target.value)} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, background: '#0e0e1a', border: '1px solid #3a3a52', color: '#e8e6e1', outline: 'none', width: 180 }} />
         <button onClick={triggerManualSave} disabled={saveState.status === 'saving'} style={{ padding: '5px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'linear-gradient(135deg, #c9a84c, #e8c96d)', color: '#1a1200', border: 'none', cursor: 'pointer', opacity: saveState.status === 'saving' ? 0.6 : 1 }}>Save ⌘S</button>
-        <button onClick={() => setHistoryOpen(o => !o)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, background: historyOpen ? '#2a2a3e' : 'transparent', border: '1px solid #3a3a52', color: '#9090b0', cursor: 'pointer' }}>History</button>
+        <button onClick={() => { setAssetsOpen(o => !o); setHistoryOpen(false) }} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, background: assetsOpen ? '#2a2a3e' : 'transparent', border: '1px solid #3a3a52', color: assetsOpen ? '#c9a84c' : '#9090b0', cursor: 'pointer' }}>Assets</button>
+        <button onClick={() => { setHistoryOpen(o => !o); setAssetsOpen(false) }} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, background: historyOpen ? '#2a2a3e' : 'transparent', border: '1px solid #3a3a52', color: '#9090b0', cursor: 'pointer' }}>History</button>
       </div>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <iframe ref={iframeRef} src={editorSrc} style={{ flex: 1, border: 'none', display: 'block' }} title="SlotForge Editor" />
+        {assetsOpen && (
+          <div style={{ width: 320, background: '#1a1a2e', borderLeft: '1px solid #2a2a3e', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <AssetsPanel projectId={projectId} onAddToCanvas={handleAddToCanvas} />
+          </div>
+        )}
         {historyOpen && (
           <div style={{ width: 260, background: '#1a1a2e', borderLeft: '1px solid #2a2a3e', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', fontSize: 12, fontWeight: 700, color: '#9090b0', borderBottom: '1px solid #2a2a3e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Version History</div>
