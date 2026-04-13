@@ -63,6 +63,14 @@ interface Props {
   onAddToCanvas: (assetType: AssetType, url: string) => void
 }
 
+// ─── Uploaded file ────────────────────────────────────────────────────────────
+
+interface UploadedFile {
+  name:       string
+  url:        string
+  created_at: string
+}
+
 // ─── Tiny Tabs ────────────────────────────────────────────────────────────────
 
 type Tab = 'generated' | 'uploads'
@@ -107,7 +115,7 @@ export function AssetsPanel({ projectId, onAddToCanvas }: Props) {
           <GeneratedTab projectId={projectId} onAddToCanvas={onAddToCanvas} />
         )}
         {tab === 'uploads' && (
-          <UploadsTab projectId={projectId} />
+          <UploadsTab projectId={projectId} onAddToCanvas={onAddToCanvas} />
         )}
       </div>
     </div>
@@ -498,43 +506,162 @@ function AssetThumb({ type, asset, onAddToCanvas }: ThumbProps) {
 // Uploads Tab
 // ─────────────────────────────────────────────────────────────────────────────
 
-function UploadsTab({ projectId }: { projectId: string }) {
-  // This tab will use the same SF_UPLOAD_ASSET bridge as the editor
-  // For now, surface a drag-drop upload area
-  const [dragging, setDragging] = useState(false)
+const ALL_ASSET_TYPES: AssetType[] = [
+  'background_base', 'background_bonus',
+  'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
+  'symbol_low_1', 'symbol_low_2', 'symbol_low_3', 'symbol_low_4', 'symbol_low_5',
+  'symbol_wild', 'symbol_scatter', 'logo',
+]
+
+function UploadsTab({ projectId, onAddToCanvas }: { projectId: string; onAddToCanvas: (type: AssetType, url: string) => void }) {
+  const [dragging,      setDragging]      = useState(false)
+  const [uploading,     setUploading]     = useState(false)
+  const [uploadProgress, setUploadProgress] = useState('')
+  const [files,         setFiles]         = useState<UploadedFile[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [hovered,       setHovered]       = useState<string | null>(null)
+  const [pickerOpen,    setPickerOpen]    = useState<string | null>(null) // file url that has type picker open
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Load existing uploaded files on mount
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/assets/upload?project_id=${projectId}`)
+      .then(r => r.ok ? r.json() : { files: [] })
+      .then(d => setFiles(Array.isArray(d.files) ? d.files : []))
+      .catch(() => setFiles([]))
+      .finally(() => setLoading(false))
+  }, [projectId])
+
+  async function uploadFiles(fileList: File[]) {
+    const images = fileList.filter(f => f.type.startsWith('image/'))
+    if (images.length === 0) return
+    setUploading(true)
+    const uploaded: UploadedFile[] = []
+    for (let i = 0; i < images.length; i++) {
+      const file = images[i]
+      setUploadProgress(`Uploading ${i + 1}/${images.length}…`)
+      const form = new FormData()
+      form.append('file', file)
+      form.append('projectId', projectId)
+      form.append('assetKey', file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_'))
+      try {
+        const res = await fetch('/api/assets/upload', { method: 'POST', body: form })
+        const json = await res.json()
+        if (json.url) uploaded.push({ name: file.name, url: json.url, created_at: new Date().toISOString() })
+      } catch { /* skip failed files */ }
+    }
+    setFiles(prev => [...uploaded, ...prev])
+    setUploading(false)
+    setUploadProgress('')
+  }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     setDragging(false)
-    // Delegate to the editor's file picker by sending a message
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
-    if (files.length === 0) return
-    window.parent?.postMessage({ type: 'SF_PANEL_UPLOAD', files, projectId }, '*')
+    uploadFiles(Array.from(e.dataTransfer.files))
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) uploadFiles(Array.from(e.target.files))
+    e.target.value = ''
   }
 
   return (
     <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+      {/* Drop zone */}
       <div
+        onClick={() => fileInputRef.current?.click()}
         onDragOver={e => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         style={{
           border: `2px dashed ${dragging ? '#c9a84c' : '#3a3a52'}`,
-          borderRadius: 10, padding: '28px 16px', textAlign: 'center',
+          borderRadius: 10, padding: '20px 16px', textAlign: 'center',
           background: dragging ? 'rgba(201,168,76,.06)' : '#1a1a2e',
-          transition: 'all .15s', cursor: 'default',
+          transition: 'all .15s', cursor: 'pointer',
         }}
       >
-        <Upload style={{ width: 22, height: 22, margin: '0 auto 8px', display: 'block', color: dragging ? '#c9a84c' : '#6060a0' }} />
-        <p style={{ fontSize: 11, color: '#9090b0', margin: '0 0 4px' }}>Drag &amp; drop images here</p>
-        <p style={{ fontSize: 10, color: '#6060a0', margin: 0 }}>or use the asset slots in the canvas directly</p>
+        <Upload style={{ width: 20, height: 20, margin: '0 auto 6px', display: 'block', color: dragging ? '#c9a84c' : '#6060a0' }} />
+        {uploading ? (
+          <p style={{ fontSize: 11, color: '#c9a84c', margin: 0 }}>{uploadProgress}</p>
+        ) : (
+          <>
+            <p style={{ fontSize: 11, color: '#9090b0', margin: '0 0 2px', fontWeight: 600 }}>Click or drop images</p>
+            <p style={{ fontSize: 10, color: '#6060a0', margin: 0 }}>PNG, JPG, WebP • stored per project</p>
+          </>
+        )}
+        <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileInput} style={{ display: 'none' }} />
       </div>
 
-      <div style={{ padding: '10px 12px', borderRadius: 8, background: '#1a1a2e', border: '1px solid #2a2a3e' }}>
-        <p style={{ fontSize: 11, color: '#6060a0', margin: 0, lineHeight: 1.6 }}>
-          You can upload custom assets by clicking any symbol or background slot directly on the canvas. Uploaded files are stored per project.
-        </p>
-      </div>
+      {/* Files grid */}
+      {loading ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 12, color: '#6060a0', fontSize: 11 }}>
+          <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} />
+          Loading uploads…
+        </div>
+      ) : files.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '20px 16px', color: '#6060a0' }}>
+          <ImageIcon style={{ width: 24, height: 24, margin: '0 auto 6px', display: 'block', opacity: 0.4 }} />
+          <p style={{ fontSize: 11, margin: 0 }}>No uploads yet</p>
+        </div>
+      ) : (
+        <div style={{ background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #2a2a3e', fontSize: 10, fontWeight: 700, color: '#6060a0', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Uploads ({files.length})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, padding: 8 }}>
+            {files.map(f => (
+              <div
+                key={f.url}
+                onMouseEnter={() => setHovered(f.url)}
+                onMouseLeave={() => { setHovered(null); setPickerOpen(null) }}
+                style={{ position: 'relative', aspectRatio: '1', borderRadius: 7, overflow: 'visible', background: '#0e0e1a', border: '1px solid #2a2a3e' }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={f.url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7, display: 'block' }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '3px 4px', background: 'linear-gradient(transparent, rgba(0,0,0,.85))', fontSize: 8, color: '#e8e6e1', fontWeight: 600, borderRadius: '0 0 7px 7px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.name}
+                </div>
+                {hovered === f.url && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 7, zIndex: 10 }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPickerOpen(pickerOpen === f.url ? null : f.url) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, background: 'linear-gradient(135deg, #c9a84c, #e8c96d)', color: '#1a1200', border: 'none', cursor: 'pointer' }}
+                    >
+                      <Plus style={{ width: 10, height: 10 }} />
+                      Canvas
+                    </button>
+                    <a href={f.url} download={f.name} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 8px', borderRadius: 5, fontSize: 10, color: '#9090b0', background: '#1a1a2e', border: '1px solid #3a3a52', cursor: 'pointer', textDecoration: 'none' }}>
+                      <Download style={{ width: 10, height: 10 }} />
+                      PNG
+                    </a>
+                  </div>
+                )}
+                {/* Layer type picker */}
+                {pickerOpen === f.url && (
+                  <div style={{ position: 'absolute', right: 0, top: '100%', zIndex: 100, background: '#1a1a2e', border: '1px solid #3a3a52', borderRadius: 8, padding: 6, minWidth: 140, boxShadow: '0 8px 24px rgba(0,0,0,.6)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ fontSize: 9, color: '#6060a0', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '2px 6px 4px' }}>Use as…</div>
+                    {ALL_ASSET_TYPES.map(t => (
+                      <button key={t} onClick={() => { onAddToCanvas(t, f.url); setPickerOpen(null); setHovered(null) }}
+                        style={{ padding: '4px 8px', borderRadius: 5, fontSize: 10, color: '#e8e6e1', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#2a2a3e')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {ASSET_LABELS[t] ?? t}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

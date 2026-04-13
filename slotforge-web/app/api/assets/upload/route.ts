@@ -8,6 +8,34 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// ── GET /api/assets/upload?project_id=... ─────────────────────────────────────
+// List all user-uploaded assets for a project from Supabase Storage
+export async function GET(req: NextRequest) {
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const projectId = req.nextUrl.searchParams.get('project_id')
+  if (!projectId) return NextResponse.json({ error: 'Missing project_id' }, { status: 400 })
+
+  const { data, error } = await supabaseAdmin.storage
+    .from('project-assets')
+    .list(projectId, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } })
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const files = (data ?? [])
+    .filter(f => f.name !== '.emptyFolderPlaceholder')
+    .map(f => ({
+      name: f.name,
+      url:  `${supabaseUrl}/storage/v1/object/public/project-assets/${projectId}/${f.name}`,
+      created_at: f.created_at ?? '',
+    }))
+
+  return NextResponse.json({ files })
+}
+
+// ── POST /api/assets/upload ───────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
