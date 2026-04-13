@@ -1268,80 +1268,63 @@ function buildCanvas(){
       if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none;border-radius:inherit';el.appendChild(img);}else{el.appendChild(makePH('char',pos.w,pos.h,'',c1));}
 
     }else if(k==='settings'){
-      el.style.borderRadius='50%'; el.style.overflow='hidden'; el.style.cursor='pointer';
-      if(EL_ASSETS[k]){
-        const img=document.createElement('img');
-        img.src=EL_ASSETS[k];
-        img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';
-        el.appendChild(img);
-      } else {
-        el.appendChild(makeImgSlot('SETTINGS','png'));
-      }
+      el.style.borderRadius='50%'; el.style.cursor='pointer';
+      const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:50%;overflow:hidden;';
+      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('SETTINGS','png'));}
+      el.appendChild(inner);
 
     }else if(k==='bannerBet'){
-      el.style.borderRadius='10px'; el.style.overflow='hidden'; el.style.cursor='pointer';
-      if(EL_ASSETS[k]){
-        const img=document.createElement('img'); img.src=EL_ASSETS[k];
-        img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';
-        el.appendChild(img);
-      } else { el.appendChild(makeImgSlot('BET PANEL')); }
+      el.style.borderRadius='10px'; el.style.cursor='pointer';
+      const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:10px;overflow:hidden;';
+      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('BET PANEL'));}
       const bsz=Math.max(Math.round(pos.h*0.3),12);
       const bsz2=Math.max(Math.round(pos.h*0.22),10);
       const ov=document.createElement('div');
       ov.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;pointer-events:none';
       ov.innerHTML=`<div style="font-size:${bsz}px;color:#fff;font-weight:700;letter-spacing:.08em;font-family:Space Grotesk,sans-serif;text-shadow:0 1px 4px #00000099">BET</div><div style="font-size:${bsz2}px;color:#c9a84c;font-weight:600;font-family:Space Grotesk,sans-serif;text-shadow:0 1px 4px #00000099">€ 5.00</div>`;
-      el.appendChild(ov);
+      inner.appendChild(ov);
+      el.appendChild(inner);
 
     }else if(k==='bannerBuy'){
-      el.style.borderRadius='10px'; el.style.overflow='hidden'; el.style.cursor='pointer';
-      if(EL_ASSETS[k]){
-        const img=document.createElement('img'); img.src=EL_ASSETS[k];
-        img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';
-        el.appendChild(img);
-      } else { el.appendChild(makeImgSlot('BUY BONUS')); }
+      el.style.borderRadius='10px'; el.style.cursor='pointer';
+      const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:10px;overflow:hidden;';
+      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('BUY BONUS'));}
       const bsz=Math.max(Math.round(pos.h*0.28),11);
       const ov=document.createElement('div');
       ov.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;pointer-events:none';
       ov.innerHTML=`<div style="font-size:${bsz}px;color:#fff;font-weight:700;letter-spacing:.08em;font-family:Space Grotesk,sans-serif;text-shadow:0 1px 4px #00000099;text-align:center;line-height:1.25">BUY<br>BONUS</div>`;
-      el.appendChild(ov);
+      inner.appendChild(ov);
+      el.appendChild(inner);
 
     }else if(k==='bannerAnte'){
-      el.style.borderRadius='10px'; el.style.overflow='hidden'; el.style.cursor='pointer';
-      if(EL_ASSETS[k]){
-        const img=document.createElement('img'); img.src=EL_ASSETS[k];
-        img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';
-        el.appendChild(img);
-      } else { el.appendChild(makeImgSlot('ANTE BET')); }
+      el.style.borderRadius='10px'; el.style.cursor='pointer';
+      const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:10px;overflow:hidden;';
+      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('ANTE BET'));}
       const asz=Math.max(Math.round(pos.h*0.28),10);
       const albl=P.ante.label||'Ante Bet';
       const ov=document.createElement('div');
       ov.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;pointer-events:none';
       ov.innerHTML=`<div style="font-size:${asz}px;color:#fff;font-weight:700;letter-spacing:.06em;font-family:Space Grotesk,sans-serif;text-shadow:0 1px 4px #00000099;text-transform:uppercase">${escH(albl)}</div><div style="font-size:${Math.round(asz*0.75)}px;color:rgba(255,255,255,0.7);font-family:Space Grotesk,sans-serif;text-shadow:0 1px 3px #00000099">1.25×</div>`;
-      el.appendChild(ov);
+      inner.appendChild(ov);
+      el.appendChild(inner);
 
     }else if(k==='spinBtn'){
-      el.style.borderRadius='50%'; el.style.overflow='hidden'; el.style.cursor='pointer';
-      if(EL_ASSETS[k]){
-        const img=document.createElement('img'); img.src=EL_ASSETS[k];
-        img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';
-        el.appendChild(img);
-      } else { el.appendChild(makeImgSlot('SPIN BTN','png')); }
+      el.style.borderRadius='50%'; el.style.cursor='pointer';
+      const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:50%;overflow:hidden;';
+      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('SPIN BTN','png'));}
+      el.appendChild(inner);
 
     }else if(k==='autoBtn'){
-      el.style.borderRadius='50%'; el.style.overflow='hidden'; el.style.cursor='pointer';
-      if(EL_ASSETS[k]){
-        const img=document.createElement('img'); img.src=EL_ASSETS[k];
-        img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';
-        el.appendChild(img);
-      } else { el.appendChild(makeImgSlot('AUTO','png')); }
+      el.style.borderRadius='50%'; el.style.cursor='pointer';
+      const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:50%;overflow:hidden;';
+      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('AUTO','png'));}
+      el.appendChild(inner);
 
     }else if(k==='turboBtn'){
-      el.style.borderRadius='50%'; el.style.overflow='hidden'; el.style.cursor='pointer';
-      if(EL_ASSETS[k]){
-        const img=document.createElement('img'); img.src=EL_ASSETS[k];
-        img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';
-        el.appendChild(img);
-      } else { el.appendChild(makeImgSlot('TURBO','png')); }
+      el.style.borderRadius='50%'; el.style.cursor='pointer';
+      const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:50%;overflow:hidden;';
+      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('TURBO','png'));}
+      el.appendChild(inner);
 
     }else if(k==='msgLabel'){
       el.style.display='flex';el.style.alignItems='center';el.style.justifyContent='center';
@@ -3671,13 +3654,13 @@ const SYM_TYPE_DEFAULTS = {high:['H1','H2','H3','H4','H5','H6'],low:['L1','L2','
 
 function buildDefaultSymbols(highN, lowN, specialN){
   const syms = [];
-  let id = 0;
+  const specialIds = ['Wild','Scatter','Bonus','Mini'];
   // High symbols — visible in all game screens by default
-  for(let i=0;i<highN;i++) syms.push({id:id++, name:(SYM_TYPE_DEFAULTS.high[i]||'H'+(i+1)), type:'high', screens:['base','freespin','holdnspin']});
+  for(let i=0;i<highN;i++) syms.push({id:'H'+(i+1), name:(SYM_TYPE_DEFAULTS.high[i]||'H'+(i+1)), type:'high', screens:['base','freespin','holdnspin']});
   // Low symbols — visible in base + freespin by default
-  for(let i=0;i<lowN;i++) syms.push({id:id++, name:(SYM_TYPE_DEFAULTS.low[i]||'L'+(i+1)), type:'low', screens:['base','freespin']});
+  for(let i=0;i<lowN;i++) syms.push({id:'L'+(i+1), name:(SYM_TYPE_DEFAULTS.low[i]||'L'+(i+1)), type:'low', screens:['base','freespin']});
   // Special symbols — all screens
-  for(let i=0;i<specialN;i++) syms.push({id:id++, name:(SYM_TYPE_DEFAULTS.special[i]||'S'+(i+1)), type:'special', screens:['base','freespin','holdnspin','splash']});
+  for(let i=0;i<specialN;i++) syms.push({id:(specialIds[i]||'S'+(i+1)), name:(SYM_TYPE_DEFAULTS.special[i]||'S'+(i+1)), type:'special', screens:['base','freespin','holdnspin','splash']});
   return syms;
 }
 
@@ -7831,11 +7814,32 @@ window._sfApplyPayload = function(payload){
   try { if(s.library  !== undefined) P.library  = s.library;  } catch(e){}
   try { if(s.expandWild) Object.assign(P.expandWild, s.expandWild); } catch(e){}
   try { if(s.reelSettings) Object.assign(P.reelSettings, s.reelSettings); } catch(e){}
+  // Restore character, ante, and other settings missing from earlier versions
+  try { if(s.char) Object.assign(P.char, s.char); } catch(e){}
+  try { if(s.ante) Object.assign(P.ante, s.ante); } catch(e){}
+  try { if(s.msgPos !== undefined) P.msgPos = s.msgPos; } catch(e){}
+  try { if(s.viewport) P.viewport = s.viewport; } catch(e){}
+  try { if(s.ovProps && typeof s.ovProps==='object') P.ovProps = s.ovProps; } catch(e){}
+  try { if(s.ovPos   && typeof s.ovPos==='object')   P.ovPos   = s.ovPos;   } catch(e){}
+  try { if(s.holdnspin && typeof s.holdnspin==='object') P.holdnspin = Object.assign(P.holdnspin||{}, s.holdnspin); } catch(e){}
+  try { if(s.adjs  && typeof EL_ADJ   !== 'undefined') Object.assign(EL_ADJ,   s.adjs);  } catch(e){}
+  try { if(s.masks && typeof EL_MASKS !== 'undefined') Object.assign(EL_MASKS, s.masks); } catch(e){}
+  try { if(Array.isArray(s.userLocks) && typeof USER_LOCKS !== 'undefined'){ USER_LOCKS.clear(); s.userLocks.forEach(function(k){ USER_LOCKS.add(k); }); } } catch(e){}
   try { if(s.elVP && s.elVP.portrait)  Object.assign(EL_VP.portrait,  s.elVP.portrait);  } catch(e){}
   try { if(s.elVP && s.elVP.landscape) Object.assign(EL_VP.landscape, s.elVP.landscape); } catch(e){}
   try { if(s.assets) Object.assign(EL_ASSETS, s.assets); } catch(e){}
   // Fill any symbol slots that the saved project didn't have assets for
   try { if(typeof window._loadDefaultSymbols==='function') setTimeout(window._loadDefaultSymbols, 50); } catch(e){}
+  // Sync UI toggles for settings that have visual toggle buttons
+  try {
+    var charTog=document.getElementById('char-tog');
+    if(charTog){ charTog.classList.toggle('on',!!P.char.enabled); var charTgl=document.getElementById('char-tog-lbl'); if(charTgl)charTgl.style.color=P.char.enabled?'#ccc':'#555'; var charCf=document.getElementById('char-cf'); if(charCf)charCf.classList.toggle('open',!!P.char.enabled); }
+  } catch(e){}
+  try {
+    var anteTog=document.getElementById('ante-tog');
+    if(anteTog){ anteTog.classList.toggle('on',!!P.ante.enabled); var anteLbl=document.getElementById('ante-lbl'); if(anteLbl)anteLbl.style.color=P.ante.enabled?'#ccc':'#555'; var anteCf=document.getElementById('ante-cf'); if(anteCf)anteCf.classList.toggle('open',!!P.ante.enabled); }
+  } catch(e){}
+  try { var msgPosEl=document.getElementById('msg-pos'); if(msgPosEl&&P.msgPos) msgPosEl.value=P.msgPos; } catch(e){}
   // Sync UI fields
   try { var gn=document.getElementById('game-name');  if(gn) gn.value=P.gameName||''; } catch(e){}
   try { var ph=document.getElementById('ph-chip');    if(ph) ph.textContent=P.gameName||''; } catch(e){}
@@ -7881,14 +7885,24 @@ window._sfBridge = (function(){
       theme:       P.theme,
       colors:      JSON.parse(JSON.stringify(P.colors   || {})),
       reelset:     P.reelset,
+      viewport:    P.viewport,
       jackpots:    JSON.parse(JSON.stringify(P.jackpots || {})),
       features:    JSON.parse(JSON.stringify(P.features || {})),
-      elVP:        JSON.parse(JSON.stringify(typeof EL_VP    !== 'undefined' ? EL_VP    : {})),
-      symbols:      JSON.parse(JSON.stringify(P.symbols  || [])),
-      expandWild:   JSON.parse(JSON.stringify(P.expandWild || {})),
-      reelSettings: JSON.parse(JSON.stringify(P.reelSettings || {})),
-      assets:       JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
-      library:      JSON.parse(JSON.stringify(P.library  || {})),
+      char:        JSON.parse(JSON.stringify(P.char     || {})),
+      ante:        JSON.parse(JSON.stringify(P.ante     || {})),
+      msgPos:      P.msgPos,
+      holdnspin:   JSON.parse(JSON.stringify(P.holdnspin|| {})),
+      ovProps:     JSON.parse(JSON.stringify(P.ovProps  || {})),
+      ovPos:       JSON.parse(JSON.stringify(P.ovPos    || {})),
+      elVP:        JSON.parse(JSON.stringify(typeof EL_VP     !== 'undefined' ? EL_VP     : {})),
+      symbols:     JSON.parse(JSON.stringify(P.symbols  || [])),
+      expandWild:  JSON.parse(JSON.stringify(P.expandWild || {})),
+      reelSettings:JSON.parse(JSON.stringify(P.reelSettings || {})),
+      assets:      JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
+      library:     JSON.parse(JSON.stringify(P.library  || [])),
+      adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ    !== 'undefined' ? EL_ADJ    : {})),
+      masks:       JSON.parse(JSON.stringify(typeof EL_MASKS  !== 'undefined' ? EL_MASKS  : {})),
+      userLocks:   typeof USER_LOCKS !== 'undefined' ? [...USER_LOCKS] : [],
     };
   }
 
