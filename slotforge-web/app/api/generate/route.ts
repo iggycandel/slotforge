@@ -71,11 +71,15 @@ export async function POST(req: NextRequest) {
           }
         )
 
+        // Flatten all succeeded assets into a flat array for easy consumption
+        const allAssets = pipelineResult.succeeded ?? []
+
         emit('complete', {
           success: pipelineResult.success,
           result:  pipelineResult.result,
           partial: pipelineResult.partial,
           failed:  pipelineResult.failed,
+          assets:  allAssets,
         })
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Generation failed'

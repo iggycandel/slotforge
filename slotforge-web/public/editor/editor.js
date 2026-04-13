@@ -1042,7 +1042,7 @@ function openDimPropsPanel() {
         dimPanel = document.createElement('div');
         dimPanel.id = 'dim-props-panel';
         dimPanel.className = 'properties-panel';
-        dimPanel.style.cssText = `position:absolute; right:270px; top:120px; width:220px; background:#111; border:1px solid #333; padding:15px; border-radius:8px; z-index:9000; box-shadow:0 10px 20px rgba(0,0,0,0.5);`;
+        dimPanel.style.cssText = `position:absolute; right:270px; top:120px; width:220px; background:#111; border:1px solid #333; padding:15px; border-radius:8px; z-index:9000; box-shadow:0 10px 20px rgba(0,0,0,0.5); display:none;`;
         dimPanel.innerHTML = `
             <div style="font-size:12px; font-weight:bold; color:#fff; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                 Dim Layer Opacity
@@ -1052,9 +1052,9 @@ function openDimPropsPanel() {
             <div id="dim-opacity-val" style="color:#aaa; font-size:11px; text-align:right; margin-top:5px;">75%</div>
         `;
         document.body.appendChild(dimPanel);
-        
+
         document.getElementById('dim-panel-close').addEventListener('click', () => {
-            dimPanel.classList.remove('show');
+            dimPanel.style.display = 'none';
         });
 
         document.getElementById('dim-opacity-slider').addEventListener('input', (e) => {
@@ -1067,7 +1067,7 @@ function openDimPropsPanel() {
     }
     document.getElementById('dim-opacity-slider').value = P.dimOpacity !== undefined ? P.dimOpacity : 0.75;
     document.getElementById('dim-opacity-val').textContent = Math.round(document.getElementById('dim-opacity-slider').value*100) + '%';
-    dimPanel.classList.add('show');
+    dimPanel.style.display = 'block';
 }
 
 function buildCanvas(){

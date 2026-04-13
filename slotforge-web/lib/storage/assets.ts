@@ -38,8 +38,20 @@ export async function uploadGeneratedAsset(
       upsert:      true,
     })
 
+  // If storage fails, fall back to the original AI URL so images still display
+  // (OpenAI URLs expire ~1h but are usable immediately — user should fix bucket permissions)
   if (uploadErr) {
-    throw new Error(`[storage] Upload failed for ${type}: ${uploadErr.message}`)
+    console.warn(`[storage] Upload failed for ${type}, falling back to source URL: ${uploadErr.message}`)
+    return {
+      id,
+      project_id: projectId,
+      type,
+      url:        sourceUrl,
+      prompt,
+      theme,
+      provider,
+      created_at: new Date().toISOString(),
+    }
   }
 
   const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)

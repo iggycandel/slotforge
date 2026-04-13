@@ -194,21 +194,29 @@ function GeneratedTab({ projectId, onAddToCanvas }: Props) {
           } else if (event === 'progress') {
             setGenStatus(s => ({ ...s, completed: data.completed, total: data.total }))
           } else if (event === 'complete') {
-            // Flatten partial result → assets map
+            // Flatten ALL individual assets — don't require full groups
             const newAssets: Partial<Record<AssetType, GeneratedAsset>> = {}
-            if (data.partial?.backgrounds) {
-              newAssets.background_base  = data.partial.backgrounds.base
-              newAssets.background_bonus = data.partial.backgrounds.bonus
-            }
-            if (data.partial?.symbols) {
+            // Backgrounds
+            if (data.partial?.backgrounds?.base)  newAssets.background_base  = data.partial.backgrounds.base
+            if (data.partial?.backgrounds?.bonus) newAssets.background_bonus = data.partial.backgrounds.bonus
+            // Symbols — show each individually even if group is incomplete
+            if (data.partial?.symbols?.high) {
               data.partial.symbols.high.forEach((a: GeneratedAsset, i: number) => {
-                newAssets[`symbol_high_${i+1}` as AssetType] = a
+                if (a) newAssets[`symbol_high_${i+1}` as AssetType] = a
               })
+            }
+            if (data.partial?.symbols?.low) {
               data.partial.symbols.low.forEach((a: GeneratedAsset, i: number) => {
-                newAssets[`symbol_low_${i+1}` as AssetType] = a
+                if (a) newAssets[`symbol_low_${i+1}` as AssetType] = a
               })
-              newAssets.symbol_wild    = data.partial.symbols.wild
-              newAssets.symbol_scatter = data.partial.symbols.scatter
+            }
+            if (data.partial?.symbols?.wild)    newAssets.symbol_wild    = data.partial.symbols.wild
+            if (data.partial?.symbols?.scatter) newAssets.symbol_scatter = data.partial.symbols.scatter
+            // Also extract from flat `assets` array if pipeline returns it
+            if (Array.isArray(data.assets)) {
+              data.assets.forEach((a: GeneratedAsset) => {
+                if (a?.type && a?.url) newAssets[a.type as AssetType] = a
+              })
             }
             if (data.partial?.logo) newAssets.logo = data.partial.logo
 

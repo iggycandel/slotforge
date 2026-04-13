@@ -35,10 +35,11 @@ export interface PipelineOptions {
 }
 
 export interface PipelineResult {
-  result?:  GenerationResult
-  partial:  Partial<GenerationResult>
-  failed:   Array<{ type: AssetType; error: string }>
-  success:  boolean
+  result?:    GenerationResult
+  partial:    Partial<GenerationResult>
+  succeeded:  GeneratedAsset[]                         // flat list of all succeeded assets
+  failed:     Array<{ type: AssetType; error: string }>
+  success:    boolean
 }
 
 export async function generateSlotAssets(
@@ -147,9 +148,10 @@ export async function generateSlotAssets(
     allFailed.length === 0
 
   return {
-    result:  isComplete ? partial as GenerationResult : undefined,
+    result:    isComplete ? partial as GenerationResult : undefined,
     partial,
-    failed:  allFailed,
-    success: allFailed.length < ALL_TYPES.length, // at least some succeeded
+    succeeded: Array.from(assetMap.values()),       // every asset that made it through
+    failed:    allFailed,
+    success:   allFailed.length < ALL_TYPES.length, // at least some succeeded
   }
 }
