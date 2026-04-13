@@ -22,13 +22,17 @@ export async function uploadGeneratedAsset(
   const id       = crypto.randomUUID()
   const path     = `${projectId}/generated/${type}-${Date.now()}.png`
 
-  // Download image from AI provider URL
-  const imageRes = await fetch(sourceUrl)
-  if (!imageRes.ok) {
-    throw new Error(`[storage] Failed to download image from AI: ${imageRes.status}`)
+  // Get image bytes — either decode base64 data URL directly or fetch remote URL
+  let buffer: Buffer
+  if (sourceUrl.startsWith('data:')) {
+    const base64 = sourceUrl.split(',')[1]
+    if (!base64) throw new Error('[storage] Invalid data URL')
+    buffer = Buffer.from(base64, 'base64')
+  } else {
+    const imageRes = await fetch(sourceUrl)
+    if (!imageRes.ok) throw new Error(`[storage] Failed to download image: ${imageRes.status}`)
+    buffer = Buffer.from(await imageRes.arrayBuffer())
   }
-
-  const buffer = Buffer.from(await imageRes.arrayBuffer())
 
   // Upload to Supabase Storage
   const { error: uploadErr } = await supabase.storage
@@ -38,20 +42,8 @@ export async function uploadGeneratedAsset(
       upsert:      true,
     })
 
-  // If storage fails, fall back to the original AI URL so images still display
-  // (OpenAI URLs expire ~1h but are usable immediately — user should fix bucket permissions)
   if (uploadErr) {
-    console.warn(`[storage] Upload failed for ${type}, falling back to source URL: ${uploadErr.message}`)
-    return {
-      id,
-      project_id: projectId,
-      type,
-      url:        sourceUrl,
-      prompt,
-      theme,
-      provider,
-      created_at: new Date().toISOString(),
-    }
+    throw new Error(`[storage] Upload failed for ${type}: ${uploadErr.message}`)
   }
 
   const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)

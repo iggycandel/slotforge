@@ -11,7 +11,7 @@ export interface OpenAIGenerateOptions {
 }
 
 export interface OpenAIResult {
-  url:      string
+  url:      string   // data:image/png;base64,... — ready to upload directly, no CDN fetch needed
   provider: 'openai'
 }
 
@@ -24,7 +24,7 @@ export async function generateWithOpenAI(
   const {
     prompt,
     size    = '1024x1024',
-    quality = 'hd',
+    quality = 'standard',  // 'hd' costs 2× — use standard by default
     model   = 'dall-e-3',
   } = opts
 
@@ -39,11 +39,11 @@ export async function generateWithOpenAI(
     },
     body: JSON.stringify({
       model,
-      prompt:           safePrompt,
-      n:                1,
+      prompt:          safePrompt,
+      n:               1,
       size,
       quality,
-      response_format:  'url',
+      response_format: 'b64_json',   // get bytes directly — avoids CDN auth issues
     }),
   })
 
@@ -54,9 +54,10 @@ export async function generateWithOpenAI(
     )
   }
 
-  const data = await res.json() as { data: Array<{ url: string }> }
-  const url  = data.data?.[0]?.url
-  if (!url) throw new Error('[openai] No image URL in response')
+  const data = await res.json() as { data: Array<{ b64_json: string }> }
+  const b64  = data.data?.[0]?.b64_json
+  if (!b64) throw new Error('[openai] No image data in response')
 
-  return { url, provider: 'openai' }
+  // Return as data URL so the storage layer can decode it directly
+  return { url: `data:image/png;base64,${b64}`, provider: 'openai' }
 }

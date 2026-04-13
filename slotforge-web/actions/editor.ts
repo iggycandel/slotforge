@@ -17,6 +17,18 @@ export async function autosaveProject(projectId: string, payload: Record<string,
   const thumbnail = (payload._thumbnail as string | undefined) ?? null
   const cleanPayload: Record<string, unknown> = { ...payload }
   delete cleanPayload._thumbnail
+
+  // Strip base64 data URLs from assets — they can be several MB each and blow the payload limit.
+  // Only keep assets that are proper https:// URLs (Supabase Storage / CDN).
+  if (cleanPayload.assets && typeof cleanPayload.assets === 'object') {
+    const safeAssets: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(cleanPayload.assets as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.startsWith('data:')) continue // skip base64
+      safeAssets[k] = v
+    }
+    cleanPayload.assets = safeAssets
+  }
+
   // Build update: always save payload; also sync name from gameName if set
   const update: Record<string, unknown> = { payload: cleanPayload, updated_at: new Date().toISOString() }
   const gameName = (payload.gameName as string | undefined)?.trim()

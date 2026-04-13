@@ -7850,58 +7850,6 @@ window._sfApplyPayload = function(payload){
   try { document.getElementById('ov-props-panel')?.classList.remove('show'); } catch(e){}
 };
 
-// === SlotForge postMessage Bridge ===
-window._sfBridge = (function() {
-  'use strict';
-  function getPayload() {
-    try {
-      return { gameName:P.gameName, theme:P.theme,
-        colors:JSON.parse(JSON.stringify(P.colors||{})),
-        reelset:JSON.parse(JSON.stringify(P.reelset||{})),
-        jackpots:JSON.parse(JSON.stringify(P.jackpots||[])),
-        features:JSON.parse(JSON.stringify(P.features||{})),
-        elVP:JSON.parse(JSON.stringify(typeof EL_VP!=='undefined'?EL_VP:{})),
-        symbols:JSON.parse(JSON.stringify(P.symbols||[])),
-        expandWild:JSON.parse(JSON.stringify(P.expandWild||{})),
-        assets:JSON.parse(JSON.stringify(typeof EL_ASSETS!=='undefined'?EL_ASSETS:{})),
-        library:JSON.parse(JSON.stringify(P.library||{})) };
-    } catch(e) { return {}; }
-  }
-  function getThumbnail() {
-    try {
-      var canvas=document.querySelector('canvas'); if(!canvas) return null;
-      var t=document.createElement('canvas'); t.width=240; t.height=135;
-      t.getContext('2d').drawImage(canvas,0,0,240,135);
-      return t.toDataURL('image/jpeg',0.6);
-    } catch(e) { return null; }
-  }
-  function triggerSave() {
-    try { window.parent.postMessage({type:'SF_AUTOSAVE',payload:getPayload(),thumbnail:getThumbnail()},'*'); } catch(e) {}
-  }
-  function prefillName(name) {
-    if(!name) return;
-    var sels=['input[placeholder*="Lucky" i]','input[placeholder*="game" i]','input[placeholder*="name" i]','input[id*="game" i]'];
-    for(var i=0;i<sels.length;i++){var el=document.querySelector(sels[i]);if(el){el.value=name;el.dispatchEvent(new Event('input',{bubbles:true}));break;}}
-  }
-  function loadPayload(payload) {
-    if(!payload) return;
-    try { prefillName(payload.gameName); } catch(e){}
-    setTimeout(function(){ _sfApplyPayload(payload); }, 500);
-  }
-  var _timer=null;
-  var _orig=typeof markDirty==='function'?markDirty:null;
-  if(_orig){ window.markDirty=function(){ _orig.apply(this,arguments); window.parent.postMessage({type:'SF_DIRTY'},'*'); clearTimeout(_timer); _timer=setTimeout(triggerSave,4000); }; }
-  window.addEventListener('message',function(evt){
-    var msg=evt.data; if(!msg||typeof msg.type!=='string') return;
-    // SF_LOAD is handled exclusively by the newer bridge below — do NOT duplicate here
-    if(msg.type==='SF_REQUEST_SAVE') triggerSave();
-  });
-  function signalReady(){ window.parent.postMessage({type:'SF_IFRAME_READY'},'*'); }
-  if(document.readyState==='complete') signalReady(); else window.addEventListener('load',signalReady);
-  setTimeout(signalReady,800);
-  return {getPayload,triggerSave};
-})();
-
 /* ── SlotForge postMessage bridge ── */
 window._sfBridge = (function(){
   'use strict';
