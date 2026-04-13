@@ -48,6 +48,8 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const iframeRef      = useRef<HTMLIFrameElement>(null)
   const payloadRef     = useRef<Record<string, unknown> | null>(initialPayload)
   const manualSaveFlag = useRef(false)
+  const isSavingRef    = useRef(false)
+  const pendingSave    = useRef<{ payload: Record<string, unknown>; isManual: boolean } | null>(null)
   const [saveState,        setSaveState]        = useState<SaveState>({ status: 'idle' })
   const [versionLabel,     setVersionLabel]     = useState('')
   const [snapshots,        setSnapshots]        = useState<ProjectSnapshot[]>([])
@@ -61,6 +63,13 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   useEffect(() => { loadSnapshots() }, [projectId])
 
   const doSave = useCallback(async (payload: Record<string, unknown>, isManual: boolean) => {
+    // Guard: if already saving, queue the latest payload and return
+    if (isSavingRef.current) {
+      pendingSave.current = { payload, isManual: isManual || (pendingSave.current?.isManual ?? false) }
+      return
+    }
+
+    isSavingRef.current = true
     setSaveState({ status: 'saving' })
     try {
       const { error } = await autosaveProject(projectId, payload)
@@ -74,6 +83,14 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       setTimeout(() => setSaveState(s => s.status === 'saved' ? { ...s, status: 'idle' } : s), 3000)
     } catch {
       setSaveState({ status: 'error' })
+    } finally {
+      isSavingRef.current = false
+      // Flush any queued save that arrived while we were busy
+      if (pendingSave.current) {
+        const next = pendingSave.current
+        pendingSave.current = null
+        doSave(next.payload, next.isManual)
+      }
     }
   }, [projectId, versionLabel])
 

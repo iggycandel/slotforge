@@ -29,6 +29,20 @@ export async function autosaveProject(projectId: string, payload: Record<string,
     cleanPayload.assets = safeAssets
   }
 
+  // Strip base64 data URLs from library items (same reason — each item may have a src or url field).
+  if (Array.isArray(cleanPayload.library)) {
+    cleanPayload.library = (cleanPayload.library as Record<string, unknown>[]).map(item => {
+      if (!item || typeof item !== 'object') return item
+      const clean: Record<string, unknown> = { ...item }
+      for (const field of ['src', 'url', 'data', 'thumbnail']) {
+        if (typeof clean[field] === 'string' && (clean[field] as string).startsWith('data:')) {
+          delete clean[field]
+        }
+      }
+      return clean
+    })
+  }
+
   // Build update: always save payload; also sync name from gameName if set
   const update: Record<string, unknown> = { payload: cleanPayload, updated_at: new Date().toISOString() }
   const gameName = (payload.gameName as string | undefined)?.trim()
