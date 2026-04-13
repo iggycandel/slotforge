@@ -1,7 +1,8 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
 // SlotForge — Export Panel
-// Bulk download as ZIP or individual PNG exports, Spine-ready naming
+// Bulk download (sequential) or individual PNG exports, Spine-ready naming
+// No external zip dependency — uses native browser anchor download
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react'
@@ -14,7 +15,7 @@ interface Props {
   theme:  string
 }
 
-// Spine-ready filename convention: sym-H1.png, sym-Wild.png, etc.
+// Spine-ready filename convention
 const SPINE_NAMES: Partial<Record<AssetType, string>> = {
   background_base:  'bg-base.jpg',
   background_bonus: 'bg-bonus.jpg',
@@ -33,8 +34,21 @@ const SPINE_NAMES: Partial<Record<AssetType, string>> = {
   logo:             'logo.png',
 }
 
+/** Trigger a browser download for a remote URL without a zip library */
+async function downloadFile(url: string, filename: string) {
+  const res  = await fetch(url)
+  const blob = await res.blob()
+  const href = URL.createObjectURL(blob)
+  const a    = Object.assign(document.createElement('a'), { href, download: filename })
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(href)
+}
+
 export function ExportPanel({ assets, theme }: Props) {
   const [exporting, setExporting] = useState(false)
+  const [progress,  setProgress]  = useState(0)
 
   const assetList = Object.entries(assets) as [AssetType, GeneratedAsset][]
   const count = assetList.length
@@ -42,36 +56,23 @@ export function ExportPanel({ assets, theme }: Props) {
   async function downloadAll() {
     if (exporting || count === 0) return
     setExporting(true)
+    setProgress(0)
 
-    try {
-      // Dynamically import JSZip only when needed
-      const JSZip = (await import('jszip')).default
-      const zip   = new JSZip()
-      const folder = zip.folder(theme.replace(/\s+/g, '-').toLowerCase()) ?? zip
-
-      await Promise.all(
-        assetList.map(async ([type, asset]) => {
-          try {
-            const res  = await fetch(asset.url)
-            const blob = await res.blob()
-            const name = SPINE_NAMES[type] ?? `${type}.png`
-            folder.file(name, blob)
-          } catch {
-            console.warn(`[export] Failed to fetch ${type}`)
-          }
-        })
-      )
-
-      const content = await zip.generateAsync({ type: 'blob' })
-      const url     = URL.createObjectURL(content)
-      const a       = document.createElement('a')
-      a.href        = url
-      a.download    = `${theme.replace(/\s+/g, '-').toLowerCase()}-assets.zip`
-      a.click()
-      URL.revokeObjectURL(url)
-    } finally {
-      setExporting(false)
+    for (let i = 0; i < assetList.length; i++) {
+      const [type, asset] = assetList[i]
+      const filename = SPINE_NAMES[type] ?? `${type}.png`
+      try {
+        await downloadFile(asset.url, filename)
+      } catch {
+        console.warn(`[export] Failed to download ${type}`)
+      }
+      setProgress(i + 1)
+      // Small delay so the browser doesn't block multiple simultaneous downloads
+      await new Promise(r => setTimeout(r, 300))
     }
+
+    setExporting(false)
+    setProgress(0)
   }
 
   if (count === 0) return null
@@ -85,7 +86,7 @@ export function ExportPanel({ assets, theme }: Props) {
         <span className="text-[10px] text-zinc-600">{count} assets ready</span>
       </div>
 
-      {/* Export all as ZIP */}
+      {/* Download all button */}
       <button
         onClick={downloadAll}
         disabled={exporting}
@@ -98,11 +99,16 @@ export function ExportPanel({ assets, theme }: Props) {
         "
       >
         {exporting ? (
-          <span className="w-3.5 h-3.5 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+          <>
+            <span className="w-3.5 h-3.5 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+            Downloading {progress}/{count}…
+          </>
         ) : (
-          <Package className="w-3.5 h-3.5" />
+          <>
+            <Package className="w-3.5 h-3.5" />
+            Download all (Spine-ready)
+          </>
         )}
-        {exporting ? 'Zipping…' : 'Download all as ZIP (Spine-ready)'}
       </button>
 
       {/* Individual downloads */}
