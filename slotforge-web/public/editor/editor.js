@@ -7978,6 +7978,17 @@ window._sfBridge = (function(){
     }
     if(msg.type === 'SF_REQUEST_SAVE'){ triggerSave(); }
 
+    // Inject arbitrary CSS from the parent shell (used to hide duplicate panels)
+    if(msg.type === 'SF_INJECT_CSS' && msg.css){
+      var styleEl = document.getElementById('_sf_injected_css');
+      if(!styleEl){
+        styleEl = document.createElement('style');
+        styleEl.id = '_sf_injected_css';
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent += '\n' + msg.css;
+    }
+
     // Inject a generated/external image URL into a canvas layer asset slot
     if(msg.type === 'SF_INJECT_IMAGE_LAYER' && msg.assetType && msg.url){
       var ASSET_KEY_MAP = {

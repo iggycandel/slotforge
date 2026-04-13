@@ -78,3 +78,29 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ url: publicUrl })
 }
+
+// ── DELETE /api/assets/upload ─────────────────────────────────────────────────
+// Body: { project_id: string, file_name: string }
+export async function DELETE(req: NextRequest) {
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json().catch(() => null)
+  const projectId = body?.project_id as string | undefined
+  const fileName  = body?.file_name  as string | undefined
+
+  if (!projectId || !fileName) {
+    return NextResponse.json({ error: 'Missing project_id or file_name' }, { status: 400 })
+  }
+
+  // Safety: only allow removing files within this project's folder
+  const storagePath = `${projectId}/${fileName.replace(/^\/+/, '')}`
+
+  const { error } = await supabaseAdmin.storage
+    .from('project-assets')
+    .remove([storagePath])
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true })
+}

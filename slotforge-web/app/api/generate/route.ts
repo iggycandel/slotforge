@@ -100,6 +100,52 @@ export async function POST(req: NextRequest) {
   })
 }
 
+// ─── DELETE /api/generate — remove a generated asset (DB + Storage) ──────────
+
+export async function DELETE(req: NextRequest) {
+  const { userId } = await auth()
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json().catch(() => null)
+  const assetId = body?.id as string | undefined
+  if (!assetId) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+  try {
+    const { getProjectAssets } = await import('@/lib/storage/assets')
+    const { createAdminClient }  = await import('@/lib/supabase/admin')
+    const supabase = createAdminClient()
+
+    // Look up the record so we can find the storage path
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: asset, error: fetchErr } = await (supabase as any)
+      .from('generated_assets')
+      .select('url, project_id')
+      .eq('id', assetId)
+      .single()
+    void getProjectAssets // suppress unused import lint
+
+    if (fetchErr || !asset) {
+      return NextResponse.json({ error: 'Asset not found' }, { status: 404 })
+    }
+
+    // Reconstruct storage path from the public URL
+    // URL format: https://<ref>.supabase.co/storage/v1/object/public/project-assets/<path>
+    const pathMatch = (asset.url as string).match(/\/object\/public\/project-assets\/(.+)$/)
+    if (pathMatch?.[1]) {
+      await supabase.storage.from('project-assets').remove([pathMatch[1]])
+    }
+
+    // Delete the DB record
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('generated_assets').delete().eq('id', assetId)
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Delete failed'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
 // ─── GET /api/generate — fetch existing assets for a project ─────────────────
 
 export async function GET(req: NextRequest) {
