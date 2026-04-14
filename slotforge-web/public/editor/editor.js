@@ -7896,6 +7896,8 @@ window._sfApplyPayload = function(payload){
   try { if(s.assets) Object.assign(EL_ASSETS, s.assets); } catch(e){}
   // Restore layer key order for each screen (captures custom/reordered layers)
   try { if(s.keyOrders && typeof SDEFS!=='undefined') Object.entries(s.keyOrders).forEach(function(e){ if(SDEFS[e[0]]) SDEFS[e[0]].keys=[].concat(e[1]); }); } catch(e){}
+  // Restore custom layer definitions so buildCanvas/renderLayers can find them
+  try { if(s.customPsd && typeof PSD!=='undefined') Object.assign(PSD, s.customPsd); } catch(e){}
   // Fill any symbol slots that the saved project didn't have assets for
   try { if(typeof window._loadDefaultSymbols==='function') setTimeout(window._loadDefaultSymbols, 50); } catch(e){}
   // Sync UI toggles for settings that have visual toggle buttons
@@ -7975,6 +7977,8 @@ window._sfBridge = (function(){
       userLocks:   typeof USER_LOCKS !== 'undefined' ? [...USER_LOCKS] : [],
       // Save layer key order for every screen — captures custom layers added/reordered by the user
       keyOrders:   (function(){ var ko={}; try{ Object.entries(typeof SDEFS!=='undefined'?SDEFS:{}).forEach(function(e){ if(e[1].keys) ko[e[0]]=[].concat(e[1].keys); }); }catch(ex){} return ko; })(),
+      // Save custom layer definitions (PSD entries for custom_N keys) — required for layers to survive reload
+      customPsd:   (function(){ var cp={}; try{ Object.entries(typeof PSD!=='undefined'?PSD:{}).forEach(function(e){ if(e[0].indexOf('custom_')===0) cp[e[0]]=e[1]; }); }catch(ex){} return cp; })(),
     };
   }
 
