@@ -634,28 +634,36 @@ option{background:#1e1e2e;color:#d8d6d1}
 /* ── Canvas workspace: existing layout unchanged ── */
 #ws-canvas-tools{display:flex;flex:1;overflow:hidden}
 
-/* ── Flow workspace — shell that contains gfd-modal ── */
+/* ── Flow workspace ─────────────────────────────────────────────────────────── */
 #ws-flow{display:none;flex:1;overflow:hidden;flex-direction:column}
 #ws-flow.ws-visible{display:flex}
 #ws-flow #gfd-modal{display:flex;flex:1}
 
-/* Flow nodes */
-.fn-node{position:absolute;background:#22222e;border:1px solid #3a3a52;border-radius:10px;padding:12px 14px;min-width:160px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:border-color .15s;user-select:none}
-.fn-node:hover,.fn-node.fn-selected{border-color:#c9a84c88;box-shadow:0 4px 20px rgba(201,168,76,.15)}
-.fn-node-head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
-.fn-node-ico{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
-.fn-node-label{font-size:11px;font-weight:600;color:#e0deda;letter-spacing:.02em}
-.fn-node-sub{font-size:9px;color:#7a7a94}
-.fn-port{width:10px;height:10px;border-radius:50%;background:#3a3a52;border:2px solid #5a5a72;position:absolute;cursor:crosshair;transition:background .12s,border-color .12s}
-.fn-port:hover,.fn-port.connected{background:#c9a84c;border-color:#c9a84c}
-.fn-port.out{right:-5px;top:50%;transform:translateY(-50%)}
-.fn-port.in{left:-5px;top:50%;transform:translateY(-50%)}
+/* Dot-grid canvas background (rendered via JS into #gfd-grid-svg) */
+#gfd-canvas-wrap{background:#06060a}
+
+/* GFD nodes */
+.gfd-node{transition:border-color .15s,box-shadow .15s}
+.gfd-node:hover:not(:active){filter:brightness(1.06)}
+
+/* Port hover glow — handled inline, but add base styles here */
+.gfd-port-in,.gfd-port-out{transition:transform .12s,border-color .12s,box-shadow .12s}
+
+/* Connection label pill — added via SVG text, styles reference only */
+
+/* Animated flow-dash for legacy .flow-edge elements */
 svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
-.flow-edge{stroke:rgba(201,168,76,.4);stroke-width:1.5;fill:none;stroke-dasharray:6 4;animation:flow-dash 1.5s linear infinite;filter:drop-shadow(0 0 4px rgba(201,168,76,.2))}
-@keyframes flow-dash{to{stroke-dashoffset:-20}}
-.flow-edge.solid{stroke:#c9a84c99;stroke-dasharray:none;animation:none}
-.flow-node-box{background:#13131a;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.5)}
-.flow-node-box:hover{border-color:rgba(201,168,76,.3);box-shadow:0 0 20px rgba(201,168,76,.1)}
+.flow-edge{stroke:rgba(201,168,76,.45);stroke-width:1.5;fill:none;stroke-dasharray:6 4;animation:flow-dash 1.6s linear infinite;filter:drop-shadow(0 0 5px rgba(201,168,76,.25))}
+@keyframes flow-dash{to{stroke-dashoffset:-22}}
+.flow-edge.solid{stroke:#c9a84caa;stroke-dasharray:none;animation:none}
+
+/* Node card base (used by .flow-node-box helper class) */
+.flow-node-box{background:#12121a;border:1px solid rgba(255,255,255,.08);border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.55);transition:border-color .15s,box-shadow .15s}
+.flow-node-box:hover{border-color:rgba(201,168,76,.28);box-shadow:0 0 22px rgba(201,168,76,.1),0 4px 24px rgba(0,0,0,.55)}
+
+/* Simulation active pulse */
+@keyframes gfdPulse{0%,100%{box-shadow:0 0 0 2px #f0e06066,0 0 20px #f0e06033}50%{box-shadow:0 0 0 4px #f0e06099,0 0 32px #f0e06066}}
+.gfd-node.gfd-active{animation:gfdPulse 1s ease-in-out infinite}
 
 /* ── Project workspace ── */
 #ws-project{display:none;flex:1;overflow:hidden;flex-direction:row}

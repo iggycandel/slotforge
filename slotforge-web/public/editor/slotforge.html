@@ -377,44 +377,44 @@
        FLOW WORKSPACE — contains Game Flow Designer
        ══════════════════════════════════════════════ -->
   <div id="ws-flow">
-    <div id="gfd-modal" style="display:none;flex:1;flex-direction:column;overflow:hidden">
-  <!-- Toolbar -->
-  <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:#16162a;border-bottom:1px solid #2a2a40;flex-shrink:0;height:46px">
-    <div style="font-size:13px;font-weight:700;color:#c9a84c;letter-spacing:.06em;font-family:Space Grotesk,sans-serif">🔀 GAME FLOW DESIGNER</div>
-    <div id="gfd-game-title" style="font-size:10px;color:#5a5a72;font-family:DM Mono,monospace;margin-left:2px"></div>
-    <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-      <button onclick="gfdAutoLayout()" title="Auto-arrange nodes" style="padding:4px 12px;border-radius:6px;border:1px solid #3a3a52;background:#22223a;color:#9090c0;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600">⟳ Auto-Layout</button>
-      <button onclick="gfdFit()" title="Fit all nodes in view" style="padding:4px 12px;border-radius:6px;border:1px solid #3a3a52;background:#22223a;color:#9090c0;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600">⊞ Fit</button>
-      <button onclick="gfdRePopulate()" title="Re-generate from project settings" style="padding:4px 12px;border-radius:6px;border:1px solid #4a6a4a44;background:#1a2a1a;color:#5eca8a;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600">↺ Auto-fill</button>
-      <div style="width:1px;height:20px;background:#2a2a40;flex-shrink:0"></div>
-      <button id="gfd-sim-btn" onclick="gfdSimToggle()" title="Simulate flow step-by-step" style="padding:4px 14px;border-radius:6px;border:1px solid #5a8a5a88;background:#1a2e1a;color:#6edd8a;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:700;letter-spacing:.04em">▶ Simulate</button>
-      <button onclick="gfdExportJSON()" title="Export production flow.json" style="padding:4px 12px;border-radius:6px;border:1px solid #5a5a2a44;background:#1e1e0e;color:#c9a84c;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600">📤 Export JSON</button>
-      <div style="width:1px;height:20px;background:#2a2a40;flex-shrink:0"></div>
-      <button onclick="gfdClear()" title="Clear canvas" style="padding:4px 10px;border-radius:6px;border:1px solid #6a3a3a44;background:#2a1a1a;color:#c07070;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600">🗑</button>
+    <div id="gfd-modal" style="display:none;flex:1;flex-direction:column;overflow:hidden;font-family:Inter,system-ui,sans-serif">
+  <!-- ── Toolbar ── -->
+  <div style="display:flex;align-items:center;gap:10px;padding:0 16px;background:#0d0d14;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;height:46px">
+    <div style="font-size:11px;font-weight:700;color:#c9a84c;letter-spacing:.08em;text-transform:uppercase">Game Flow</div>
+    <div id="gfd-game-title" style="font-size:10px;color:#3e3e4e;margin-left:2px"></div>
+    <div style="margin-left:auto;display:flex;gap:5px;align-items:center">
+      <button onclick="gfdAutoLayout()" title="Auto-arrange nodes" style="padding:4px 11px;border-radius:100px;border:1px solid rgba(255,255,255,.08);background:transparent;color:#7a7a8a;font-size:10px;font-family:Inter,system-ui,sans-serif;cursor:pointer;font-weight:600;transition:all .12s" onmouseover="this.style.borderColor='rgba(201,168,76,.35)';this.style.color='#c9a84c'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)';this.style.color='#7a7a8a'">⟳ Re-layout</button>
+      <button onclick="gfdFit()" title="Fit all nodes in view (F)" style="padding:4px 11px;border-radius:100px;border:1px solid rgba(255,255,255,.08);background:transparent;color:#7a7a8a;font-size:10px;font-family:Inter,system-ui,sans-serif;cursor:pointer;font-weight:600;transition:all .12s" onmouseover="this.style.borderColor='rgba(201,168,76,.35)';this.style.color='#c9a84c'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)';this.style.color='#7a7a8a'">⊞ Fit</button>
+      <button onclick="gfdRePopulate()" title="Re-generate from project settings" style="padding:4px 11px;border-radius:100px;border:1px solid rgba(94,202,138,.2);background:rgba(94,202,138,.05);color:#5eca8a;font-size:10px;font-family:Inter,system-ui,sans-serif;cursor:pointer;font-weight:600;transition:all .12s" onmouseover="this.style.background='rgba(94,202,138,.1)'" onmouseout="this.style.background='rgba(94,202,138,.05)'">↺ Auto-fill</button>
+      <div style="width:1px;height:18px;background:rgba(255,255,255,.06);flex-shrink:0"></div>
+      <button id="gfd-sim-btn" onclick="gfdSimToggle()" title="Simulate flow step-by-step" style="padding:4px 14px;border-radius:100px;border:1px solid rgba(94,202,138,.25);background:rgba(94,202,138,.07);color:#6edd8a;font-size:10px;font-family:Inter,system-ui,sans-serif;cursor:pointer;font-weight:700;letter-spacing:.03em">▶ Simulate</button>
+      <button onclick="gfdExportJSON()" title="Export production flow.json" style="padding:4px 12px;border-radius:100px;border:1px solid rgba(201,168,76,.25);background:rgba(201,168,76,.07);color:#c9a84c;font-size:10px;font-family:Inter,system-ui,sans-serif;cursor:pointer;font-weight:600">↑ Export</button>
+      <div style="width:1px;height:18px;background:rgba(255,255,255,.06);flex-shrink:0"></div>
+      <button onclick="gfdClear()" title="Clear canvas" style="padding:4px 10px;border-radius:100px;border:1px solid rgba(224,112,112,.2);background:transparent;color:#e07070;font-size:10px;font-family:Inter,system-ui,sans-serif;cursor:pointer;font-weight:600;transition:all .12s" onmouseover="this.style.background='rgba(224,112,112,.08)'" onmouseout="this.style.background='transparent'">✕ Clear</button>
     </div>
   </div>
-  <!-- Main area -->
+  <!-- ── Main area ── -->
   <div style="display:flex;flex:1;overflow:hidden">
     <!-- Left palette -->
-    <div id="gfd-palette" style="width:150px;background:#131325;border-right:1px solid #2a2a40;overflow-y:auto;flex-shrink:0;padding:10px">
-      <div style="font-size:8px;color:#4a4a62;font-family:DM Mono,monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Node Types</div>
+    <div id="gfd-palette" style="width:148px;background:#0a0a0f;border-right:1px solid rgba(255,255,255,.05);overflow-y:auto;flex-shrink:0;padding:12px 10px">
+      <div style="font-size:8px;color:#3e3e4e;font-family:Inter,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;font-weight:700">Node Types</div>
       <div style="display:flex;flex-direction:column;gap:5px" id="gfd-palette-nodes"></div>
-      <div style="margin-top:16px;font-size:8px;color:#3a3a52;font-family:DM Mono,monospace;line-height:1.7">
-        Click to add node<br>Drag nodes to move<br>Drag output → input<br>Scroll to zoom<br>Drag canvas to pan<br>Del to remove
+      <div style="margin-top:18px;font-size:8.5px;color:#2a2a3a;font-family:Inter,system-ui,sans-serif;line-height:1.9;padding:10px 8px;border-top:1px solid rgba(255,255,255,.04)">
+        Click to add node<br>Double-click canvas<br>Drag nodes to move<br>↓ port → ↑ port to connect<br>Scroll to zoom · F to fit<br>Del to remove
       </div>
     </div>
     <!-- Canvas -->
-    <div id="gfd-canvas-wrap" style="flex:1;overflow:hidden;position:relative;background:#0d0d18;cursor:grab">
-      <!-- Grid bg -->
+    <div id="gfd-canvas-wrap" style="flex:1;overflow:hidden;position:relative;background:#06060a;cursor:grab">
+      <!-- Dot-grid background -->
       <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="gfd-grid-svg"></svg>
-      <!-- Connection SVG (inside canvas transform) -->
+      <!-- Node canvas (transformed) -->
       <div id="gfd-canvas" style="position:absolute;top:0;left:0;transform-origin:0 0;width:0;height:0">
         <svg id="gfd-svg" style="position:absolute;top:0;left:0;width:10000px;height:10000px;pointer-events:none;overflow:visible"></svg>
       </div>
     </div>
-    <!-- Right panel -->
-    <div id="gfd-props" style="width:230px;background:#131325;border-left:1px solid #2a2a40;overflow-y:auto;flex-shrink:0;padding:14px">
-      <div style="font-size:10px;color:#3a3a52;text-align:center;margin-top:30px;font-family:DM Mono,monospace;line-height:1.9">
+    <!-- Right properties panel -->
+    <div id="gfd-props" style="width:230px;background:#0a0a0f;border-left:1px solid rgba(255,255,255,.05);overflow-y:auto;flex-shrink:0;padding:14px">
+      <div style="font-size:9px;color:#2a2a3a;text-align:center;margin-top:40px;font-family:Inter,system-ui,sans-serif;line-height:2;letter-spacing:.04em;text-transform:uppercase">
         Select a node<br>to view properties
       </div>
     </div>

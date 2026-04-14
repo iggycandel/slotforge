@@ -5595,77 +5595,99 @@ function gfdRePopulate(){
 }
 
 function _gfdAutoPopulate(d){
-  // Layout constants — nodes are positioned in a clean top-down hierarchy
+  // ── Layout constants ─────────────────────────────────────────────────────────
+  // Top-to-bottom: each "layer" is a new row (Y axis), features spread as columns (X axis)
   const NW=GFD_NODE_W, NH=GFD_NODE_H;
-  const COLW=NW+70, ROWH=NH+60;
-  // Layer 0 — session lifecycle
-  const startId=gfdAddNode('system','START',40,40,'Game session initialises. Assets loaded.');
-  const enId   =gfdAddNode('system','SESSION END',40+COLW,40,'Player exits or session timer expires.');
-  // Layer 1 — load
-  const loadId=gfdAddNode('screen','LOAD / SPLASH',40,40+ROWH,'Intro animation plays. Studio logo shown.');
-  // Layer 2 — base game
-  const baseX=40+(COLW*Math.floor(1));
-  const baseId=gfdAddNode('screen','BASE GAME',baseX,40+ROWH*2,'Main reel loop. Player bets and spins.');
+  const PAD=60;          // canvas edge padding
+  const COL_W=NW+70;    // horizontal gap between feature columns
+  const ROW_H=NH+80;    // vertical gap between layers
+
+  // ── Detect enabled features ───────────────────────────────────────────────
+  const hasFreeSpins=d.enabledFeatures.some(f=>/free.?spin/i.test(f));
+  const hasHoldSpin =d.enabledFeatures.some(f=>/hold.{0,5}spin/i.test(f));
+  const hasBuy      =d.enabledFeatures.some(f=>/buy.?feature/i.test(f));
+  const hasPick     =d.enabledFeatures.some(f=>/bonus.?pick|pick.?game/i.test(f));
+  const hasWheel    =d.enabledFeatures.some(f=>/wheel/i.test(f));
+
+  // ── Calculate canvas width from feature count ─────────────────────────────
+  const nFeatureCols=[hasFreeSpins,hasHoldSpin,hasBuy,hasPick,hasWheel].filter(Boolean).length + 1; // +1 settings
+  const nWinTypes   =4+(d.jps.length?1:0);
+  const nCols       =Math.max(nFeatureCols, nWinTypes, 3);
+  const totalW      =nCols*COL_W;
+  // Center x for the single-node rows (START, LOAD, BASE GAME)
+  const cx=PAD+totalW/2-NW/2;
+
+  // ── Layer 0: System lifecycle ─────────────────────────────────────────────
+  const startId=gfdAddNode('system','START',    cx-COL_W,PAD,           'Game session initialises. Assets loaded.');
+  const enId   =gfdAddNode('system','SESSION END',cx+COL_W,PAD,         'Player exits or session timer expires.');
+
+  // ── Layer 1: Load/Splash ──────────────────────────────────────────────────
+  const loadId =gfdAddNode('screen','LOAD / SPLASH',cx,       PAD+ROW_H,    'Intro animation plays. Studio logo shown.');
+
+  // ── Layer 2: Base Game ────────────────────────────────────────────────────
+  const baseId =gfdAddNode('screen','BASE GAME',    cx,       PAD+ROW_H*2,  'Main reel loop. Player bets and spins.');
+
   gfdConnect(startId,loadId,'',null,1);
-  gfdConnect(loadId,baseId,'Intro complete',null,1);
-  gfdConnect(baseId,enId,'Player exits',{field:'sessionActive',op:'==',value:false},99);
-  // Layer 3 — feature triggers
-  let col=0;
+  gfdConnect(loadId, baseId,'Intro complete',null,1);
+  gfdConnect(baseId, enId,  'Player exits',{field:'sessionActive',op:'==',value:false},99);
+
+  // ── Layer 3+: Feature columns (each feature = single column, flowing downward) ──
   const featureMap={};
-  const featureLayer=3;
-  if(d.enabledFeatures.some(f=>/free.?spin/i.test(f))){
-    const ex=40+col*COLW, ey=40+ROWH*featureLayer;
-    const ev=gfdAddNode('event','FS TRIGGER',ex,ey,'3+ Scatter symbols land on reels 1, 2, 3');
-    const pp=gfdAddNode('screen','FS POPUP',ex+COLW,ey,'Displays free spin count & multiplier. Player confirms.');
-    const fs=gfdAddNode('screen','FREE SPINS',ex+COLW*2,ey,'Enhanced reels with multipliers. Retriggerable.');
-    gfdConnect(baseId,ev,'3+ Scatters land',{field:'scatter',op:'>=',value:3},10);
+  let col=0;
+
+  function colX(c){ return PAD+c*COL_W; }
+  const L3=PAD+ROW_H*3;  // trigger / 1st feature node
+  const L4=PAD+ROW_H*4;  // popup / 2nd feature node
+  const L5=PAD+ROW_H*5;  // main feature screen
+
+  if(hasFreeSpins){
+    const ev=gfdAddNode('event', 'FS TRIGGER', colX(col),L3,'3+ Scatter symbols land on reels 1, 2, 3');
+    const pp=gfdAddNode('screen','FS POPUP',   colX(col),L4,'Displays free spin count & multiplier. Player confirms.');
+    const fs=gfdAddNode('screen','FREE SPINS', colX(col),L5,'Enhanced reels with multipliers. Retriggerable.');
+    gfdConnect(baseId,ev,'3+ Scatters',{field:'scatter',op:'>=',value:3},10);
     gfdConnect(ev,pp,'Trigger fires',null,1);
     gfdConnect(pp,fs,'Player taps START',null,1);
     gfdConnect(fs,baseId,'Spins exhausted',{field:'features.freeSpin.count',op:'<=',value:0},1);
-    gfdConnect(fs,fs,'Retrigger: +3 Scatters',{field:'scatter',op:'>=',value:3},10);
-    featureMap.fs=fs; col+=3;
+    gfdConnect(fs,fs,'Retrigger',{field:'scatter',op:'>=',value:3},10);
+    featureMap.fs=fs; col++;
   }
-  if(d.enabledFeatures.some(f=>/hold.{0,5}spin/i.test(f))){
-    const ex=40+col*COLW, ey=40+ROWH*featureLayer;
-    const ev=gfdAddNode('event','H&S TRIGGER',ex,ey,'6+ Coin symbols land on any position');
-    const pp=gfdAddNode('screen','H&S POPUP',ex+COLW,ey,'Announces Hold & Spin. 3 respins allocated.');
-    const hs=gfdAddNode('screen','HOLD & SPIN',ex+COLW*2,ey,'Coins held. Respins reset on each new coin land.');
-    gfdConnect(baseId,ev,'6+ Coins land',{field:'coinCount',op:'>=',value:6},10);
+  if(hasHoldSpin){
+    const ev=gfdAddNode('event', 'H&S TRIGGER',colX(col),L3,'6+ Coin symbols land on any position');
+    const pp=gfdAddNode('screen','H&S POPUP',  colX(col),L4,'Announces Hold & Spin. 3 respins allocated.');
+    const hs=gfdAddNode('screen','HOLD & SPIN',colX(col),L5,'Coins held. Respins reset on each new coin land.');
+    gfdConnect(baseId,ev,'6+ Coins',{field:'coinCount',op:'>=',value:6},10);
     gfdConnect(ev,pp,'Trigger fires',null,1);
     gfdConnect(pp,hs,'Player taps START',null,1);
     gfdConnect(hs,baseId,'Respins exhausted',{field:'features.respin.count',op:'<=',value:0},1);
-    featureMap.hs=hs; col+=3;
+    featureMap.hs=hs; col++;
   }
-  if(d.enabledFeatures.some(f=>/buy.?feature/i.test(f))){
-    const ex=40+col*COLW, ey=40+ROWH*featureLayer;
-    const bp=gfdAddNode('action','BUY FEATURE',ex,ey,'Cost: 100× total bet. Player views cost & confirms.');
-    const dc=gfdAddNode('decision','CONFIRMED?',ex+COLW,ey,'');
+  if(hasBuy){
+    const bp=gfdAddNode('action',  'BUY FEATURE',colX(col),L3,'Cost: 100× total bet. Player views cost & confirms.');
+    const dc=gfdAddNode('decision','CONFIRMED?', colX(col),L4,'');
     gfdConnect(baseId,bp,'Player taps BUY',null,20);
     gfdConnect(bp,dc,'',null,1);
     if(featureMap.fs) gfdConnect(dc,featureMap.fs,'Yes',{field:'buyConfirmed',op:'==',value:true},1);
     else gfdConnect(dc,baseId,'Yes',{field:'buyConfirmed',op:'==',value:true},1);
     gfdConnect(dc,baseId,'No — cancel',{field:'buyConfirmed',op:'==',value:false},2);
-    col+=2;
+    col++;
   }
-  if(d.enabledFeatures.some(f=>/bonus.?pick|pick.?game/i.test(f))){
-    const ex=40+col*COLW, ey=40+ROWH*featureLayer;
-    const pk=gfdAddNode('screen','BONUS PICK',ex,ey,'Player picks from hidden items to reveal cash prizes.');
+  if(hasPick){
+    const pk=gfdAddNode('screen','BONUS PICK', colX(col),L3,'Player picks from hidden items to reveal cash prizes.');
     gfdConnect(baseId,pk,'3+ Bonus symbols',{field:'bonusCount',op:'>=',value:3},10);
-    gfdConnect(pk,baseId,'All picks revealed',null,1); col+=1;
+    gfdConnect(pk,baseId,'All picks revealed',null,1); col++;
   }
-  if(d.enabledFeatures.some(f=>/wheel/i.test(f))){
-    const ex=40+col*COLW, ey=40+ROWH*featureLayer;
-    const wh=gfdAddNode('screen','WHEEL BONUS',ex,ey,'Prize wheel spin. Multiplier or feature award.');
+  if(hasWheel){
+    const wh=gfdAddNode('screen','WHEEL BONUS',colX(col),L3,'Prize wheel spin. Multiplier or feature award.');
     gfdConnect(baseId,wh,'Trigger met',{field:'wheelTrigger',op:'==',value:true},10);
-    gfdConnect(wh,baseId,'Prize awarded',null,1); col+=1;
+    gfdConnect(wh,baseId,'Prize awarded',null,1); col++;
   }
-  // Settings node alongside features
-  const sgx=40+col*COLW, sgy=40+ROWH*featureLayer;
-  const sg=gfdAddNode('screen','SETTINGS',sgx,sgy,'Paytable · History · Audio · Info · Responsible Gambling');
+  // Settings — always the last feature column
+  const sg=gfdAddNode('screen','SETTINGS',colX(col),L3,'Paytable · History · Audio · Info · Responsible Gambling');
   gfdConnect(baseId,sg,'Taps ⚙',null,50);
-  gfdConnect(sg,baseId,'Close / Back',null,1);
-  // Layer 4 — win nodes, centered
-  const winLayer=featureLayer+(col>0?1:1);
+  gfdConnect(sg,baseId,'Close / Back',null,1); col++;
+
+  // ── Bottom layer: Win resolution nodes ────────────────────────────────────
+  const winY=PAD+ROW_H*(hasFreeSpins||hasHoldSpin?6:4);
   const winTypes=[
     ['win','SMALL WIN','Silent — balance update only. No overlay.'],
     ['win','BIG WIN','Animated counter overlay. Coin shower FX.'],
@@ -5673,11 +5695,12 @@ function _gfdAutoPopulate(d){
     ['win','EPIC WIN','Cinematic sequence. Music swell. Lightning FX.'],
   ];
   if(d.jps.length) winTypes.push(['win','JACKPOT WIN','Ultimate celebration. Full cinematic + collect sequence.']);
-  const totalWinW=(winTypes.length-1)*COLW;
+  const winTotalW=(winTypes.length-1)*COL_W;
+  const winStartX=cx-winTotalW/2;
   winTypes.forEach(([type,label,notes],i)=>{
-    const wx=40+i*COLW, wy=40+ROWH*winLayer;
-    const wid=gfdAddNode(type,label,wx,wy,notes);
-    gfdConnect(wid,baseId,label==='SMALL WIN'?'':label.split(' ')[0]+' dismissed',null,1);
+    const wid=gfdAddNode(type,label,winStartX+i*COL_W,winY,notes);
+    gfdConnect(baseId,wid,'Win resolved',null,5+i);
+    gfdConnect(wid,baseId,label==='SMALL WIN'?'Auto-dismiss':'Win dismissed',null,1);
   });
 }
 
@@ -5703,8 +5726,9 @@ function gfdUpdateSVG(){
   const svg=document.getElementById('gfd-svg');
   if(!svg) return;
   let defs=`<defs>`;
+  // Arrow markers pointing downward (for vertical top-to-bottom flow)
   Object.entries(GFD_TYPES).forEach(([t,v])=>{
-    defs+=`<marker id="gfd-arr-${t}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${v.color}bb"/></marker>`;
+    defs+=`<marker id="gfd-arr-${t}" viewBox="0 0 10 10" refX="5" refY="9" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L5 9L10 0" fill="none" stroke="${v.color}cc" stroke-width="1.5" stroke-linejoin="round"/></marker>`;
   });
   defs+=`</defs>`;
   let body='';
@@ -5714,24 +5738,40 @@ function gfdUpdateSVG(){
     if(!fn||!tn) return;
     const isSel=GFD.selConn===conn.id;
     const isSelf=conn.fromNode===conn.toNode;
+    const isBack=tn.y<fn.y-20; // connection goes upward (back to prev layer)
     const fc=GFD_TYPES[fn.type]?.color||'#666';
-    const fx=fn.x+GFD_NODE_W, fy=fn.y+GFD_NODE_H/2;
-    const tx=tn.x, ty=tn.y+GFD_NODE_H/2;
+    // Source: bottom-center of fromNode. Target: top-center of toNode.
+    const fx=fn.x+GFD_NODE_W/2, fy=fn.y+GFD_NODE_H;
+    const tx=tn.x+GFD_NODE_W/2, ty=tn.y;
     let dp='';
-    if(isSelf){ dp=`M${fx},${fy} C${fx+80},${fy-80} ${tx+80},${ty-80} ${tx},${ty}`; }
-    else { const cp=Math.max(60,Math.abs(tx-fx)*0.44); dp=`M${fx},${fy} C${fx+cp},${fy} ${tx-cp},${ty} ${tx},${ty}`; }
-    const mx=isSelf?fx+72:(fx+tx)/2, my=isSelf?fy-86:(fy+ty)/2-7;
+    if(isSelf){
+      // Self-loop: arc to the right side of the node
+      const lx=fn.x+GFD_NODE_W+60;
+      dp=`M${fx},${fy} C${fx},${fy+40} ${lx},${fy+40} ${lx},${fn.y+GFD_NODE_H/2} C${lx},${fn.y-20} ${tx},${ty-40} ${tx},${ty}`;
+    } else if(isBack){
+      // Back-connection: route around the right side to avoid crossing forward edges
+      const ox=Math.max(fn.x,tn.x)+GFD_NODE_W+80;
+      dp=`M${fx},${fy} C${fx},${fy+50} ${ox},${fy+50} ${ox},${(fy+ty)/2} C${ox},${ty-50} ${tx},${ty-50} ${tx},${ty}`;
+    } else {
+      // Forward connection: smooth vertical cubic bezier
+      const cp=Math.max(50,Math.abs(ty-fy)*0.45);
+      dp=`M${fx},${fy} C${fx},${fy+cp} ${tx},${ty-cp} ${tx},${ty}`;
+    }
+    const mx=(fx+tx)/2, my=(fy+ty)/2;
+    const strokeW=isSel?2.5:1.5;
+    const strokeCol=isSel?'#ffffff':isBack?fc+'66':fc+'99';
+    const dashArr=isBack?'6 4':'none';
     body+=`<g class="gfd-conn-g" data-cid="${conn.id}">
       <path d="${dp}" stroke="transparent" stroke-width="12" fill="none" style="cursor:pointer"/>
-      <path d="${dp}" stroke="${isSel?'#ffffff':fc+'88'}" stroke-width="${isSel?2.5:1.5}" fill="none" marker-end="url(#gfd-arr-${fn.type})" style="cursor:pointer;pointer-events:stroke"/>
-      ${conn.label?`<text x="${mx}" y="${my}" text-anchor="middle" fill="${fc}99" font-size="9" font-family="Space Grotesk,sans-serif" style="pointer-events:none">${escH(conn.label)}</text>`:''}
+      <path d="${dp}" stroke="${strokeCol}" stroke-width="${strokeW}" fill="none" stroke-dasharray="${dashArr}" marker-end="url(#gfd-arr-${fn.type})" style="cursor:pointer;pointer-events:stroke"/>
+      ${conn.label?`<text x="${mx}" y="${my-5}" text-anchor="middle" fill="${fc}99" font-size="9" font-family="Inter,system-ui,sans-serif" style="pointer-events:none;font-weight:600;letter-spacing:.02em">${escH(conn.label)}</text>`:''}
     </g>`;
   });
-  // Temp connecting line
+  // Temp connecting line (vertical bezier from bottom of source)
   if(GFD.connecting?.x2!==undefined){
     const {fx,fy,x2,y2}=GFD.connecting;
-    const cp=Math.max(60,Math.abs(x2-fx)*0.44);
-    body+=`<path d="M${fx},${fy} C${fx+cp},${fy} ${x2-cp},${y2} ${x2},${y2}" stroke="#c9a84c" stroke-width="1.5" fill="none" stroke-dasharray="6 3" opacity="0.85"/>`;
+    const cp=Math.max(50,Math.abs(y2-fy)*0.45);
+    body+=`<path d="M${fx},${fy} C${fx},${fy+cp} ${x2},${y2-cp} ${x2},${y2}" stroke="#c9a84c" stroke-width="1.5" fill="none" stroke-dasharray="6 3" opacity="0.9"/>`;
   }
   svg.innerHTML=defs+body;
   svg.querySelectorAll('.gfd-conn-g').forEach(g=>{
@@ -5745,18 +5785,22 @@ function _gfdMakeNodeEl(node){
   const isActive=GFD_SIM.active&&GFD_SIM.currentNodeId===node.id;
   const el=document.createElement('div');
   el.id='gfdn-'+node.id; el.dataset.nid=node.id; el.className='gfd-node';
-  const borderCol=isActive?'#f0e060':isSel?t.color:t.color+'55';
-  const shadow=isActive?`0 0 0 3px #f0e06066,0 0 20px #f0e06044,0 6px 24px #00000099`:isSel?`0 0 0 3px ${t.color}33,0 6px 24px #00000099`:'0 2px 12px #00000055';
-  el.style.cssText=`position:absolute;left:${node.x}px;top:${node.y}px;width:${GFD_NODE_W}px;min-height:${GFD_NODE_H}px;border-radius:10px;border:${isActive?'2.5px':'1.5px'} solid ${borderCol};background:${t.bg};cursor:move;user-select:none;box-shadow:${shadow};transition:border-color .12s,box-shadow .12s`;
+  const borderCol=isActive?'#f0e060':isSel?t.color:t.color+'44';
+  const shadow=isActive
+    ?`0 0 0 2px #f0e06066,0 0 24px #f0e06033,0 8px 32px #00000099`
+    :isSel
+      ?`0 0 0 2px ${t.color}44,0 0 18px ${t.color}22,0 6px 24px #00000099`
+      :'0 2px 16px #00000077';
+  el.style.cssText=`position:absolute;left:${node.x}px;top:${node.y}px;width:${GFD_NODE_W}px;min-height:${GFD_NODE_H}px;border-radius:10px;border:1.5px solid ${borderCol};background:${t.bg};cursor:move;user-select:none;box-shadow:${shadow};transition:border-color .15s,box-shadow .15s;backdrop-filter:blur(2px)`;
   el.innerHTML=`
-    <div class="gfd-port-in" data-nid="${node.id}" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:14px;height:14px;border-radius:50%;background:${t.bg};border:2px solid ${t.color}88;cursor:crosshair;z-index:3"></div>
-    <div style="padding:7px 12px 5px;border-bottom:1px solid ${t.color}22;display:flex;align-items:center;gap:6px">
-      <span style="font-size:12px">${t.icon}</span>
-      <span style="font-size:8px;color:${t.color};font-family:DM Mono,monospace;letter-spacing:.07em;text-transform:uppercase;font-weight:700">${escH(t.label)}</span>
+    <div class="gfd-port-in" data-nid="${node.id}" style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:${t.bg};border:2px solid ${t.color}88;cursor:crosshair;z-index:3;transition:border-color .12s,transform .12s" onmouseenter="this.style.borderColor='${t.color}';this.style.transform='translateX(-50%) scale(1.25)'" onmouseleave="this.style.borderColor='${t.color}88';this.style.transform='translateX(-50%) scale(1)'"></div>
+    <div style="padding:7px 12px 5px;border-bottom:1px solid ${t.color}18;display:flex;align-items:center;gap:7px">
+      <span style="font-size:13px;line-height:1">${t.icon}</span>
+      <span style="font-size:8px;color:${t.color};font-family:Inter,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;font-weight:700;opacity:.85">${escH(t.label)}</span>
     </div>
-    <div data-gfd-label style="padding:7px 12px 8px;font-size:11px;color:${isActive?'#f0e060':'#d0d0e0'};font-family:Space Grotesk,sans-serif;font-weight:600;line-height:1.35">${isActive?'▶ ':''}${escH(node.label)}</div>
-    <div data-gfd-notes style="padding:0 12px 8px;font-size:9px;color:#5a5a72;font-family:DM Mono,monospace;line-height:1.45;border-top:1px solid ${t.color}11;padding-top:5px;display:${node.notes?'block':'none'}">${escH(node.notes)}</div>
-    <div class="gfd-port-out" data-nid="${node.id}" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:14px;height:14px;border-radius:50%;background:${t.color};border:2px solid ${t.color};cursor:crosshair;z-index:3"></div>`;
+    <div data-gfd-label style="padding:7px 12px 8px;font-size:11px;color:${isActive?'#f0e060':'#dddbd4'};font-family:Inter,system-ui,sans-serif;font-weight:600;line-height:1.35;letter-spacing:-.01em">${isActive?'▶ ':''}${escH(node.label)}</div>
+    <div data-gfd-notes style="padding:0 12px 8px;font-size:9px;color:#5a5a6e;font-family:Inter,system-ui,sans-serif;line-height:1.55;border-top:1px solid ${t.color}10;padding-top:5px;display:${node.notes?'block':'none'}">${escH(node.notes)}</div>
+    <div class="gfd-port-out" data-nid="${node.id}" style="position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:${t.color};border:2px solid ${t.color};cursor:crosshair;z-index:3;box-shadow:0 0 8px ${t.color}66;transition:transform .12s" onmouseenter="this.style.transform='translateX(-50%) scale(1.25)'" onmouseleave="this.style.transform='translateX(-50%) scale(1)'"></div>`;
   el.addEventListener('mousedown',e=>{
     if(e.target.classList.contains('gfd-port-out')||e.target.classList.contains('gfd-port-in')) return;
     e.stopPropagation();
@@ -5764,11 +5808,12 @@ function _gfdMakeNodeEl(node){
     const rect=document.getElementById('gfd-canvas-wrap').getBoundingClientRect();
     GFD.dragging={nodeId:node.id,ox:(e.clientX-rect.left-GFD.pan.x)/GFD.scale-node.x,oy:(e.clientY-rect.top-GFD.pan.y)/GFD.scale-node.y};
   });
+  // Out port: starts from bottom-center of node
   el.querySelector('.gfd-port-out').addEventListener('mousedown',e=>{
     e.stopPropagation(); e.preventDefault();
     const wrap=document.getElementById('gfd-canvas-wrap');
     const rect=wrap.getBoundingClientRect();
-    GFD.connecting={fromNode:node.id,fx:node.x+GFD_NODE_W,fy:node.y+GFD_NODE_H/2,x2:node.x+GFD_NODE_W,y2:node.y+GFD_NODE_H/2};
+    GFD.connecting={fromNode:node.id,fx:node.x+GFD_NODE_W/2,fy:node.y+GFD_NODE_H,x2:node.x+GFD_NODE_W/2,y2:node.y+GFD_NODE_H};
     const onMove=e2=>{GFD.connecting.x2=(e2.clientX-rect.left-GFD.pan.x)/GFD.scale;GFD.connecting.y2=(e2.clientY-rect.top-GFD.pan.y)/GFD.scale;gfdUpdateSVG();};
     const onUp=()=>{document.removeEventListener('mousemove',onMove);if(GFD.connecting){GFD.connecting=null;gfdUpdateSVG();}};
     document.addEventListener('mousemove',onMove);
@@ -5831,34 +5876,47 @@ const GFD_FIELDS=[
 const GFD_OPS=['>=','<=','>','<','==','!='];
 const GFD_ACTIONS=['set','add','sub','mul','reset','emit'];
 
+// ─── Shared prop panel CSS vars ──────────────────────────────────────────────
+const _GP={
+  bg:'#0a0a0f', surf:'#13131a', surfH:'#1a1a24',
+  border:'rgba(255,255,255,.07)', gold:'#c9a84c',
+  tx:'#eeede6', txM:'#7a7a8a', txF:'#3e3e4e',
+  font:'Inter,system-ui,sans-serif',
+  inp:`width:100%;padding:6px 8px;background:#0f0f16;border:1px solid rgba(255,255,255,.08);border-radius:7px;color:#dddbd4;font-size:11px;font-family:Inter,system-ui,sans-serif;outline:none;box-sizing:border-box;transition:border-color .12s`,
+  lbl:`font-size:9px;color:#3e3e4e;font-family:Inter,system-ui,sans-serif;margin-bottom:5px;text-transform:uppercase;letter-spacing:.08em;font-weight:600`,
+  sec:`margin-bottom:12px`,
+};
+
 function _gfdCondHtml(cond,connId){
   const c=cond||{field:GFD_FIELDS[0].v,op:'>=',value:0};
   const fieldOpts=GFD_FIELDS.map(f=>`<option value="${f.v}"${c.field===f.v?' selected':''}>${f.l}</option>`).join('');
   const opOpts=GFD_OPS.map(o=>`<option value="${o}"${c.op===o?' selected':''}>${o}</option>`).join('');
+  const ss=`padding:5px 6px;background:#0f0f16;border:1px solid rgba(255,255,255,.08);border-radius:5px;color:#b0c8d0;font-size:9px;font-family:Inter,system-ui,sans-serif;outline:none`;
   return `<div style="display:flex;gap:4px;align-items:center;margin-top:6px">
-    <select style="flex:2;padding:5px 6px;background:#14142a;border:1px solid #3a3a52;border-radius:5px;color:#b0c8f0;font-size:9px;font-family:DM Mono,monospace;outline:none" onchange="gfdCondEdit('${connId}','field',this.value)">${fieldOpts}</select>
-    <select style="flex:1;padding:5px 4px;background:#14142a;border:1px solid #3a3a52;border-radius:5px;color:#b0c8f0;font-size:9px;font-family:DM Mono,monospace;outline:none" onchange="gfdCondEdit('${connId}','op',this.value)">${opOpts}</select>
-    <input type="text" value="${escH(String(c.value??0))}" style="flex:1;padding:5px 6px;background:#14142a;border:1px solid #3a3a52;border-radius:5px;color:#c9e0a0;font-size:9px;font-family:DM Mono,monospace;outline:none;min-width:0" oninput="gfdCondEdit('${connId}','value',this.value)">
-    <button onclick="gfdCondRemove('${connId}')" style="padding:4px 6px;border-radius:5px;border:none;background:#3a1a1a;color:#c07070;font-size:10px;cursor:pointer;flex-shrink:0">✕</button>
+    <select style="flex:2;${ss}" onchange="gfdCondEdit('${connId}','field',this.value)">${fieldOpts}</select>
+    <select style="flex:1;${ss}" onchange="gfdCondEdit('${connId}','op',this.value)">${opOpts}</select>
+    <input type="text" value="${escH(String(c.value??0))}" style="flex:1;${ss};color:#c9a08a;min-width:0" oninput="gfdCondEdit('${connId}','value',this.value)">
+    <button onclick="gfdCondRemove('${connId}')" style="padding:4px 6px;border-radius:5px;border:1px solid rgba(224,112,112,.2);background:transparent;color:#e07070;font-size:10px;cursor:pointer;flex-shrink:0">✕</button>
   </div>`;
 }
 
 function _gfdActionListHtml(nodeId,phase,actions){
+  const ss=`padding:4px 5px;background:#0f0f16;border:1px solid rgba(255,255,255,.08);border-radius:5px;font-size:9px;font-family:Inter,system-ui,sans-serif;outline:none`;
   const rows=(actions||[]).map((a,i)=>{
     const actOpts=GFD_ACTIONS.map(o=>`<option value="${o}"${a.action===o?' selected':''}>${o}</option>`).join('');
     return `<div style="display:flex;gap:3px;align-items:center;margin-top:5px">
-      <select style="flex:1;padding:4px 5px;background:#14142a;border:1px solid #3a3a52;border-radius:5px;color:#e0a0d0;font-size:9px;font-family:DM Mono,monospace;outline:none" onchange="gfdActionEdit('${nodeId}','${phase}',${i},'action',this.value)">${actOpts}</select>
-      <input type="text" value="${escH(a.field||'')}" placeholder="field" style="flex:2;padding:4px 5px;background:#14142a;border:1px solid #3a3a52;border-radius:5px;color:#b0c8f0;font-size:9px;font-family:DM Mono,monospace;outline:none;min-width:0" oninput="gfdActionEdit('${nodeId}','${phase}',${i},'field',this.value)">
-      <input type="text" value="${escH(String(a.value??''))}" placeholder="val" style="flex:1;padding:4px 5px;background:#14142a;border:1px solid #3a3a52;border-radius:5px;color:#c9e0a0;font-size:9px;font-family:DM Mono,monospace;outline:none;min-width:0" oninput="gfdActionEdit('${nodeId}','${phase}',${i},'value',this.value)">
-      <button onclick="gfdActionRemove('${nodeId}','${phase}',${i})" style="padding:4px 6px;border-radius:5px;border:none;background:#3a1a1a;color:#c07070;font-size:10px;cursor:pointer;flex-shrink:0">✕</button>
+      <select style="flex:1;${ss};color:#d0a0e0" onchange="gfdActionEdit('${nodeId}','${phase}',${i},'action',this.value)">${actOpts}</select>
+      <input type="text" value="${escH(a.field||'')}" placeholder="field" style="flex:2;${ss};color:#b0c8d0;min-width:0" oninput="gfdActionEdit('${nodeId}','${phase}',${i},'field',this.value)">
+      <input type="text" value="${escH(String(a.value??''))}" placeholder="val" style="flex:1;${ss};color:#c9a08a;min-width:0" oninput="gfdActionEdit('${nodeId}','${phase}',${i},'value',this.value)">
+      <button onclick="gfdActionRemove('${nodeId}','${phase}',${i})" style="padding:4px 6px;border-radius:5px;border:1px solid rgba(224,112,112,.2);background:transparent;color:#e07070;font-size:10px;cursor:pointer;flex-shrink:0">✕</button>
     </div>`;
   }).join('');
-  return `<div style="margin-bottom:12px">
+  return `<div style="margin-bottom:10px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.05em">${phase==='onEnter'?'▶ On Enter':'◀ On Exit'}</div>
-      <button onclick="gfdActionAdd('${nodeId}','${phase}')" style="padding:2px 8px;border-radius:5px;border:1px solid #3a3a52;background:#1a1a2e;color:#9090c0;font-size:9px;cursor:pointer">+ Add</button>
+      <div style="${_GP.lbl}">${phase==='onEnter'?'▶ On Enter':'■ On Exit'}</div>
+      <button onclick="gfdActionAdd('${nodeId}','${phase}')" style="padding:2px 8px;border-radius:100px;border:1px solid rgba(255,255,255,.08);background:transparent;color:${_GP.txM};font-size:9px;cursor:pointer;font-family:${_GP.font}">+ Add</button>
     </div>
-    ${rows||'<div style="font-size:9px;color:#3a3a52;font-family:DM Mono,monospace;padding:4px 0">No actions</div>'}
+    ${rows||`<div style="font-size:9px;color:${_GP.txF};font-family:${_GP.font};padding:3px 0">No actions</div>`}
   </div>`;
 }
 
@@ -5870,64 +5928,66 @@ function gfdRenderProps(){
     const inCount=GFD.connections.filter(c=>c.toNode===node.id).length;
     const outCount=GFD.connections.filter(c=>c.fromNode===node.id).length;
     panel.innerHTML=`
-      <div style="font-size:9px;color:${t.color};font-family:DM Mono,monospace;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">${t.icon} ${t.label} NODE</div>
-      <div style="margin-bottom:10px">
-        <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Label</div>
-        <input value="${escH(node.label)}" style="width:100%;padding:6px 8px;background:#1a1a2e;border:1px solid #3a3a52;border-radius:6px;color:#d0d0e0;font-size:11px;font-family:Space Grotesk,sans-serif;outline:none;box-sizing:border-box" oninput="gfdPropEdit('label',this.value)">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid ${_GP.border}">
+        <span style="font-size:15px">${t.icon}</span>
+        <div>
+          <div style="font-size:8px;color:${t.color};font-family:${_GP.font};font-weight:700;letter-spacing:.1em;text-transform:uppercase">${t.label}</div>
+          <div style="font-size:9px;color:${_GP.txF};font-family:${_GP.font};margin-top:1px">${inCount} in · ${outCount} out</div>
+        </div>
       </div>
-      <div style="margin-bottom:10px">
-        <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">State Name</div>
-        <input value="${escH(node.state?.name||'')}" placeholder="machine_state_id" style="width:100%;padding:6px 8px;background:#1a1a2e;border:1px solid #3a3a52;border-radius:6px;color:#b0d0ff;font-size:10px;font-family:DM Mono,monospace;outline:none;box-sizing:border-box" oninput="gfdPropEditState('name',this.value)">
+      <div style="${_GP.sec}">
+        <div style="${_GP.lbl}">Label</div>
+        <input value="${escH(node.label)}" style="${_GP.inp}" oninput="gfdPropEdit('label',this.value)">
       </div>
-      <div style="margin-bottom:10px">
-        <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Notes</div>
-        <textarea rows="3" style="width:100%;padding:6px 8px;background:#1a1a2e;border:1px solid #3a3a52;border-radius:6px;color:#a0a0c0;font-size:10px;font-family:DM Mono,monospace;outline:none;resize:vertical;line-height:1.5;box-sizing:border-box" oninput="gfdPropEdit('notes',this.value)">${escH(node.notes)}</textarea>
+      <div style="${_GP.sec}">
+        <div style="${_GP.lbl}">State ID</div>
+        <input value="${escH(node.state?.name||'')}" placeholder="machine_state_id" style="${_GP.inp};color:#8ab8d0;font-size:10px" oninput="gfdPropEditState('name',this.value)">
       </div>
-      <div style="padding:10px 0;border-top:1px solid #1e1e2e;border-bottom:1px solid #1e1e2e;margin-bottom:10px">
+      <div style="${_GP.sec}">
+        <div style="${_GP.lbl}">Notes</div>
+        <textarea rows="3" style="${_GP.inp};color:${_GP.txM};font-size:10px;resize:vertical;line-height:1.55" oninput="gfdPropEdit('notes',this.value)">${escH(node.notes)}</textarea>
+      </div>
+      <div style="padding:10px 0;border-top:1px solid ${_GP.border};border-bottom:1px solid ${_GP.border};margin-bottom:12px">
         ${_gfdActionListHtml(node.id,'onEnter',node.onEnter)}
         ${_gfdActionListHtml(node.id,'onExit',node.onExit)}
       </div>
-      <div style="margin-bottom:10px">
-        <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Node Type</div>
-        <select style="width:100%;padding:6px 8px;background:#1a1a2e;border:1px solid #3a3a52;border-radius:6px;color:#d0d0e0;font-size:10px;font-family:Space Grotesk,sans-serif;outline:none" onchange="gfdPropEdit('type',this.value)">
+      <div style="${_GP.sec}">
+        <div style="${_GP.lbl}">Node Type</div>
+        <select style="${_GP.inp};color:${_GP.tx}" onchange="gfdPropEdit('type',this.value)">
           ${Object.entries(GFD_TYPES).map(([k,v])=>`<option value="${k}"${node.type===k?' selected':''}>${v.icon} ${v.label}</option>`).join('')}
         </select>
       </div>
-      <div style="display:flex;gap:8px;font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;margin-bottom:12px">
-        <span>↙ ${inCount} in</span><span>↗ ${outCount} out</span>
-      </div>
-      <button onclick="gfdDeleteNode('${node.id}')" style="width:100%;padding:7px;border-radius:7px;border:1px solid #6a3a3a44;background:#2a1a1a;color:#c07070;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer">🗑 Delete Node</button>`;
+      <button onclick="gfdDeleteNode('${node.id}')" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(224,112,112,.2);background:transparent;color:#e07070;font-size:10px;font-family:${_GP.font};cursor:pointer;font-weight:600;margin-top:4px;transition:background .12s" onmouseover="this.style.background='rgba(224,112,112,.08)'" onmouseout="this.style.background='transparent'">Delete Node</button>`;
   } else if(GFD.selConn){
     const conn=GFD.connections.find(c=>c.id===GFD.selConn);
-    if(!conn){panel.innerHTML='<div style="font-size:10px;color:#3a3a52;text-align:center;margin-top:30px;font-family:DM Mono,monospace;line-height:1.9">Select a node<br>to view properties</div>';return;}
+    if(!conn){panel.innerHTML='';return;}
     const fn=GFD.nodes.find(n=>n.id===conn.fromNode);
     const tn=GFD.nodes.find(n=>n.id===conn.toNode);
     const hasCond=!!conn.condition;
     panel.innerHTML=`
-      <div style="font-size:9px;color:#c9a84c;font-family:DM Mono,monospace;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">⟶ CONNECTION</div>
-      <div style="font-size:10px;color:#6a6a82;margin-bottom:12px;line-height:1.7;padding:8px;background:#0f0f1e;border-radius:6px">
-        <span style="color:#c0c0d0">${escH(fn?.label||'?')}</span><br>
-        <span style="color:#4a4a62">→</span> <span style="color:#c0c0d0">${escH(tn?.label||'?')}</span>
+      <div style="font-size:9px;color:${_GP.gold};font-family:${_GP.font};font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">Connection</div>
+      <div style="font-size:10px;color:${_GP.txM};margin-bottom:12px;line-height:1.8;padding:8px 10px;background:${_GP.surf};border-radius:7px;border:1px solid ${_GP.border}">
+        <span style="color:${_GP.tx}">${escH(fn?.label||'?')}</span><br>
+        <span style="color:${_GP.txF}">↓</span> <span style="color:${_GP.tx}">${escH(tn?.label||'?')}</span>
       </div>
-      <div style="margin-bottom:10px">
-        <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Label</div>
-        <input value="${escH(conn.label||'')}" placeholder="e.g. 3+ Scatters" style="width:100%;padding:6px 8px;background:#1a1a2e;border:1px solid #3a3a52;border-radius:6px;color:#d0d0e0;font-size:11px;font-family:Space Grotesk,sans-serif;outline:none;box-sizing:border-box" oninput="gfdConnLabelEdit(this.value)">
+      <div style="${_GP.sec}">
+        <div style="${_GP.lbl}">Label</div>
+        <input value="${escH(conn.label||'')}" placeholder="e.g. 3+ Scatters" style="${_GP.inp}" oninput="gfdConnLabelEdit(this.value)">
       </div>
-      <div style="margin-bottom:10px">
-        <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Priority</div>
-        <input type="number" value="${conn.priority??99}" min="1" max="999" style="width:80px;padding:6px 8px;background:#1a1a2e;border:1px solid #3a3a52;border-radius:6px;color:#c9a84c;font-size:11px;font-family:DM Mono,monospace;outline:none" oninput="gfdConnPriorityEdit(parseInt(this.value)||99)">
-        <span style="font-size:9px;color:#3a3a52;font-family:DM Mono,monospace;margin-left:6px">lower = evaluated first</span>
+      <div style="${_GP.sec}">
+        <div style="${_GP.lbl}">Priority <span style="color:${_GP.txF};font-weight:400;text-transform:none;letter-spacing:0">(lower = first)</span></div>
+        <input type="number" value="${conn.priority??99}" min="1" max="999" style="${_GP.inp};width:80px;color:${_GP.gold}" oninput="gfdConnPriorityEdit(parseInt(this.value)||99)">
       </div>
-      <div style="margin-bottom:12px;padding:10px 0;border-top:1px solid #1e1e2e">
+      <div style="padding:10px 0;border-top:1px solid ${_GP.border};margin-bottom:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.05em">Guard Condition</div>
-          ${hasCond?'':`<button onclick="gfdCondAdd('${conn.id}')" style="padding:2px 8px;border-radius:5px;border:1px solid #3a3a52;background:#1a1a2e;color:#9090c0;font-size:9px;cursor:pointer">+ Add</button>`}
+          <div style="${_GP.lbl}">Guard Condition</div>
+          ${hasCond?'':`<button onclick="gfdCondAdd('${conn.id}')" style="padding:2px 8px;border-radius:100px;border:1px solid rgba(255,255,255,.08);background:transparent;color:${_GP.txM};font-size:9px;cursor:pointer;font-family:${_GP.font}">+ Add</button>`}
         </div>
-        ${hasCond?_gfdCondHtml(conn.condition,conn.id):'<div style="font-size:9px;color:#3a3a52;font-family:DM Mono,monospace">Always passes (no condition)</div>'}
+        ${hasCond?_gfdCondHtml(conn.condition,conn.id):`<div style="font-size:9px;color:${_GP.txF};font-family:${_GP.font}">Always passes</div>`}
       </div>
-      <button onclick="gfdDeleteConn('${conn.id}')" style="width:100%;padding:7px;border-radius:7px;border:1px solid #6a3a3a44;background:#2a1a1a;color:#c07070;font-size:10px;font-family:Space Grotesk,sans-serif;cursor:pointer">🗑 Delete Connection</button>`;
+      <button onclick="gfdDeleteConn('${conn.id}')" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(224,112,112,.2);background:transparent;color:#e07070;font-size:10px;font-family:${_GP.font};cursor:pointer;font-weight:600;transition:background .12s" onmouseover="this.style.background='rgba(224,112,112,.08)'" onmouseout="this.style.background='transparent'">Delete Connection</button>`;
   } else {
-    panel.innerHTML=`<div style="font-size:10px;color:#3a3a52;text-align:center;margin-top:30px;font-family:DM Mono,monospace;line-height:2">Select a node<br>to view properties<br><br><span style="font-size:9px;color:#2a2a3a">Drag output port → input<br>port to connect nodes</span></div>`;
+    panel.innerHTML=`<div style="font-size:9px;color:${_GP.txF};text-align:center;margin-top:40px;font-family:${_GP.font};line-height:2;letter-spacing:.04em;text-transform:uppercase">Select a node<br>to edit properties<br><br><span style="font-size:8px;color:#1e1e28">Double-click canvas<br>to add a node</span></div>`;
   }
 }
 
@@ -6007,9 +6067,9 @@ function gfdPropEditState(field,val){
 function gfdBuildPalette(){
   const pal=document.getElementById('gfd-palette-nodes'); if(!pal) return;
   pal.innerHTML=Object.entries(GFD_TYPES).map(([type,t])=>`
-    <div onclick="gfdAddAtCenter('${type}')" title="Add ${t.label} node" style="padding:8px 10px;border-radius:8px;border:1px solid ${t.color}44;background:${t.bg};cursor:pointer;display:flex;align-items:center;gap:8px;transition:border-color .15s" onmouseover="this.style.borderColor='${t.color}'" onmouseout="this.style.borderColor='${t.color}44'">
-      <span style="font-size:13px">${t.icon}</span>
-      <div><div style="font-size:10px;font-weight:700;color:${t.color};font-family:Space Grotesk,sans-serif">${t.label}</div></div>
+    <div onclick="gfdAddAtCenter('${type}')" title="Add ${t.label} node" style="padding:7px 10px;border-radius:8px;border:1px solid ${t.color}33;background:${t.bg};cursor:pointer;display:flex;align-items:center;gap:8px;transition:border-color .15s,box-shadow .15s" onmouseover="this.style.borderColor='${t.color}88';this.style.boxShadow='0 0 10px ${t.color}22'" onmouseout="this.style.borderColor='${t.color}33';this.style.boxShadow='none'">
+      <span style="font-size:13px;line-height:1">${t.icon}</span>
+      <div style="font-size:10px;font-weight:600;color:${t.color};font-family:Inter,system-ui,sans-serif;letter-spacing:.01em">${t.label}</div>
     </div>`).join('');
 }
 
@@ -6111,6 +6171,16 @@ function gfdClear(){
 }
 
 // ─── Open ─────────────────────────────────────────────────
+function _gfdDrawGrid(){
+  const svg=document.getElementById('gfd-grid-svg'); if(!svg) return;
+  const W=svg.clientWidth||1200, H=svg.clientHeight||800;
+  const DOT=1.2, STEP=24;
+  let dots='';
+  for(let x=0;x<W;x+=STEP) for(let y=0;y<H;y+=STEP)
+    dots+=`<circle cx="${x}" cy="${y}" r="${DOT}" fill="rgba(255,255,255,.04)"/>`;
+  svg.innerHTML=dots;
+}
+
 function openGameFlowDesigner(){
   const modal=document.getElementById('gfd-modal'); if(!modal) return;
   const d=collectProjectData();
@@ -6119,7 +6189,7 @@ function openGameFlowDesigner(){
   if(!GFD._eventsInit){ _gfdInitEvents(); GFD._eventsInit=true; }
   if(!GFD.nodes.length){ _gfdAutoPopulate(d); }
   gfdRender();
-  setTimeout(gfdFit,80);
+  setTimeout(()=>{ _gfdDrawGrid(); gfdFit(); },80);
 }
 
 function _gfdInitEvents(){
