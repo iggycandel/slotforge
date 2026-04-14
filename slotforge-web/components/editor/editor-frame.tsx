@@ -10,9 +10,10 @@ interface EditorFrameProps { projectId: string; orgSlug: string; initialPayload:
 
 const TOOLBAR_H = 44
 
-// Computed once at module load — busts iframe cache on every dev server restart
-const EDITOR_BUILD_TS = process.env.NODE_ENV === 'development' ? Date.now() : 'prod'
-const editorSrc = `/editor/slotforge.html?v=${EDITOR_BUILD_TS}`
+// Version string — propagated to editor.js via slotforge.html?v= so the browser
+// re-fetches editor.js whenever this value changes. Bump on every editor.js deploy.
+const EDITOR_VERSION = 'v27'
+const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe to hide the duplicate Assets tab
 const IFRAME_HIDE_ASSETS_CSS = `
