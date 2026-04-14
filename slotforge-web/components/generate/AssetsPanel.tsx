@@ -44,6 +44,7 @@ const ASSET_TO_EL_KEY: Partial<Record<AssetType, string>> = {
   symbol_wild:      'sym_Wild',
   symbol_scatter:   'sym_Scatter',
   logo:             'logo',
+  character:        'char',
 } as const
 void ASSET_TO_EL_KEY
 
@@ -63,13 +64,14 @@ const ASSET_LABELS: Partial<Record<AssetType, string>> = {
   symbol_wild:      'Wild',
   symbol_scatter:   'Scatter',
   logo:             'Logo',
+  character:        'Character',
 }
 
 const ALL_ASSET_TYPES: AssetType[] = [
   'background_base', 'background_bonus',
   'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
   'symbol_low_1',  'symbol_low_2',  'symbol_low_3',  'symbol_low_4',  'symbol_low_5',
-  'symbol_wild', 'symbol_scatter', 'logo',
+  'symbol_wild', 'symbol_scatter', 'logo', 'character',
 ]
 
 // ─── Types ────────────────────────────────────────────────────────────────────

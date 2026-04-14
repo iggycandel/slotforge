@@ -18,6 +18,7 @@ export type AssetType =
   | 'symbol_wild'
   | 'symbol_scatter'
   | 'logo'
+  | 'character'
 
 export const ASSET_TYPES: AssetType[] = [
   'background_base',
@@ -35,6 +36,7 @@ export const ASSET_TYPES: AssetType[] = [
   'symbol_wild',
   'symbol_scatter',
   'logo',
+  'character',
 ]
 
 export const ASSET_LABELS: Record<AssetType, string> = {
@@ -53,6 +55,7 @@ export const ASSET_LABELS: Record<AssetType, string> = {
   symbol_wild:       'Wild Symbol',
   symbol_scatter:    'Scatter Symbol',
   logo:              'Game Logo',
+  character:         'Character',
 }
 
 // ─── Generated asset record (what we store in DB) ───────────────────────────

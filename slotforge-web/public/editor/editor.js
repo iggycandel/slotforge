@@ -8026,6 +8026,7 @@ window._sfBridge = (function(){
         symbol_wild:      'sym_Wild',
         symbol_scatter:   'sym_Scatter',
         logo:             'logo',
+        character:        'char',
       };
       var elKey = ASSET_KEY_MAP[msg.assetType] || msg.assetType;
       try {
