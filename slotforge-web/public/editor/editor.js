@@ -8077,6 +8077,13 @@ window._sfBridge = (function(){
     try {
       var p = getPayload();
       // Keep everything except the large blobs
+      // Filter assets to CDN URLs only — drop base64 blobs to keep message small.
+      var cdnAssets = {};
+      try {
+        Object.entries(p.assets || {}).forEach(function(kv){
+          if(typeof kv[1] === 'string' && kv[1].startsWith('http')) cdnAssets[kv[0]] = kv[1];
+        });
+      } catch(ae){}
       settingsSnapshot = {
         gameName:    p.gameName,
         theme:       p.theme,
@@ -8097,8 +8104,9 @@ window._sfBridge = (function(){
         elVP:        p.elVP,
         userLocks:   p.userLocks,
         keyOrders:   p.keyOrders,
-        // assets & library excluded — only CDN URLs (not base64) matter here,
-        // and those are updated via SF_UPLOAD_ASSET_RESULT on the shell side
+        adjs:        p.adjs,
+        masks:       p.masks,
+        assets:      cdnAssets,
       };
     } catch(ex){}
     window.parent.postMessage({ type: 'SF_DIRTY', snapshot: settingsSnapshot }, '*');
