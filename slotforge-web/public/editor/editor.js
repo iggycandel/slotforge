@@ -1919,16 +1919,15 @@ function makeLayerRow(label, key, type, hasAsset, isOff, isActive, indent){
     if(!keys) return;
     const fi = keys.indexOf(fromKey), ti = keys.indexOf(toKey);
     if(fi < 0 || ti < 0) return;
+    // Remove fromKey then re-insert — adjust target index for the removal
     keys.splice(fi, 1);
-    keys.splice(ti, 0, fromKey);
-    // Re-derive z values from the new desired display order.
-    // The layers panel shows highest z at top. After splice, keys is now in the
-    // user's desired stacking order. Re-number z values so the front-most key
-    // gets the highest z, preserving relative order of all other layers.
-    const displayAfter = [...keys].sort((a,b)=>(PSD[b]?.z||5)-(PSD[a]?.z||5));
-    // Replace fromKey's z with toKey's z (swap the two layers' z values)
+    const adjustedTi = fi < ti ? ti - 1 : ti;
+    keys.splice(adjustedTi, 0, fromKey);
+    // Swap z values only when it would change the visual stack order AND
+    // neither layer is the background (bg must stay at z=1 — the bottom).
+    // This prevents bg from jumping to the top of the layers panel.
     const fromDef = PSD[fromKey], toDef = PSD[toKey];
-    if(fromDef && toDef){
+    if(fromDef && toDef && fromDef.z !== toDef.z && fromDef.z !== 1 && toDef.z !== 1){
       const tmpZ = fromDef.z;
       fromDef.z = toDef.z;
       toDef.z = tmpZ;
@@ -1956,6 +1955,9 @@ function attachUpload(row, storageKey, onDone){
     inp.click();
   });
 }
+
+// Tracks whether the Symbols sub-group (under Reel Area) is expanded in the layers panel
+if(typeof window._symGroupExpanded === 'undefined') window._symGroupExpanded = false;
 
 function renderLayers(){
   const list=document.getElementById('layers-list');
@@ -1994,12 +1996,35 @@ function renderLayers(){
     // Indent JP sentinel rows to show group membership
     if(JP_SENTINEL_KEYS.has(k)) row.style.paddingLeft='18px';
 
+    // For reelArea: append a collapse-toggle arrow for the symbols sub-group
+    if(k==='reelArea' && P.symbols.length>0){
+      const symCount=P.symbols.length;
+      const arrow=document.createElement('span');
+      arrow.title='Toggle symbols';
+      arrow.style.cssText='flex-shrink:0;font-size:9px;color:#7a7a9a;cursor:pointer;padding:0 3px;margin-left:2px;user-select:none';
+      arrow.textContent=window._symGroupExpanded?'▼':'▶';
+      arrow.addEventListener('click',e=>{
+        e.stopPropagation();
+        window._symGroupExpanded=!window._symGroupExpanded;
+        renderLayers();
+      });
+      const countBadge=document.createElement('span');
+      countBadge.style.cssText='flex-shrink:0;font-size:7px;color:#c9a84c88;background:#c9a84c11;border:1px solid #c9a84c22;border-radius:3px;padding:1px 4px;font-family:DM Mono,monospace;margin-left:2px';
+      countBadge.textContent=symCount+'sym';
+      // Insert before the upload button (last two elements)
+      const uploadBtn=row.querySelector('.li-upload-btn');
+      if(uploadBtn){ row.insertBefore(arrow, uploadBtn); row.insertBefore(countBadge, uploadBtn); }
+      else { row.appendChild(arrow); row.appendChild(countBadge); }
+    }
+
     row.addEventListener('click', e=>{
       if(e.target.classList.contains('li-upload-btn')) return;
       if(e.target.classList.contains('li-lock')) return;
       if(e.target.classList.contains('li-drag')) return;
       if(e.target.classList.contains('li-clear-btn')) return;
       if(e.target.classList.contains('li-eye')) return;
+      // reelArea collapse-arrow click is handled above, don't select/flash for it
+      if(e.target.style.cursor==='pointer'&&e.target.title==='Toggle symbols') return;
       P.activeLayer=keys.indexOf(k); renderLayers();
       selectEl(k);
       // Flash element on canvas to show its location
@@ -2062,17 +2087,24 @@ function renderLayers(){
       list.appendChild(ovrRow);
     }
 
-    // If this is the reelArea, insert symbol sub-layers below it
+    // If this is the reelArea, insert collapsible symbol sub-layers below it
     if(k==='reelArea' && P.symbols.length>0){
-      // Group header
+      // Clickable group header that toggles expand/collapse
       const sep=document.createElement('div');
-      sep.style.cssText='padding:4px 10px 2px 22px;font-size:8px;color:#8080a8;letter-spacing:.08em;text-transform:uppercase;border-top:1px solid #141420';
-      sep.textContent='Symbols';
+      sep.style.cssText='display:flex;align-items:center;gap:5px;padding:4px 10px 3px 22px;font-size:8px;color:#8080a8;letter-spacing:.08em;text-transform:uppercase;border-top:1px solid #141420;cursor:pointer;user-select:none';
+      const sepArrow=document.createElement('span');
+      sepArrow.style.cssText='font-size:8px;color:#7a7a9a';
+      sepArrow.textContent=window._symGroupExpanded?'▼':'▶';
+      const sepLabel=document.createElement('span');
+      sepLabel.textContent='Symbols ('+P.symbols.length+')';
+      sep.appendChild(sepArrow); sep.appendChild(sepLabel);
+      sep.addEventListener('click',()=>{ window._symGroupExpanded=!window._symGroupExpanded; renderLayers(); });
       list.appendChild(sep);
 
-      // Filter to symbols visible on current screen
-      const visibleSyms=P.symbols.filter(sym=>sym.screens.includes(P.screen)||P.screen==='project');
-      const allSyms=P.symbols; // show all, grey hidden
+      // Only render symbol rows when group is expanded
+      if(window._symGroupExpanded){
+
+      const allSyms=P.symbols; // show all, grey hidden ones for this screen
 
       allSyms.forEach(sym=>{
         const symKey='sym_'+sym.id;
@@ -2115,6 +2147,8 @@ function renderLayers(){
         });
         list.appendChild(symRow);
       });
+
+      } // end if(window._symGroupExpanded)
     }
     layerIdx++;
   });
@@ -7820,7 +7854,13 @@ window._sfApplyPayload = function(payload){
   try { if(s.expandWild) Object.assign(P.expandWild, s.expandWild); } catch(e){}
   try { if(s.reelSettings) Object.assign(P.reelSettings, s.reelSettings); } catch(e){}
   // Restore character, ante, and other settings missing from earlier versions
-  try { if(s.char) Object.assign(P.char, s.char); } catch(e){}
+  // Use explicit property assignment for boolean flags to avoid Object.assign edge-cases
+  try {
+    if(s.char && typeof s.char === 'object') {
+      if(s.char.enabled !== undefined) P.char.enabled = !!s.char.enabled;
+      if(s.char.scale   !== undefined) P.char.scale   = s.char.scale;
+    }
+  } catch(e){}
   try { if(s.ante) Object.assign(P.ante, s.ante); } catch(e){}
   try { if(s.msgPos !== undefined) P.msgPos = s.msgPos; } catch(e){}
   try { if(s.viewport) P.viewport = s.viewport; } catch(e){}
@@ -7970,6 +8010,30 @@ window._sfBridge = (function(){
       try { document.getElementById('ov-props-panel')?.classList.remove('show'); } catch(e){}
       try { if(typeof switchScreen === 'function') switchScreen('base'); } catch(e){}
     }, 900);
+    // Final re-sync of toggle UI states at 1100ms — runs after both _sfApplyPayload (300ms)
+    // and switchScreen (900ms) have fully settled, ensuring char/ante toggles reflect P state.
+    setTimeout(function(){
+      try {
+        var charTog=document.getElementById('char-tog');
+        if(charTog){
+          charTog.classList.toggle('on',!!P.char.enabled);
+          var charTgl=document.getElementById('char-tog-lbl');
+          if(charTgl) charTgl.style.color=P.char.enabled?'#ccc':'#555';
+          var charCf=document.getElementById('char-cf');
+          if(charCf) charCf.classList.toggle('open',!!P.char.enabled);
+        }
+        var anteTog=document.getElementById('ante-tog');
+        if(anteTog){
+          anteTog.classList.toggle('on',!!P.ante.enabled);
+          var anteLbl=document.getElementById('ante-lbl');
+          if(anteLbl) anteLbl.style.color=P.ante.enabled?'#ccc':'#555';
+          var anteCf=document.getElementById('ante-cf');
+          if(anteCf) anteCf.classList.toggle('open',!!P.ante.enabled);
+        }
+        if(typeof buildCanvas==='function') buildCanvas();
+        if(typeof renderLayers==='function') renderLayers();
+      } catch(e){}
+    }, 1100);
   }
 
   /* ─── 8. Hook markDirty ─── */
