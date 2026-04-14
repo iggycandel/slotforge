@@ -189,13 +189,9 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     window.addEventListener('message', onMessage)
     return () => {
       window.removeEventListener('message', onMessage)
-      // Final save on navigation (component unmount = user left the project page).
-      // payloadRef.current is kept up-to-date by SF_DIRTY snapshots and SF_AUTOSAVE,
-      // so this captures settings changes (char.enabled, etc.) that occurred within
-      // the 4-second debounce window and would otherwise be lost.
-      if (payloadRef.current) {
-        autosaveProject(projectId, payloadRef.current).catch(() => {})
-      }
+      // Unmount save removed: payloadRef is a partial snapshot and can overwrite a
+      // more complete SF_AUTOSAVE that already landed in Supabase. Saves now happen
+      // only via the explicit Save button (SF_REQUEST_SAVE → triggerSave → SF_AUTOSAVE).
     }
   }, [doSave, initialPayload, projectId])
 
