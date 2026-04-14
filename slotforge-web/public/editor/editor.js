@@ -1,4 +1,4 @@
-// ═══ STATE ═══
+// ═══ STATE ═══ 
 const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:true,t2:true,t3:true},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{}};
 let LIB_CAT='All'; // active library category filter
 let LIB_TAB='uploads'; // 'uploads' or 'placeholders'
