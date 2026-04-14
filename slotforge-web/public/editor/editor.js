@@ -7853,6 +7853,8 @@ window._sfPickAndUpload = function(assetKey, onDone){
 
 window._sfApplyPayload = function(payload){
   var s = payload;
+  // DIAGNOSTIC — remove once char bug is confirmed fixed
+  console.log('[SF] _sfApplyPayload called. payload.char =', JSON.stringify(s.char));
   try { if(s.gameName !== undefined) P.gameName = s.gameName; } catch(e){}
   try { if(s.theme    !== undefined) P.theme    = s.theme;    } catch(e){}
   try { if(s.colors   !== undefined) P.colors   = s.colors;   } catch(e){}
@@ -7874,6 +7876,8 @@ window._sfApplyPayload = function(payload){
       if(s.char.scale   !== undefined) P.char.scale   = s.char.scale;
     }
   } catch(e){}
+  // DIAGNOSTIC
+  console.log('[SF] After char restore: P.char.enabled =', P.char.enabled);
   try { if(s.ante) Object.assign(P.ante, s.ante); } catch(e){}
   try { if(s.msgPos !== undefined) P.msgPos = s.msgPos; } catch(e){}
   try { if(s.viewport) P.viewport = s.viewport; } catch(e){}
@@ -7982,9 +7986,12 @@ window._sfBridge = (function(){
 
   /* ─── 5. Trigger save ─── */
   function triggerSave(){
+    var p = getPayload();
+    // DIAGNOSTIC — remove once char bug is confirmed fixed
+    console.log('[SF] triggerSave: char.enabled =', p.char && p.char.enabled);
     window.parent.postMessage({
       type: 'SF_AUTOSAVE',
-      payload: getPayload(),
+      payload: p,
       thumbnail: getThumbnail()
     }, '*');
   }
