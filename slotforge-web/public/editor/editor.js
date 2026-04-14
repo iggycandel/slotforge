@@ -5551,12 +5551,28 @@ document.querySelectorAll('.gdd-tab').forEach(b=>{
 // ════════════════════════════════════════════════════════
 
 const GFD_TYPES = {
-  screen:  {label:'Screen',   color:'#4a8cc9', bg:'#0d1a2a', icon:'🖥'},
-  event:   {label:'Event',    color:'#c9a84c', bg:'#1a1500', icon:'⚡'},
-  decision:{label:'Decision', color:'#7c5cbf', bg:'#12101e', icon:'◇'},
-  action:  {label:'Action',   color:'#5eca8a', bg:'#0d1a12', icon:'▶'},
-  win:     {label:'Win',      color:'#e8c06a', bg:'#1a1600', icon:'🏆'},
-  system:  {label:'System',   color:'#6e6e8e', bg:'#111118', icon:'⚙'},
+  // ── Generic types ──────────────────────────────────────────────────────────
+  screen:     {label:'Screen',     color:'#4a8cc9', bg:'#0d1a2a', icon:'🖥',
+               desc:'A visible game state (splash, base, popup, settings…)'},
+  event:      {label:'Event',      color:'#c9a84c', bg:'#1a1500', icon:'⚡',
+               desc:'A trigger that fires when a game condition is met'},
+  decision:   {label:'Decision',   color:'#7c5cbf', bg:'#12101e', icon:'◇',
+               desc:'A branch point — routes flow based on a guard condition'},
+  action:     {label:'Action',     color:'#5eca8a', bg:'#0d1a12', icon:'▶',
+               desc:'A player-initiated action or UI interaction'},
+  win:        {label:'Win',        color:'#e8c06a', bg:'#1a1600', icon:'🏆',
+               desc:'A win-celebration state (small, big, mega, epic, jackpot)'},
+  system:     {label:'System',     color:'#6e6e8e', bg:'#111118', icon:'⚙',
+               desc:'A system lifecycle node (session start/end, load)'},
+  // ── Slot-specific types ────────────────────────────────────────────────────
+  rng:        {label:'RNG',        color:'#e05858', bg:'#1e0808', icon:'🎲',
+               desc:'RNG call point — where randomness enters the system. Required in cert submissions.'},
+  math:       {label:'Math',       color:'#38c8c8', bg:'#081818', icon:'∑',
+               desc:'Math engine evaluation — win calc, multiplier, RTP-critical computation'},
+  animation:  {label:'Animation',  color:'#c848a8', bg:'#180a16', icon:'✦',
+               desc:'Timed animation sequence — may have mandatory minimum display duration'},
+  compliance: {label:'Compliance', color:'#e07828', bg:'#180c00', icon:'⚖',
+               desc:'Mandatory regulatory display — RG message, session warning, jurisdiction popup'},
 };
 const GFD_NODE_W = 190;
 const GFD_NODE_H = 64;
@@ -5565,6 +5581,14 @@ const GFD = {
   nodes:[],connections:[],selected:null,selConn:null,
   connecting:null,pan:{x:60,y:60},scale:0.85,
   dragging:null,panning:false,panStart:null,_eventsInit:false,_seq:0
+};
+
+// ── Meta defaults per slot-specific type ────────────────────────────────────
+const GFD_META_DEFAULTS = {
+  rng:        { calls:1, distribution:'uniform', outcomes:'', notes:'' },
+  math:       { formula:'', affects:'winAmount', rtp:false, notes:'' },
+  animation:  { durationMs:1500, skippable:false, mandatoryMs:0, notes:'' },
+  compliance: { regulation:'', jurisdiction:'', mandatoryMs:3000, canSkip:false, notes:'' },
 };
 
 function _gfdUid(){ return 'n'+(++GFD._seq)+'_'+Math.random().toString(36).slice(2,5); }
@@ -5581,8 +5605,12 @@ function _gfdMarkDirty(){
 
 function gfdAddNode(type,label,x,y,notes=''){
   const id=_gfdUid();
+  // Clone type-specific meta defaults so each node gets its own copy
+  const meta = GFD_META_DEFAULTS[type]
+    ? JSON.parse(JSON.stringify(GFD_META_DEFAULTS[type]))
+    : {};
   GFD.nodes.push({
-    id,type,label,x,y,notes,
+    id,type,label,x,y,notes,meta,
     state:{name:label.toLowerCase().replace(/\s+/g,'_'),context:''},
     onEnter:[],
     onExit:[]
@@ -5621,7 +5649,7 @@ function _gfdAutoPopulate(d){
   const hasWheel    =d.enabledFeatures.some(f=>/wheel/i.test(f));
 
   // ── Calculate canvas width from feature count ─────────────────────────────
-  const nFeatureCols=[hasFreeSpins,hasHoldSpin,hasBuy,hasPick,hasWheel].filter(Boolean).length + 1; // +1 settings
+  const nFeatureCols=[hasFreeSpins,hasHoldSpin,hasBuy,hasPick,hasWheel].filter(Boolean).length + 2; // +1 spin-res, +1 settings
   const nWinTypes   =4+(d.jps.length?1:0);
   const nCols       =Math.max(nFeatureCols, nWinTypes, 3);
   const totalW      =nCols*COL_W;
@@ -5692,6 +5720,22 @@ function _gfdAutoPopulate(d){
     gfdConnect(baseId,wh,'Trigger met',{field:'wheelTrigger',op:'==',value:true},10);
     gfdConnect(wh,baseId,'Prize awarded',null,1); col++;
   }
+  // ── Spin Resolution column (core path — always present) ──────────────────────
+  // RNG and Math nodes document the certifiable spin loop for compliance handoff.
+  const rngId =gfdAddNode('rng',  'RNG RESOLUTION',colX(col),L3,
+    'Certified RNG call. One call per spin. Seeded outcome determines reel stops.');
+  const mathId=gfdAddNode('math', 'MATH ENGINE',   colX(col),L4,
+    'Evaluates reel stops → win amount. Applies multipliers. RTP-critical path.');
+  // Override defaults with slot-domain context
+  const _rngN=GFD.nodes.find(n=>n.id===rngId);
+  if(_rngN) _rngN.meta={calls:1,distribution:'uniform',outcomes:'normal,freeSpin,bonus,jackpot',notes:'GLI-11 / BMM certified RNG required'};
+  const _maN=GFD.nodes.find(n=>n.id===mathId);
+  if(_maN) _maN.meta={formula:'bet × winLines × mult',affects:'winAmount',rtp:true,notes:'All code paths must be submitted in math cert doc'};
+  gfdConnect(baseId,rngId, 'Reel spin',         null,5);
+  gfdConnect(rngId, mathId,'Reel stops',         null,1);
+  gfdConnect(mathId,baseId,'Result applied',      null,1);
+  col++;
+
   // Settings — always the last feature column
   const sg=gfdAddNode('screen','SETTINGS',colX(col),L3,'Paytable · History · Audio · Info · Responsible Gambling');
   gfdConnect(baseId,sg,'Taps ⚙',null,50);
@@ -5790,6 +5834,141 @@ function gfdUpdateSVG(){
   });
 }
 
+// ── Meta summary pill shown at the bottom of slot-specific node cards ────────
+function _gfdMetaPill(node,t){
+  const m=node.meta||{};
+  let content='';
+  if(node.type==='rng'){
+    const calls=m.calls||1;
+    const dist=m.distribution||'uniform';
+    content=`🎲 ${calls} RNG call${calls!==1?'s':''} · ${dist}`;
+  } else if(node.type==='math'){
+    const aff=m.affects||'winAmount';
+    content=`∑ → ${aff}${m.rtp?' · RTP-critical':''}`;
+  } else if(node.type==='animation'){
+    const dur=m.durationMs||0;
+    const man=m.mandatoryMs||0;
+    content=`⏱ ${dur}ms${man>0?` · ${man}ms min`:''}${m.skippable?' · skippable':''}`;
+  } else if(node.type==='compliance'){
+    const jur=m.jurisdiction||'';
+    const man=m.mandatoryMs||0;
+    content=`⚖ ${jur||'All regions'} · ${man}ms min${m.canSkip?' · skippable':''}`;
+  }
+  if(!content) return '';
+  return `<div data-gfd-metapill style="margin:0 10px 8px;padding:4px 8px;border-radius:5px;background:${t.color}12;border:1px solid ${t.color}22;font-size:8px;color:${t.color}cc;font-family:Inter,system-ui,sans-serif;line-height:1.5;letter-spacing:.02em">${content}</div>`;
+}
+
+// ── Meta fields rendered in the props panel for slot-specific node types ──────
+function _gfdMetaFieldsHtml(node){
+  const m=node.meta||{};
+  const t=GFD_TYPES[node.type]||GFD_TYPES.screen;
+  const inp=_GP.inp;
+  const lbl=_GP.lbl;
+  const sec=_GP.sec;
+  const chkStyle=`width:14px;height:14px;accent-color:${t.color};cursor:pointer`;
+  const header=`<div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${t.color};font-family:${_GP.font};margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid ${t.color}22">${t.icon} ${t.label} Properties</div>`;
+
+  if(node.type==='rng'){
+    return `<div style="padding:10px 0;border-top:1px solid ${_GP.border};border-bottom:1px solid ${_GP.border};margin-bottom:12px">${header}
+      <div style="${sec}"><div style="${lbl}">RNG Calls</div>
+        <input type="number" min="1" max="99" value="${m.calls||1}" style="${inp};width:70px;color:${t.color}" oninput="gfdMetaEdit('calls',parseInt(this.value)||1)">
+      </div>
+      <div style="${sec}"><div style="${lbl}">Distribution</div>
+        <select style="${inp};color:${_GP.tx}" onchange="gfdMetaEdit('distribution',this.value)">
+          ${['uniform','weighted','seeded','custom'].map(d=>`<option value="${d}"${(m.distribution||'uniform')===d?' selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+      <div style="${sec}"><div style="${lbl}">Outcome Keys <span style="color:${_GP.txF};font-weight:400;text-transform:none;letter-spacing:0">(comma-sep)</span></div>
+        <textarea rows="2" style="${inp};font-size:9px;color:${_GP.txM};resize:vertical" oninput="gfdMetaEdit('outcomes',this.value)">${escH(m.outcomes||'')}</textarea>
+      </div>
+      <div style="${sec}"><div style="${lbl}">Notes</div>
+        <textarea rows="2" style="${inp};font-size:9px;color:${_GP.txM};resize:vertical" oninput="gfdMetaEdit('notes',this.value)">${escH(m.notes||'')}</textarea>
+      </div>
+    </div>`;
+  }
+  if(node.type==='math'){
+    return `<div style="padding:10px 0;border-top:1px solid ${_GP.border};border-bottom:1px solid ${_GP.border};margin-bottom:12px">${header}
+      <div style="${sec}"><div style="${lbl}">Formula / Expression</div>
+        <input value="${escH(m.formula||'')}" placeholder="e.g. bet × mult × lines" style="${inp};font-family:monospace;font-size:10px;color:${t.color}" oninput="gfdMetaEdit('formula',this.value)">
+      </div>
+      <div style="${sec}"><div style="${lbl}">Affects</div>
+        <input value="${escH(m.affects||'winAmount')}" placeholder="winAmount" style="${inp};color:${_GP.tx}" oninput="gfdMetaEdit('affects',this.value)">
+      </div>
+      <div style="${sec}"><div style="${lbl}" title="Mark as RTP-critical so it appears in the compliance view">RTP-Critical</div>
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="checkbox" ${m.rtp?'checked':''} style="${chkStyle}" onchange="gfdMetaEdit('rtp',this.checked)">
+          <span style="font-size:10px;color:${_GP.txM}">Affects return-to-player calculation</span>
+        </label>
+      </div>
+      <div style="${sec}"><div style="${lbl}">Notes</div>
+        <textarea rows="2" style="${inp};font-size:9px;color:${_GP.txM};resize:vertical" oninput="gfdMetaEdit('notes',this.value)">${escH(m.notes||'')}</textarea>
+      </div>
+    </div>`;
+  }
+  if(node.type==='animation'){
+    return `<div style="padding:10px 0;border-top:1px solid ${_GP.border};border-bottom:1px solid ${_GP.border};margin-bottom:12px">${header}
+      <div style="${sec}"><div style="${lbl}">Total Duration (ms)</div>
+        <input type="number" min="0" step="100" value="${m.durationMs??1500}" style="${inp};width:100px;color:${t.color}" oninput="gfdMetaEdit('durationMs',parseInt(this.value)||0)">
+      </div>
+      <div style="${sec}"><div style="${lbl}">Mandatory Minimum (ms) <span style="color:${_GP.txF};font-weight:400;text-transform:none;letter-spacing:0">cert req.</span></div>
+        <input type="number" min="0" step="100" value="${m.mandatoryMs??0}" style="${inp};width:100px;color:${_GP.gold}" oninput="gfdMetaEdit('mandatoryMs',parseInt(this.value)||0)">
+      </div>
+      <div style="${sec}"><div style="${lbl}">Skippable</div>
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="checkbox" ${m.skippable?'checked':''} style="${chkStyle}" onchange="gfdMetaEdit('skippable',this.checked)">
+          <span style="font-size:10px;color:${_GP.txM}">Player can skip this animation</span>
+        </label>
+      </div>
+      <div style="${sec}"><div style="${lbl}">Notes</div>
+        <textarea rows="2" style="${inp};font-size:9px;color:${_GP.txM};resize:vertical" oninput="gfdMetaEdit('notes',this.value)">${escH(m.notes||'')}</textarea>
+      </div>
+    </div>`;
+  }
+  if(node.type==='compliance'){
+    return `<div style="padding:10px 0;border-top:1px solid ${_GP.border};border-bottom:1px solid ${_GP.border};margin-bottom:12px">${header}
+      <div style="${sec}"><div style="${lbl}">Regulation</div>
+        <input value="${escH(m.regulation||'')}" placeholder="e.g. UKGC SC 7.1.3" style="${inp};color:${_GP.tx}" oninput="gfdMetaEdit('regulation',this.value)">
+      </div>
+      <div style="${sec}"><div style="${lbl}">Jurisdiction</div>
+        <input value="${escH(m.jurisdiction||'')}" placeholder="e.g. UK, Malta, Ontario…" style="${inp};color:${_GP.tx}" oninput="gfdMetaEdit('jurisdiction',this.value)">
+      </div>
+      <div style="${sec}"><div style="${lbl}">Mandatory Display (ms)</div>
+        <input type="number" min="0" step="500" value="${m.mandatoryMs??3000}" style="${inp};width:100px;color:${_GP.gold}" oninput="gfdMetaEdit('mandatoryMs',parseInt(this.value)||0)">
+      </div>
+      <div style="${sec}"><div style="${lbl}">Can Skip</div>
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="checkbox" ${m.canSkip?'checked':''} style="${chkStyle}" onchange="gfdMetaEdit('canSkip',this.checked)">
+          <span style="font-size:10px;color:${_GP.txM}">Jurisdiction permits skip after minimum</span>
+        </label>
+      </div>
+      <div style="${sec}"><div style="${lbl}">Notes</div>
+        <textarea rows="2" style="${inp};font-size:9px;color:${_GP.txM};resize:vertical" oninput="gfdMetaEdit('notes',this.value)">${escH(m.notes||'')}</textarea>
+      </div>
+    </div>`;
+  }
+  return '';
+}
+
+function gfdMetaEdit(field,val){
+  const node=GFD.nodes.find(n=>n.id===GFD.selected); if(!node) return;
+  if(!node.meta) node.meta={};
+  node.meta[field]=val;
+  _gfdMarkDirty();
+  // Update the meta pill in the canvas node card without a full re-render
+  const el=document.getElementById('gfdn-'+node.id);
+  if(el){
+    const pill=el.querySelector('[data-gfd-metapill]');
+    const t=GFD_TYPES[node.type]||GFD_TYPES.screen;
+    const newPill=_gfdMetaPill(node,t);
+    if(pill) pill.outerHTML=newPill||'';
+    else if(newPill){
+      // Inject before out-port
+      const port=el.querySelector('.gfd-port-out');
+      if(port) port.insertAdjacentHTML('beforebegin',newPill.replace('<div ','<div data-gfd-metapill '));
+    }
+  }
+}
+
 function _gfdMakeNodeEl(node){
   const t=GFD_TYPES[node.type]||GFD_TYPES.screen;
   const isSel=GFD.selected===node.id;
@@ -5811,6 +5990,7 @@ function _gfdMakeNodeEl(node){
     </div>
     <div data-gfd-label style="padding:7px 12px 8px;font-size:11px;color:${isActive?'#f0e060':'#dddbd4'};font-family:Inter,system-ui,sans-serif;font-weight:600;line-height:1.35;letter-spacing:-.01em">${isActive?'▶ ':''}${escH(node.label)}</div>
     <div data-gfd-notes style="padding:0 12px 8px;font-size:9px;color:#5a5a6e;font-family:Inter,system-ui,sans-serif;line-height:1.55;border-top:1px solid ${t.color}10;padding-top:5px;display:${node.notes?'block':'none'}">${escH(node.notes)}</div>
+    ${_gfdMetaPill(node,t)}
     <div class="gfd-port-out" data-nid="${node.id}" style="position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:${t.color};border:2px solid ${t.color};cursor:crosshair;z-index:3;box-shadow:0 0 8px ${t.color}66;transition:transform .12s" onmouseenter="this.style.transform='translateX(-50%) scale(1.25)'" onmouseleave="this.style.transform='translateX(-50%) scale(1)'"></div>`;
   el.addEventListener('mousedown',e=>{
     if(e.target.classList.contains('gfd-port-out')||e.target.classList.contains('gfd-port-in')) return;
@@ -5958,6 +6138,7 @@ function gfdRenderProps(){
         <div style="${_GP.lbl}">Notes</div>
         <textarea rows="3" style="${_GP.inp};color:${_GP.txM};font-size:10px;resize:vertical;line-height:1.55" oninput="gfdPropEdit('notes',this.value)">${escH(node.notes)}</textarea>
       </div>
+      ${_gfdMetaFieldsHtml(node)}
       <div style="padding:10px 0;border-top:1px solid ${_GP.border};border-bottom:1px solid ${_GP.border};margin-bottom:12px">
         ${_gfdActionListHtml(node.id,'onEnter',node.onEnter)}
         ${_gfdActionListHtml(node.id,'onExit',node.onExit)}
