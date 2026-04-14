@@ -1762,7 +1762,15 @@
   <span style="color:#8080a8;font-size:9px">⌘V to paste</span>
 </div>
 
-<script src="editor.js"></script>
+<script>
+  /* Cache-bust editor.js using the ?v= param from this page's own URL */
+  (function(){
+    var v = new URLSearchParams(location.search).get('v') || 'prod';
+    var s = document.createElement('script');
+    s.src = 'editor.js?v=' + encodeURIComponent(v);
+    document.head.appendChild(s);
+  })();
+</script>
 <script>
 /* ── SlotForge postMessage bridge ── */
 window._sfBridge = (function(){
