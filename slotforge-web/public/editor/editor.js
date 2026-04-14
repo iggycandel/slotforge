@@ -5570,6 +5570,15 @@ const GFD = {
 function _gfdUid(){ return 'n'+(++GFD._seq)+'_'+Math.random().toString(36).slice(2,5); }
 function _gfdConnUid(){ return 'c'+(++GFD._seq)+'_'+Math.random().toString(36).slice(2,5); }
 
+// Debounced dirty flag — batches rapid mutations (dragging, typing) into one save
+let _gfdDirtyTimer=null;
+function _gfdMarkDirty(){
+  clearTimeout(_gfdDirtyTimer);
+  _gfdDirtyTimer=setTimeout(function(){
+    try{ if(typeof markDirty==='function') markDirty(); }catch(e){}
+  }, 600);
+}
+
 function gfdAddNode(type,label,x,y,notes=''){
   const id=_gfdUid();
   GFD.nodes.push({
@@ -5578,11 +5587,13 @@ function gfdAddNode(type,label,x,y,notes=''){
     onEnter:[],
     onExit:[]
   });
+  _gfdMarkDirty();
   return id;
 }
 function gfdConnect(fromNode,toNode,label='',condition=null,priority=99){
   if(!fromNode||!toNode) return;
   GFD.connections.push({id:_gfdConnUid(),fromNode,toNode,label,condition,priority});
+  _gfdMarkDirty();
 }
 
 function gfdRePopulate(){
@@ -5822,7 +5833,7 @@ function _gfdMakeNodeEl(node){
   el.querySelector('.gfd-port-in').addEventListener('mouseup',e=>{
     e.stopPropagation();
     if(GFD.connecting && GFD.connecting.fromNode!==node.id){
-      gfdConnect(GFD.connecting.fromNode,node.id,'');
+      gfdConnect(GFD.connecting.fromNode,node.id,''); // gfdConnect already calls _gfdMarkDirty
       GFD.connecting=null;gfdUpdateSVG();gfdRender();
     }
   });
@@ -5848,11 +5859,11 @@ function gfdSelectConn(id){
 function gfdDeleteNode(id){
   GFD.nodes=GFD.nodes.filter(n=>n.id!==id);
   GFD.connections=GFD.connections.filter(c=>c.fromNode!==id&&c.toNode!==id);
-  GFD.selected=null; gfdRenderProps(); gfdRender();
+  GFD.selected=null; gfdRenderProps(); gfdRender(); _gfdMarkDirty();
 }
 function gfdDeleteConn(id){
   GFD.connections=GFD.connections.filter(c=>c.id!==id);
-  GFD.selConn=null; gfdUpdateSVG(); gfdRenderProps();
+  GFD.selConn=null; gfdUpdateSVG(); gfdRenderProps(); _gfdMarkDirty();
 }
 
 // ─── Properties Panel ────────────────────────────────────
@@ -5995,6 +6006,7 @@ function gfdPropEdit(field,value){
   const node=GFD.nodes.find(n=>n.id===GFD.selected);
   if(!node) return;
   node[field]=value;
+  _gfdMarkDirty();
   if(field==='type'){ gfdRender(); gfdSelectNode(node.id); return; }
   const el=document.getElementById('gfdn-'+node.id);
   if(el){
@@ -6011,23 +6023,23 @@ function gfdPropEdit(field,value){
 }
 function gfdConnLabelEdit(val){
   const conn=GFD.connections.find(c=>c.id===GFD.selConn);
-  if(conn){conn.label=val;gfdUpdateSVG();}
+  if(conn){conn.label=val;gfdUpdateSVG();_gfdMarkDirty();}
 }
 function gfdConnPriorityEdit(val){
   const conn=GFD.connections.find(c=>c.id===GFD.selConn);
-  if(conn){conn.priority=val;}
+  if(conn){conn.priority=val;_gfdMarkDirty();}
 }
 
 // ─── Condition helpers ───────────────────────────────────
 function gfdCondAdd(connId){
   const conn=GFD.connections.find(c=>c.id===connId); if(!conn) return;
   conn.condition={field:GFD_FIELDS[0].v,op:'>=',value:0};
-  gfdRenderProps();
+  gfdRenderProps(); _gfdMarkDirty();
 }
 function gfdCondRemove(connId){
   const conn=GFD.connections.find(c=>c.id===connId); if(!conn) return;
   conn.condition=null;
-  gfdRenderProps();
+  gfdRenderProps(); _gfdMarkDirty();
 }
 function gfdCondEdit(connId,field,val){
   const conn=GFD.connections.find(c=>c.id===connId); if(!conn||!conn.condition) return;
@@ -6037,6 +6049,7 @@ function gfdCondEdit(connId,field,val){
   } else {
     conn.condition[field]=val;
   }
+  _gfdMarkDirty();
 }
 
 // ─── Action helpers ──────────────────────────────────────
@@ -6044,23 +6057,25 @@ function gfdActionAdd(nodeId,phase){
   const node=GFD.nodes.find(n=>n.id===nodeId); if(!node) return;
   if(!node[phase]) node[phase]=[];
   node[phase].push({action:'set',field:'',value:0});
-  gfdRenderProps();
+  gfdRenderProps(); _gfdMarkDirty();
 }
 function gfdActionRemove(nodeId,phase,idx){
   const node=GFD.nodes.find(n=>n.id===nodeId); if(!node||!node[phase]) return;
   node[phase].splice(idx,1);
-  gfdRenderProps();
+  gfdRenderProps(); _gfdMarkDirty();
 }
 function gfdActionEdit(nodeId,phase,idx,field,val){
   const node=GFD.nodes.find(n=>n.id===nodeId); if(!node||!node[phase]) return;
   const act=node[phase][idx]; if(!act) return;
   if(field==='value'){ const n=parseFloat(val); act.value=isNaN(n)?val:n; }
   else { act[field]=val; }
+  _gfdMarkDirty();
 }
 function gfdPropEditState(field,val){
   const node=GFD.nodes.find(n=>n.id===GFD.selected); if(!node) return;
   if(!node.state) node.state={};
   node.state[field]=val;
+  _gfdMarkDirty();
 }
 
 // ─── Palette ─────────────────────────────────────────────
@@ -6161,13 +6176,13 @@ function gfdAutoLayout(){
       if(node){ node.x=startX+i*COL_W; node.y=r*ROW_H+40; }
     });
   });
-  gfdRender(); setTimeout(gfdFit,40);
+  gfdRender(); setTimeout(gfdFit,40); _gfdMarkDirty();
 }
 
 function gfdClear(){
   if(!confirm('Clear all nodes and connections from the canvas?')) return;
   GFD.nodes=[];GFD.connections=[];GFD.selected=null;GFD.selConn=null;
-  gfdRender(); gfdRenderProps();
+  gfdRender(); gfdRenderProps(); _gfdMarkDirty();
 }
 
 // ─── Open ─────────────────────────────────────────────────
@@ -6232,6 +6247,7 @@ function _gfdInitEvents(){
     }
   });
   document.addEventListener('mouseup',()=>{
+    if(GFD.dragging) _gfdMarkDirty(); // node was moved — persist new position
     GFD.panning=false; GFD.panStart=null; GFD.dragging=null;
     if(wrap) wrap.style.cursor='grab';
   });
@@ -8161,6 +8177,19 @@ window._sfApplyPayload = function(payload){
   try { if(s.customPsd && typeof PSD!=='undefined') Object.assign(PSD, s.customPsd); } catch(e){}
   // Fill any symbol slots that the saved project didn't have assets for
   try { if(typeof window._loadDefaultSymbols==='function') setTimeout(window._loadDefaultSymbols, 50); } catch(e){}
+  // Restore Game Flow Designer state (nodes + connections)
+  try {
+    if(s.gfd && Array.isArray(s.gfd.nodes) && s.gfd.nodes.length > 0 && typeof GFD !== 'undefined'){
+      GFD.nodes       = JSON.parse(JSON.stringify(s.gfd.nodes));
+      GFD.connections = JSON.parse(JSON.stringify(s.gfd.connections || []));
+      GFD._seq        = s.gfd._seq || 0;
+      GFD.selected    = null;
+      GFD.selConn     = null;
+      // Don't call gfdRender here — the flow workspace may not be visible yet.
+      // It will render correctly the next time the user opens the flow tab.
+      GFD._eventsInit = false; // force re-init on next open so pan/zoom listeners re-attach
+    }
+  } catch(e){}
   // Sync UI toggles for settings that have visual toggle buttons
   try {
     var charTog=document.getElementById('char-tog');
@@ -8241,6 +8270,19 @@ window._sfBridge = (function(){
       // Save custom layer definitions (PSD entries for custom_N keys) — required for layers to survive reload
       customPsd:   (function(){ var cp={}; try{ Object.entries(typeof PSD!=='undefined'?PSD:{}).forEach(function(e){ if(e[0].indexOf('custom_')===0) cp[e[0]]=e[1]; }); }catch(ex){} return cp; })(),
       blendModes:  (function(){ var bm={}; try{ Object.entries(EL_BLEND_MODES).forEach(function(e){ if(e[1]&&e[1]!=='normal') bm[e[0]]=e[1]; }); }catch(ex){} return bm; })(),
+      // Game Flow Designer — persist nodes, connections, and ID sequence
+      gfd: (function(){
+        try {
+          if(typeof GFD !== 'undefined' && Array.isArray(GFD.nodes) && GFD.nodes.length > 0){
+            return {
+              nodes:       JSON.parse(JSON.stringify(GFD.nodes)),
+              connections: JSON.parse(JSON.stringify(GFD.connections || [])),
+              _seq:        GFD._seq || 0,
+            };
+          }
+        } catch(ex){}
+        return null;
+      })(),
     };
   }
 
