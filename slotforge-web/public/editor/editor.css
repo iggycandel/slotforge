@@ -642,6 +642,44 @@ option{background:#1e1e2e;color:#d8d6d1}
 /* Dot-grid canvas background (rendered via JS into #gfd-grid-svg) */
 #gfd-canvas-wrap{background:#06060a}
 
+/* ── GFD Flow Tabs ──────────────────────────────────────────────────────────── */
+#gfd-tab-bar::-webkit-scrollbar{display:none}
+.gfd-tab{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:4px 11px 4px 12px;border-radius:100px;
+  font-size:10px;font-weight:600;letter-spacing:.02em;
+  font-family:'Inter',system-ui,sans-serif;
+  color:#5a5a7a;border:1px solid rgba(255,255,255,.06);
+  background:transparent;cursor:pointer;white-space:nowrap;
+  transition:color .12s,border-color .12s,background .12s;
+  user-select:none;
+}
+.gfd-tab:hover{color:#aaaac8;border-color:rgba(255,255,255,.1)}
+.gfd-tab-active{
+  color:#c9a84c;
+  border-color:rgba(201,168,76,.35);
+  background:rgba(201,168,76,.07);
+}
+.gfd-tab-active:hover{color:#d9b85c;border-color:rgba(201,168,76,.5)}
+.gfd-tab-label{pointer-events:none}
+.gfd-tab-close{
+  font-size:12px;line-height:1;color:#3e3e5a;
+  cursor:pointer;padding:0 1px;border-radius:50%;
+  transition:color .12s;
+}
+.gfd-tab:hover .gfd-tab-close,.gfd-tab-active .gfd-tab-close{color:#7a7a9a}
+.gfd-tab-close:hover{color:#e07070 !important}
+.gfd-tab-add{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;
+  font-size:14px;line-height:1;
+  color:#3e3e5a;border:1px solid rgba(255,255,255,.06);
+  background:transparent;cursor:pointer;
+  transition:color .12s,border-color .12s,background .12s;
+  margin-left:2px;flex-shrink:0;
+}
+.gfd-tab-add:hover{color:#c9a84c;border-color:rgba(201,168,76,.35);background:rgba(201,168,76,.07)}
+
 /* GFD nodes */
 .gfd-node{transition:border-color .15s,box-shadow .15s}
 .gfd-node:hover:not(:active){filter:brightness(1.06)}

@@ -3059,12 +3059,36 @@ function _restoreFilePayload(d){
   // Locked layers
   USER_LOCKS.clear();
   (d.userLocks||[]).forEach(k => USER_LOCKS.add(k));
-  // Flow designer
+  // Flow designer — handles both new multi-flow format and legacy single-canvas
   if(d.gfd){
-    GFD.nodes       = JSON.parse(JSON.stringify(d.gfd.nodes||[]));
-    GFD.connections = JSON.parse(JSON.stringify(d.gfd.connections||[]));
-    GFD._eventsInit = false; // re-init on next open
-    // Reset rendered flag so flow workspace re-renders
+    try{
+      if(d.gfd.flows && d.gfd.flows.length>0){
+        // New multi-flow format
+        GFD.flows        = JSON.parse(JSON.stringify(d.gfd.flows));
+        GFD.activeFlowId = d.gfd.activeFlowId || GFD.flows[0].id;
+        GFD._seq         = d.gfd._seq || 0;
+      } else if(Array.isArray(d.gfd.nodes)){
+        // Legacy single-canvas — migrate to flows
+        const id=_gfdFlowUid();
+        GFD.flows = [{
+          id, name:'Base Game',
+          nodes:       JSON.parse(JSON.stringify(d.gfd.nodes||[])),
+          connections: JSON.parse(JSON.stringify(d.gfd.connections||[])),
+          pan:{x:60,y:60}, scale:0.85,
+        }];
+        GFD.activeFlowId = id;
+        GFD._seq = d.gfd._seq || 0;
+      }
+      // Point live refs at the active flow
+      const af=GFD.flows.find(f=>f.id===GFD.activeFlowId)||GFD.flows[0];
+      if(af){
+        GFD.nodes       = af.nodes;
+        GFD.connections = af.connections;
+        GFD.pan         = af.pan  ? {x:af.pan.x,y:af.pan.y} : {x:60,y:60};
+        GFD.scale       = af.scale ?? 0.85;
+      }
+    }catch(e){ console.warn('GFD restore failed',e); }
+    GFD.selected=null; GFD.selConn=null; GFD._eventsInit=false;
     const fn = document.getElementById('flow-nodes');
     if(fn) fn.dataset.rendered = '';
   }
@@ -5578,7 +5602,13 @@ const GFD_NODE_W = 190;
 const GFD_NODE_H = 64;
 
 const GFD = {
-  nodes:[],connections:[],selected:null,selConn:null,
+  // Multi-flow — each flow is an independent canvas
+  flows:[],          // [{ id, name, nodes, connections, pan, scale }]
+  activeFlowId:null, // id of the currently visible flow
+  // Live references — always point to the active flow's arrays
+  nodes:[],connections:[],
+  // Runtime state
+  selected:null,selConn:null,
   connecting:null,pan:{x:60,y:60},scale:0.85,
   dragging:null,panning:false,panStart:null,_eventsInit:false,_seq:0
 };
@@ -5624,9 +5654,114 @@ function gfdConnect(fromNode,toNode,label='',condition=null,priority=99){
   _gfdMarkDirty();
 }
 
+// ─── Multi-flow management ────────────────────────────────────────────────────
+
+function _gfdFlowUid(){ return 'flow_'+Date.now()+'_'+Math.random().toString(36).slice(2,5); }
+
+/** Returns the currently active flow object */
+function _gfdActiveFlow(){
+  return GFD.flows.find(f=>f.id===GFD.activeFlowId) || GFD.flows[0] || null;
+}
+
+/**
+ * Ensures GFD has at least one flow. Called on first open.
+ * Migrates legacy single-canvas state (GFD.nodes / GFD.connections) if needed.
+ */
+function _gfdEnsureFlows(){
+  if(GFD.flows.length>0) return; // already initialized
+  // If nodes exist in legacy format, migrate them into a Base Game flow
+  const legacyNodes = GFD.nodes.length ? [...GFD.nodes] : [];
+  const legacyConns = GFD.connections.length ? [...GFD.connections] : [];
+  const id = _gfdFlowUid();
+  GFD.flows = [{ id, name:'Base Game', nodes:legacyNodes, connections:legacyConns, pan:{x:60,y:60}, scale:0.85 }];
+  GFD.activeFlowId = id;
+  GFD.nodes = GFD.flows[0].nodes;
+  GFD.connections = GFD.flows[0].connections;
+}
+
+/** Switch to a different flow, saving current pan/scale first */
+function gfdSwitchFlow(flowId){
+  // Persist current pan/scale
+  const cur=_gfdActiveFlow();
+  if(cur){ cur.pan={x:GFD.pan.x,y:GFD.pan.y}; cur.scale=GFD.scale; }
+  // Activate new flow
+  const flow=GFD.flows.find(f=>f.id===flowId); if(!flow) return;
+  GFD.activeFlowId=flowId;
+  GFD.nodes=flow.nodes;
+  GFD.connections=flow.connections;
+  GFD.pan={x:(flow.pan?.x??60),y:(flow.pan?.y??60)};
+  GFD.scale=flow.scale??0.85;
+  GFD.selected=null; GFD.selConn=null;
+  gfdRenderFlowTabs();
+  gfdRender();
+  setTimeout(()=>{ _gfdDrawGrid(); if(!flow.nodes.length) return; gfdFit(); },60);
+  _gfdMarkDirty();
+}
+
+/** Add a brand-new empty flow */
+function gfdAddFlow(name){
+  const id=_gfdFlowUid();
+  GFD.flows.push({ id, name:name||'New Flow', nodes:[], connections:[], pan:{x:60,y:60}, scale:0.85 });
+  gfdSwitchFlow(id);
+}
+
+/** Rename a flow */
+function gfdRenameFlow(flowId,name){
+  const f=GFD.flows.find(f=>f.id===flowId); if(!f||!name.trim()) return;
+  f.name=name.trim();
+  gfdRenderFlowTabs();
+  _gfdMarkDirty();
+}
+
+/** Delete a flow (not allowed if it's the only one) */
+function gfdDeleteFlow(flowId){
+  if(GFD.flows.length<=1) return;
+  const idx=GFD.flows.findIndex(f=>f.id===flowId); if(idx<0) return;
+  GFD.flows.splice(idx,1);
+  if(GFD.activeFlowId===flowId){
+    gfdSwitchFlow(GFD.flows[Math.max(0,idx-1)].id);
+  } else {
+    gfdRenderFlowTabs();
+  }
+  _gfdMarkDirty();
+}
+
+/** Render the tab bar above the canvas */
+function gfdRenderFlowTabs(){
+  const bar=document.getElementById('gfd-tab-bar'); if(!bar) return;
+  const tabs=GFD.flows.map(f=>{
+    const isActive=f.id===GFD.activeFlowId;
+    const canDel=GFD.flows.length>1;
+    return `<div class="gfd-tab${isActive?' gfd-tab-active':''}" onclick="gfdSwitchFlow('${f.id}')" ondblclick="gfdRenameFlowPrompt('${f.id}')" title="Double-click to rename">
+      <span class="gfd-tab-label">${escH(f.name)}</span>
+      ${canDel?`<span class="gfd-tab-close" onclick="event.stopPropagation();gfdDeleteFlowConfirm('${f.id}')" title="Delete flow">×</span>`:''}
+    </div>`;
+  }).join('');
+  bar.innerHTML=tabs+`<div class="gfd-tab-add" onclick="gfdAddFlowPrompt()" title="Add new flow">＋</div>`;
+}
+
+function gfdAddFlowPrompt(){
+  const name=prompt('Flow name:','New Flow'); if(!name||!name.trim()) return;
+  gfdAddFlow(name.trim());
+}
+function gfdRenameFlowPrompt(flowId){
+  const f=GFD.flows.find(f=>f.id===flowId); if(!f) return;
+  const name=prompt('Rename flow:',f.name); if(!name||!name.trim()) return;
+  gfdRenameFlow(flowId,name.trim());
+}
+function gfdDeleteFlowConfirm(flowId){
+  const f=GFD.flows.find(f=>f.id===flowId); if(!f) return;
+  if(!confirm(`Delete flow "${f.name}"? This cannot be undone.`)) return;
+  gfdDeleteFlow(flowId);
+}
+
 function gfdRePopulate(){
   if(GFD.nodes.length && !confirm('This will replace the current flow with an auto-generated one. Continue?')) return;
-  GFD.nodes=[];GFD.connections=[];GFD._seq=0;GFD.selected=null;GFD.selConn=null;
+  // Reset only the active flow
+  const af=_gfdActiveFlow();
+  if(af){ af.nodes=[]; af.connections=[]; }
+  GFD.nodes=af?.nodes||[]; GFD.connections=af?.connections||[];
+  GFD.selected=null; GFD.selConn=null;
   const d=collectProjectData();
   _gfdAutoPopulate(d);
   gfdRender();
@@ -6407,8 +6542,10 @@ function gfdAutoLayout(){
 }
 
 function gfdClear(){
-  if(!confirm('Clear all nodes and connections from the canvas?')) return;
-  GFD.nodes=[];GFD.connections=[];GFD.selected=null;GFD.selConn=null;
+  if(!confirm('Clear all nodes and connections from this flow?')) return;
+  const af=_gfdActiveFlow();
+  if(af){ af.nodes=[]; af.connections=[]; }
+  GFD.nodes=[]; GFD.connections=[]; GFD.selected=null; GFD.selConn=null;
   gfdRender(); gfdRenderProps(); _gfdMarkDirty();
 }
 
@@ -6429,6 +6566,10 @@ function openGameFlowDesigner(){
   document.getElementById('gfd-game-title').textContent=d.name?`· ${d.name}`:'';
   modal.style.display='flex';
   if(!GFD._eventsInit){ _gfdInitEvents(); GFD._eventsInit=true; }
+  // Ensure multi-flow structure exists (migrates legacy single-canvas data)
+  _gfdEnsureFlows();
+  gfdRenderFlowTabs();
+  // Auto-populate active flow if empty
   if(!GFD.nodes.length){ _gfdAutoPopulate(d); }
   gfdRender();
   setTimeout(()=>{ _gfdDrawGrid(); gfdFit(); },80);
@@ -8497,16 +8638,20 @@ window._sfBridge = (function(){
       // Save custom layer definitions (PSD entries for custom_N keys) — required for layers to survive reload
       customPsd:   (function(){ var cp={}; try{ Object.entries(typeof PSD!=='undefined'?PSD:{}).forEach(function(e){ if(e[0].indexOf('custom_')===0) cp[e[0]]=e[1]; }); }catch(ex){} return cp; })(),
       blendModes:  (function(){ var bm={}; try{ Object.entries(EL_BLEND_MODES).forEach(function(e){ if(e[1]&&e[1]!=='normal') bm[e[0]]=e[1]; }); }catch(ex){} return bm; })(),
-      // Game Flow Designer — persist nodes, connections, and ID sequence
+      // Game Flow Designer — multi-flow format: { flows, activeFlowId, _seq }
       gfd: (function(){
         try {
-          if(typeof GFD !== 'undefined' && Array.isArray(GFD.nodes) && GFD.nodes.length > 0){
-            return {
-              nodes:       JSON.parse(JSON.stringify(GFD.nodes)),
-              connections: JSON.parse(JSON.stringify(GFD.connections || [])),
-              _seq:        GFD._seq || 0,
-            };
-          }
+          if(typeof GFD==='undefined') return null;
+          // Save live pan/scale into the active flow before serializing
+          const af=GFD.flows.find(f=>f.id===GFD.activeFlowId);
+          if(af){ af.pan={x:GFD.pan.x,y:GFD.pan.y}; af.scale=GFD.scale; }
+          const hasAnyNodes=GFD.flows.some(f=>f.nodes&&f.nodes.length>0);
+          if(!hasAnyNodes && !GFD.flows.length) return null;
+          return {
+            flows:        JSON.parse(JSON.stringify(GFD.flows||[])),
+            activeFlowId: GFD.activeFlowId,
+            _seq:         GFD._seq||0,
+          };
         } catch(ex){}
         return null;
       })(),
