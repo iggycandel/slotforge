@@ -147,30 +147,48 @@ export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
     return () => window.removeEventListener('mousedown', close)
   }, [blendOpen])
 
-  // ── Drag-to-reorder handlers ───────────────────────────────────────────────
+  // ── Drag-to-reorder handlers (fixed: use onDragEnter for state, onDragOver just prevents default) ──
 
   function onDragStart(key: string, e: React.DragEvent) {
     dragKey.current = key
     e.dataTransfer.effectAllowed = 'move'
+    // Invisible ghost so we control the visual feedback ourselves
+    const ghost = document.createElement('div')
+    ghost.style.cssText = 'position:fixed;top:-999px;left:-999px;width:1px;height:1px;opacity:0'
+    document.body.appendChild(ghost)
+    e.dataTransfer.setDragImage(ghost, 0, 0)
+    requestAnimationFrame(() => { if (ghost.parentNode) document.body.removeChild(ghost) })
   }
 
-  function onDragOver(targetKey: string, e: React.DragEvent) {
+  function onDragEnter(targetKey: string, e: React.DragEvent) {
+    e.preventDefault()
+    if (dragKey.current && dragKey.current !== targetKey) setDragOver(targetKey)
+  }
+
+  function onDragOverRow(e: React.DragEvent) {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-    setDragOver(targetKey)
+  }
+
+  function onDragLeave(targetKey: string, e: React.DragEvent) {
+    const related = e.relatedTarget as HTMLElement | null
+    if (!related || !(e.currentTarget as HTMLElement).contains(related)) {
+      setDragOver(v => v === targetKey ? null : v)
+    }
   }
 
   function onDrop(targetKey: string, e: React.DragEvent) {
     e.preventDefault()
-    setDragOver(null)
-    if (!dragKey.current || dragKey.current === targetKey) { dragKey.current = null; return }
-    sendOp('reorder', dragKey.current, { targetKey, position: 'before' })
+    const from = dragKey.current
     dragKey.current = null
+    setDragOver(null)
+    if (!from || from === targetKey) return
+    sendOp('reorder', from, { targetKey, position: 'before' })
   }
 
   function onDragEnd() {
-    setDragOver(null)
     dragKey.current = null
+    setDragOver(null)
   }
 
   // ── Context menu handler ───────────────────────────────────────────────────
@@ -287,7 +305,9 @@ export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
                   key={layer.key}
                   draggable
                   onDragStart={e => onDragStart(layer.key, e)}
-                  onDragOver={e => onDragOver(layer.key, e)}
+                  onDragEnter={e => onDragEnter(layer.key, e)}
+                  onDragOver={onDragOverRow}
+                  onDragLeave={e => onDragLeave(layer.key, e)}
                   onDrop={e => onDrop(layer.key, e)}
                   onDragEnd={onDragEnd}
                   onClick={() => { sendOp('select', layer.key); setBlendOpen(null); setCtxMenu(null) }}

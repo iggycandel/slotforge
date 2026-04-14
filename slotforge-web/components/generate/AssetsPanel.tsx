@@ -184,11 +184,24 @@ export function AssetsPanel({ projectId, onAddToCanvas, toolbarHeight = 44, embe
   // (visual guide while dragging — rendered as siblings in the viewport)
 
   // ── Embedded mode: render just the tab+content without any floating wrapper ──
+  // Uses RightPanel design tokens for visual consistency.
+  const EP = {
+    bg:          '#0a0a0f',
+    surface:     '#13131a',
+    surfaceHigh: '#1a1a24',
+    border:      'rgba(255,255,255,.06)',
+    gold:        '#c9a84c',
+    textPrimary: '#eeede6',
+    textMuted:   '#7a7a8a',
+    textFaint:   '#3e3e4e',
+    font:        "'Inter', 'Space Grotesk', sans-serif",
+  } as const
+
   if (embedded) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg }}>
-        {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: EP.bg, fontFamily: EP.font }}>
+        {/* Tabs — matches RightPanel tab style */}
+        <div style={{ display: 'flex', borderBottom: `1px solid ${EP.border}`, flexShrink: 0, background: EP.surface }}>
           {(['generated', 'uploads'] as Tab[]).map(t => (
             <button
               key={t}
@@ -196,19 +209,20 @@ export function AssetsPanel({ projectId, onAddToCanvas, toolbarHeight = 44, embe
               style={{
                 flex: 1, padding: '7px 8px',
                 fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
-                background:   tab === t ? T.surface : 'transparent',
-                color:        tab === t ? T.textPrimary : T.textFaint,
-                borderBottom: tab === t ? `2px solid ${T.gold}` : '2px solid transparent',
-                transition:   'all .12s',
-                fontFamily:   T.font,
+                background:   'transparent',
+                color:        tab === t ? EP.textPrimary : EP.textFaint,
+                borderBottom: tab === t ? `2px solid ${EP.gold}` : '2px solid transparent',
+                transition:   'color .12s, border-color .12s',
+                fontFamily:   EP.font,
+                letterSpacing: '.01em',
               }}
             >
-              {t === 'generated' ? '✨ Generated' : '📁 Uploads'}
+              {t === 'generated' ? '✦ Generated' : '⬆ Uploads'}
             </button>
           ))}
         </div>
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', background: T.bg }}>
+        <div style={{ flex: 1, overflowY: 'auto', background: EP.bg }}>
           {tab === 'generated'
             ? <GeneratedTab projectId={projectId} onAddToCanvas={onAddToCanvas} />
             : <UploadsTab   projectId={projectId} onAddToCanvas={onAddToCanvas} />

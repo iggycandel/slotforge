@@ -8228,7 +8228,7 @@ window._sfBridge = (function(){
     setTimeout(function(){ _sfApplyPayload(payload); }, 300);
     setTimeout(function(){
       try { document.getElementById('ov-props-panel')?.classList.remove('show'); } catch(e){}
-      try { if(typeof switchScreen === 'function') switchScreen('base'); } catch(e){}
+      try { if(typeof openProjectSettings === 'function') openProjectSettings(); } catch(e){}
     }, 900);
     // Final re-sync of toggle UI states at 1100ms — runs after both _sfApplyPayload (300ms)
     // and switchScreen (900ms) have fully settled, ensuring char/ante toggles reflect P state.
