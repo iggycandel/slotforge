@@ -116,6 +116,15 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
       if (msg.type === 'SF_DIRTY') {
         setSaveState(s => s.status !== 'saving' ? { ...s, status: 'dirty' } : s)
+        // The iframe sends a settings-only snapshot with every SF_DIRTY so we can
+        // keep payloadRef in sync with settings changes (char.enabled, ante, features, etc.)
+        // BEFORE the debounced SF_AUTOSAVE fires. This ensures a final unmount save
+        // captures the correct state even if the user navigates away within 4 seconds.
+        if (msg.snapshot && payloadRef.current) {
+          payloadRef.current = { ...payloadRef.current, ...(msg.snapshot as Record<string, unknown>) }
+        } else if (msg.snapshot) {
+          payloadRef.current = msg.snapshot as Record<string, unknown>
+        }
       }
 
       if (msg.type === 'SF_UPLOAD_ASSET' && msg.file && msg.assetKey) {
@@ -132,6 +141,17 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
               url:      url   ?? null,
               error:    error ?? null,
             }, '*')
+            // When a CDN URL comes back, immediately update payloadRef and save.
+            // This ensures the CDN URL is in Supabase even if the user navigates
+            // away before the iframe's debounced SF_AUTOSAVE fires.
+            if (url && payloadRef.current) {
+              const assets = ((payloadRef.current.assets as Record<string, unknown>) ?? {})
+              payloadRef.current = {
+                ...payloadRef.current,
+                assets: { ...assets, [msg.assetKey as string]: url },
+              }
+              doSave(payloadRef.current, false)
+            }
           })
           .catch(err => {
             iframeRef.current?.contentWindow?.postMessage({
@@ -141,6 +161,18 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
               error:    String(err),
             }, '*')
           })
+      }
+
+      // The iframe also sends SF_ASSET_CDN_URL when the CDN callback fires (belt-and-suspenders).
+      // Update payloadRef here too in case the fetch promise above resolved before payloadRef was set.
+      if (msg.type === 'SF_ASSET_CDN_URL' && msg.assetKey && msg.url) {
+        if (payloadRef.current) {
+          const assets = ((payloadRef.current.assets as Record<string, unknown>) ?? {})
+          payloadRef.current = {
+            ...payloadRef.current,
+            assets: { ...assets, [msg.assetKey as string]: msg.url },
+          }
+        }
       }
 
       if (msg.type === 'SF_AUTOSAVE' && msg.payload) {
@@ -154,7 +186,16 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     }
 
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      // Final save on navigation (component unmount = user left the project page).
+      // payloadRef.current is kept up-to-date by SF_DIRTY snapshots and SF_AUTOSAVE,
+      // so this captures settings changes (char.enabled, etc.) that occurred within
+      // the 4-second debounce window and would otherwise be lost.
+      if (payloadRef.current) {
+        autosaveProject(projectId, payloadRef.current).catch(() => {})
+      }
+    }
   }, [doSave, initialPayload, projectId])
 
   // Periodic save nudge — fires every 30s if dirty, or retries every 15s after an error

@@ -3324,8 +3324,14 @@ function _sfUploadDataUrlToStorage(assetKey, dataUrl){
     window._sfUploadCallbacks[assetKey] = function(url){
       if(url && url.startsWith('http')){
         EL_ASSETS[assetKey] = url;
-        // Trigger autosave so the CDN URL is persisted immediately
-        try{ if(typeof markDirty === 'function') markDirty(); }catch(e){}
+        // Save IMMEDIATELY (no debounce) so the CDN URL reaches Supabase before
+        // the user can navigate away. Also notify the shell so it can update its
+        // payloadRef with the CDN URL (handles the beforeunload / unmount save path).
+        window.parent.postMessage({ type: 'SF_ASSET_CDN_URL', assetKey: assetKey, url: url }, '*');
+        try{
+          if(typeof window._sfSaveNow === 'function') window._sfSaveNow();
+          else if(typeof markDirty === 'function') markDirty();
+        }catch(e){}
       }
     };
     window.parent.postMessage({
@@ -8041,9 +8047,47 @@ window._sfBridge = (function(){
   var _autosaveTimer = null;
   window.markDirty = function(){
     if(_origMarkDirty) _origMarkDirty.apply(this, arguments);
-    window.parent.postMessage({ type: 'SF_DIRTY' }, '*');
+    // Send a lightweight settings-only snapshot with every SF_DIRTY so the shell
+    // can update payloadRef immediately. Settings (char.enabled, ante, features, etc.)
+    // are tiny; we exclude assets to avoid sending large base64 blobs on every keystroke.
+    var settingsSnapshot = null;
+    try {
+      var p = getPayload();
+      // Keep everything except the large blobs
+      settingsSnapshot = {
+        gameName:    p.gameName,
+        theme:       p.theme,
+        colors:      p.colors,
+        reelset:     p.reelset,
+        viewport:    p.viewport,
+        jackpots:    p.jackpots,
+        features:    p.features,
+        char:        p.char,
+        ante:        p.ante,
+        msgPos:      p.msgPos,
+        holdnspin:   p.holdnspin,
+        symbols:     p.symbols,
+        expandWild:  p.expandWild,
+        reelSettings:p.reelSettings,
+        ovProps:     p.ovProps,
+        ovPos:       p.ovPos,
+        elVP:        p.elVP,
+        userLocks:   p.userLocks,
+        keyOrders:   p.keyOrders,
+        // assets & library excluded — only CDN URLs (not base64) matter here,
+        // and those are updated via SF_UPLOAD_ASSET_RESULT on the shell side
+      };
+    } catch(ex){}
+    window.parent.postMessage({ type: 'SF_DIRTY', snapshot: settingsSnapshot }, '*');
     clearTimeout(_autosaveTimer);
     _autosaveTimer = setTimeout(triggerSave, 4000);
+  };
+
+  /* ─── 8b. Expose immediate-save for CDN upload callback ─── */
+  window._sfSaveNow = function(){
+    clearTimeout(_autosaveTimer);
+    _autosaveTimer = null;
+    triggerSave();
   };
 
   /* ─── 9. Listen for messages from parent shell ─── */
