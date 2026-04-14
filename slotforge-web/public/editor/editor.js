@@ -3284,11 +3284,14 @@ function _sfUploadDataUrlToStorage(assetKey, dataUrl){
     const blob = new Blob([arr], {type: mime});
     const ext = mime.split('/')[1] || 'png';
     const file = new File([blob], assetKey+'.'+ext, {type: mime});
-    // Register callback: when Storage URL comes back, update EL_ASSETS
+    // Register callback: when Storage URL comes back, swap base64 → CDN URL and trigger save.
+    // Without the markDirty() call, the CDN URL would only exist in memory and never
+    // reach the database unless the user made an unrelated edit after upload.
     window._sfUploadCallbacks[assetKey] = function(url){
       if(url && url.startsWith('http')){
         EL_ASSETS[assetKey] = url;
-        // No need to rebuild canvas — it already shows the correct image
+        // Trigger autosave so the CDN URL is persisted immediately
+        try{ if(typeof markDirty === 'function') markDirty(); }catch(e){}
       }
     };
     window.parent.postMessage({
@@ -3602,12 +3605,14 @@ P.reelSettings = {
 
 // ─── Load default symbol assets via fetch → base64 dataURL ──────────────────
 // fetch() resolves correctly inside iframes; dataURLs work everywhere.
-// User-uploaded dataURLs (starting with "data:") are never overwritten.
+// Default symbol loader — only fills slots that have NO asset yet.
+// Checks for any truthy value (data: URL OR https:// CDN URL) so it never
+// overwrites saved/uploaded assets with the bundled placeholder PNGs.
 window._loadDefaultSymbols = function(){
   P.symbols.forEach(function(sym){
     var key = 'sym_'+sym.id;
-    // Skip if there's already any dataURL for this key (user upload or previously loaded default)
-    if(EL_ASSETS[key] && EL_ASSETS[key].indexOf('data:') === 0) return;
+    // Skip if ANY asset already exists (user upload, saved CDN URL, or previously loaded default)
+    if(EL_ASSETS[key]) return;
     var url = '/editor/assets/symbols/sym-'+sym.id+'.png';
     fetch(url).then(function(r){
       if(!r.ok) throw new Error('missing');
@@ -3615,8 +3620,8 @@ window._loadDefaultSymbols = function(){
     }).then(function(blob){
       var reader = new FileReader();
       reader.onload = function(ev){
-        // Skip if a user upload arrived while we were fetching
-        if(EL_ASSETS[key] && EL_ASSETS[key].indexOf('data:') === 0) return;
+        // Skip if any asset arrived (user upload or CDN URL) while we were fetching
+        if(EL_ASSETS[key]) return;
         EL_ASSETS[key] = ev.target.result;
         try{ if(typeof buildCanvas==='function') buildCanvas(); }catch(e){}
         try{ if(typeof renderLayers==='function') renderLayers(); }catch(e){}

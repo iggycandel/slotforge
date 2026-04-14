@@ -100,10 +100,11 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       if (!msg?.type) return
 
       if (msg.type === 'SF_IFRAME_READY') {
-        // Send payload
+        // Always send the latest known payload (payloadRef tracks autosaves;
+        // initialPayload is only accurate at page load and goes stale as the user edits)
         iframeRef.current?.contentWindow?.postMessage({
           type:        'SF_LOAD',
-          payload:     initialPayload ?? null,
+          payload:     payloadRef.current ?? null,
           projectName,
         }, '*')
         // Inject CSS to hide the Assets tab inside the iframe
@@ -156,13 +157,13 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     return () => window.removeEventListener('message', onMessage)
   }, [doSave, initialPayload, projectId])
 
-  // Periodic save nudge
+  // Periodic save nudge — fires every 30s if dirty, or retries every 15s after an error
   useEffect(() => {
     const iv = setInterval(() => {
-      if (saveState.status === 'dirty') {
+      if (saveState.status === 'dirty' || saveState.status === 'error') {
         iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_SAVE' }, '*')
       }
-    }, 60000)
+    }, saveState.status === 'error' ? 15000 : 30000)
     return () => clearInterval(iv)
   }, [saveState.status])
 
