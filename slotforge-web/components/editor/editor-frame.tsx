@@ -45,16 +45,11 @@ function SaveBadge({ state }: { state: SaveState }) {
 }
 
 export default function EditorFrame({ projectId, orgSlug, initialPayload, projectName }: EditorFrameProps) {
-  const iframeRef         = useRef<HTMLIFrameElement>(null)
-  const payloadRef        = useRef<Record<string, unknown> | null>(initialPayload)
-  const manualSaveFlag    = useRef(false)
-  const isSavingRef       = useRef(false)
-  const pendingSave       = useRef<{ payload: Record<string, unknown>; isManual: boolean } | null>(null)
-  // Guard: don't let SF_DIRTY snapshots overwrite payloadRef until the first real SF_AUTOSAVE
-  // has confirmed the iframe's P state is fully loaded. During initialization markDirty() fires
-  // with defaults (e.g. char.enabled=false) BEFORE _sfApplyPayload runs, which would corrupt
-  // payloadRef and cause all feature settings to reset ~1s after re-entering a project.
-  const hasEverAutosavedRef = useRef(false)
+  const iframeRef      = useRef<HTMLIFrameElement>(null)
+  const payloadRef     = useRef<Record<string, unknown> | null>(initialPayload)
+  const manualSaveFlag = useRef(false)
+  const isSavingRef    = useRef(false)
+  const pendingSave    = useRef<{ payload: Record<string, unknown>; isManual: boolean } | null>(null)
   const [saveState,        setSaveState]        = useState<SaveState>({ status: 'idle' })
   const [versionLabel,     setVersionLabel]     = useState('')
   const [snapshots,        setSnapshots]        = useState<ProjectSnapshot[]>([])
@@ -121,15 +116,15 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
       if (msg.type === 'SF_DIRTY') {
         setSaveState(s => s.status !== 'saving' ? { ...s, status: 'dirty' } : s)
-        // Merge the settings snapshot into payloadRef ONLY after the first real SF_AUTOSAVE.
-        // Before that point the iframe's P state may still be defaults (not yet loaded from
-        // the saved payload), so merging would corrupt payloadRef with stale values.
-        if (msg.snapshot && hasEverAutosavedRef.current) {
-          if (payloadRef.current) {
-            payloadRef.current = { ...payloadRef.current, ...(msg.snapshot as Record<string, unknown>) }
-          } else {
-            payloadRef.current = msg.snapshot as Record<string, unknown>
-          }
+        // Always merge the settings snapshot so payloadRef stays current even before
+        // the 1.5s autosave debounce fires. This ensures a navigate-away unmount save
+        // captures the latest toggle states (char.enabled, features, etc.).
+        // Safe to do unconditionally: markDirty() is never called during init/restore,
+        // only from user interactions — so snapshots always reflect the correct P state.
+        if (msg.snapshot && payloadRef.current) {
+          payloadRef.current = { ...payloadRef.current, ...(msg.snapshot as Record<string, unknown>) }
+        } else if (msg.snapshot) {
+          payloadRef.current = msg.snapshot as Record<string, unknown>
         }
       }
 
@@ -183,7 +178,6 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
       if (msg.type === 'SF_AUTOSAVE' && msg.payload) {
         payloadRef.current = msg.payload
-        hasEverAutosavedRef.current = true  // unlock SF_DIRTY snapshot merging from here on
         const gn = (msg.payload as Record<string, unknown>).gameName as string | undefined
         if (gn?.trim()) setLiveProjectName(gn.trim())
         const isManual = manualSaveFlag.current

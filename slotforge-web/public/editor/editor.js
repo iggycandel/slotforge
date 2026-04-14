@@ -8163,8 +8163,15 @@ window._sfBridge = (function(){
     try { triggerSave(); } catch(e){}
   });
 
-  /* ─── 11. Notify parent ready ─── */
+  /* ─── 11. Notify parent ready (send exactly once) ─── */
+  // Guard: the load/readystatechange/setTimeout paths can all fire in the same
+  // tick or close together, causing multiple SF_IFRAME_READY → multiple SF_LOAD
+  // messages → _sfApplyPayload running again with whatever payloadRef contains at
+  // that moment, which reset all settings ~1 second after re-entering a project.
+  var _sfReadySent = false;
   function notifyReady(){
+    if(_sfReadySent) return;
+    _sfReadySent = true;
     window.parent.postMessage({ type: 'SF_IFRAME_READY' }, '*');
   }
   if(document.readyState === 'complete'){
