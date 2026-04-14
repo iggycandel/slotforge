@@ -7833,6 +7833,8 @@ window._sfApplyPayload = function(payload){
   try { if(s.elVP && s.elVP.portrait)  Object.assign(EL_VP.portrait,  s.elVP.portrait);  } catch(e){}
   try { if(s.elVP && s.elVP.landscape) Object.assign(EL_VP.landscape, s.elVP.landscape); } catch(e){}
   try { if(s.assets) Object.assign(EL_ASSETS, s.assets); } catch(e){}
+  // Restore layer key order for each screen (captures custom/reordered layers)
+  try { if(s.keyOrders && typeof SDEFS!=='undefined') Object.entries(s.keyOrders).forEach(function(e){ if(SDEFS[e[0]]) SDEFS[e[0]].keys=[].concat(e[1]); }); } catch(e){}
   // Fill any symbol slots that the saved project didn't have assets for
   try { if(typeof window._loadDefaultSymbols==='function') setTimeout(window._loadDefaultSymbols, 50); } catch(e){}
   // Sync UI toggles for settings that have visual toggle buttons
@@ -7908,6 +7910,8 @@ window._sfBridge = (function(){
       adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ    !== 'undefined' ? EL_ADJ    : {})),
       masks:       JSON.parse(JSON.stringify(typeof EL_MASKS  !== 'undefined' ? EL_MASKS  : {})),
       userLocks:   typeof USER_LOCKS !== 'undefined' ? [...USER_LOCKS] : [],
+      // Save layer key order for every screen — captures custom layers added/reordered by the user
+      keyOrders:   (function(){ var ko={}; try{ Object.entries(typeof SDEFS!=='undefined'?SDEFS:{}).forEach(function(e){ if(e[1].keys) ko[e[0]]=[].concat(e[1].keys); }); }catch(ex){} return ko; })(),
     };
   }
 

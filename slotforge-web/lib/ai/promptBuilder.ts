@@ -78,6 +78,7 @@ const TYPE_TO_CATEGORY: Record<AssetType, PromptCategory> = {
   symbol_wild:       'symbol_wild',
   symbol_scatter:    'symbol_scatter',
   logo:              'logo',
+  character:         'logo',   // character uses the same style prompt category as logo
 }
 
 // ─── Bonus scene modifier ────────────────────────────────────────────────────
