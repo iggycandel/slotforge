@@ -8379,6 +8379,11 @@ window._sfBridge = (function(){
       } catch(e) { console.warn('[SF] SF_INJECT_IMAGE_LAYER failed:', e); }
     }
 
+    if(msg.type === 'SF_REQUEST_LAYERS_UPDATE'){
+      try{ _sendLayersUpdate(); }catch(e){}
+      return;
+    }
+
     if(msg.type === 'SF_LAYER_OP'){
       var op=msg.op, k=msg.key;
       try {
@@ -8389,6 +8394,29 @@ window._sfBridge = (function(){
         else if(op==='duplicate'&&k){ duplicateLayer(k); }
         else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas();markDirty(); }
         else if(op==='addLayer'){ document.getElementById('add-layer-btn')?.click(); }
+        else if(op==='reorder' && k && msg.targetKey){
+          var tgt=msg.targetKey;
+          var scr=SDEFS[P.screen];
+          if(scr&&scr.keys){
+            var arr=scr.keys;
+            var fromIdx=arr.indexOf(k);
+            var toIdx=arr.indexOf(tgt);
+            if(fromIdx!==-1&&toIdx!==-1&&fromIdx!==toIdx){
+              arr.splice(fromIdx,1);
+              toIdx=arr.indexOf(tgt);
+              arr.splice(msg.position==='before'?toIdx:toIdx+1,0,k);
+              buildCanvas(); renderLayers(); markDirty();
+            }
+          }
+        }
+        else if(op==='addGroup'){
+          var gNum=Object.keys(PSD).filter(function(x){return x.startsWith('group_');}).length+1;
+          var gKey='group_'+gNum;
+          PSD[gKey]={label:'Group '+gNum,type:'group',x:0,y:0,w:200,h:200,keys:SEL_KEY?[SEL_KEY]:[]};
+          if(SDEFS[P.screen]&&SDEFS[P.screen].keys) SDEFS[P.screen].keys.push(gKey);
+          SEL_KEY=gKey;
+          buildCanvas(); renderLayers(); markDirty();
+        }
       } catch(ex){ console.error('[SF_LAYER_OP]',ex); }
     }
   });

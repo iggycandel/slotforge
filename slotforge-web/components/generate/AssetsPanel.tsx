@@ -96,6 +96,8 @@ interface Props {
   projectId:     string
   onAddToCanvas: (assetType: AssetType, url: string) => void
   toolbarHeight?: number   // px height of the parent toolbar (default: 44)
+  /** When true, renders as embedded content (no floating wrapper, no drag/snap) */
+  embedded?: boolean
 }
 
 // ─── Panel width constant ─────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ const PANEL_W = 320
 // Main: AssetsPanel — floating draggable container
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsPanel({ projectId, onAddToCanvas, toolbarHeight = 44 }: Props) {
+export function AssetsPanel({ projectId, onAddToCanvas, toolbarHeight = 44, embedded = false }: Props) {
   const [tab,       setTab]       = useState<Tab>('generated')
   const [minimized, setMinimized] = useState(false)
   const [snap,      setSnap]      = useState<SnapEdge>('right')
@@ -180,6 +182,42 @@ export function AssetsPanel({ projectId, onAddToCanvas, toolbarHeight = 44 }: Pr
 
   // ── Snap zone indicators ─────────────────────────────────────────────────────
   // (visual guide while dragging — rendered as siblings in the viewport)
+
+  // ── Embedded mode: render just the tab+content without any floating wrapper ──
+  if (embedded) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg }}>
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+          {(['generated', 'uploads'] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                flex: 1, padding: '7px 8px',
+                fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                background:   tab === t ? T.surface : 'transparent',
+                color:        tab === t ? T.textPrimary : T.textFaint,
+                borderBottom: tab === t ? `2px solid ${T.gold}` : '2px solid transparent',
+                transition:   'all .12s',
+                fontFamily:   T.font,
+              }}
+            >
+              {t === 'generated' ? '✨ Generated' : '📁 Uploads'}
+            </button>
+          ))}
+        </div>
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: 'auto', background: T.bg }}>
+          {tab === 'generated'
+            ? <GeneratedTab projectId={projectId} onAddToCanvas={onAddToCanvas} />
+            : <UploadsTab   projectId={projectId} onAddToCanvas={onAddToCanvas} />
+          }
+        </div>
+        <style>{`@keyframes sf-spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
 
   return (
     <>
