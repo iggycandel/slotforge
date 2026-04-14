@@ -12,7 +12,7 @@ const TOOLBAR_H = 44
 
 // Version string — propagated to editor.js via slotforge.html?v= so the browser
 // re-fetches editor.js whenever this value changes. Bump on every editor.js deploy.
-const EDITOR_VERSION = 'v27'
+const EDITOR_VERSION = 'v28'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe to hide the duplicate Assets tab
