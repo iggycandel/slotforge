@@ -5816,10 +5816,33 @@ function gfdUpdateSVG(){
     const strokeW=isSel?2.5:1.5;
     const strokeCol=isSel?'#ffffff':isBack?fc+'66':fc+'99';
     const dashArr=isBack?'6 4':'none';
+    // ── Edge metadata badge ──────────────────────────────────────────────────
+    const _TI={ auto:'⚡', 'user-action':'👆', timer:'⏱', condition:'◇' };
+    const metaParts=[];
+    if(conn.triggerType && conn.triggerType!=='auto') metaParts.push(`${_TI[conn.triggerType]||'?'} ${conn.triggerType}`);
+    if(conn.probability!=null && conn.probability!=='') metaParts.push(`${conn.probability}%`);
+    if(conn.durationMs) metaParts.push(`${conn.durationMs}ms`);
+    const metaStr=metaParts.join(' · ');
+    const hasLabel=!!conn.label; const hasMeta=!!metaStr;
+    let edgeBadge='';
+    if(hasLabel||hasMeta){
+      // Pill background: size based on longest line
+      const line1=hasLabel?conn.label:'', line2=metaStr;
+      const longest=Math.max(line1.length,line2.length);
+      const pw=Math.max(50,longest*5.2+16);
+      const ph=(hasLabel&&hasMeta?28:16);
+      const py=my-ph/2;
+      edgeBadge=`
+        <g style="pointer-events:none">
+          <rect x="${mx-pw/2}" y="${py}" width="${pw}" height="${ph}" rx="${ph/2}" fill="#0a0a0f" stroke="${fc}33" stroke-width="1"/>
+          ${hasLabel?`<text x="${mx}" y="${py+(hasMeta?10:ph/2+3)}" text-anchor="middle" fill="${fc}cc" font-size="9" font-family="Inter,system-ui,sans-serif" font-weight="600" letter-spacing=".02">${escH(conn.label)}</text>`:''}
+          ${hasMeta?`<text x="${mx}" y="${py+ph-6}" text-anchor="middle" fill="${fc}77" font-size="8" font-family="Inter,system-ui,sans-serif" letter-spacing=".01">${escH(metaStr)}</text>`:''}
+        </g>`;
+    }
     body+=`<g class="gfd-conn-g" data-cid="${conn.id}">
       <path d="${dp}" stroke="transparent" stroke-width="12" fill="none" style="cursor:pointer"/>
       <path d="${dp}" stroke="${strokeCol}" stroke-width="${strokeW}" fill="none" stroke-dasharray="${dashArr}" marker-end="url(#gfd-arr-${fn.type})" style="cursor:pointer;pointer-events:stroke"/>
-      ${conn.label?`<text x="${mx}" y="${my-5}" text-anchor="middle" fill="${fc}99" font-size="9" font-family="Inter,system-ui,sans-serif" style="pointer-events:none;font-weight:600;letter-spacing:.02em">${escH(conn.label)}</text>`:''}
+      ${edgeBadge}
     </g>`;
   });
   // Temp connecting line (vertical bezier from bottom of source)
@@ -6170,6 +6193,23 @@ function gfdRenderProps(){
         <div style="${_GP.lbl}">Priority <span style="color:${_GP.txF};font-weight:400;text-transform:none;letter-spacing:0">(lower = first)</span></div>
         <input type="number" value="${conn.priority??99}" min="1" max="999" style="${_GP.inp};width:80px;color:${_GP.gold}" oninput="gfdConnPriorityEdit(parseInt(this.value)||99)">
       </div>
+      <div style="padding:10px 0;border-top:1px solid ${_GP.border};border-bottom:1px solid ${_GP.border};margin-bottom:12px">
+        <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${_GP.gold};font-family:${_GP.font};margin-bottom:10px">Transition Metadata</div>
+        <div style="${_GP.sec}">
+          <div style="${_GP.lbl}">Trigger Type</div>
+          <select style="${_GP.inp};color:${_GP.tx}" onchange="gfdConnEdit('triggerType',this.value)">
+            ${[['auto','⚡ Auto (fires immediately)'],['user-action','👆 User Action'],['timer','⏱ Timer / Delay'],['condition','◇ Condition Gate']].map(([v,l])=>`<option value="${v}"${(conn.triggerType||'auto')===v?' selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div style="${_GP.sec}">
+          <div style="${_GP.lbl}">Probability % <span style="color:${_GP.txF};font-weight:400;text-transform:none;letter-spacing:0">optional — for RNG branches</span></div>
+          <input type="number" min="0" max="100" step="1" value="${conn.probability??''}" placeholder="—" style="${_GP.inp};width:80px;color:#e05858" oninput="gfdConnEdit('probability',this.value===''?null:Math.min(100,Math.max(0,parseFloat(this.value)||0)))">
+        </div>
+        <div style="${_GP.sec}">
+          <div style="${_GP.lbl}">Delay (ms) <span style="color:${_GP.txF};font-weight:400;text-transform:none;letter-spacing:0">pause before transition fires</span></div>
+          <input type="number" min="0" step="100" value="${conn.durationMs??''}" placeholder="—" style="${_GP.inp};width:90px;color:#c848a8" oninput="gfdConnEdit('durationMs',this.value===''?null:parseInt(this.value)||0)">
+        </div>
+      </div>
       <div style="padding:10px 0;border-top:1px solid ${_GP.border};margin-bottom:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
           <div style="${_GP.lbl}">Guard Condition</div>
@@ -6209,6 +6249,12 @@ function gfdConnLabelEdit(val){
 function gfdConnPriorityEdit(val){
   const conn=GFD.connections.find(c=>c.id===GFD.selConn);
   if(conn){conn.priority=val;_gfdMarkDirty();}
+}
+function gfdConnEdit(field,val){
+  const conn=GFD.connections.find(c=>c.id===GFD.selConn); if(!conn) return;
+  conn[field]=val;
+  _gfdMarkDirty();
+  gfdUpdateSVG(); // re-render edge badge immediately
 }
 
 // ─── Condition helpers ───────────────────────────────────
