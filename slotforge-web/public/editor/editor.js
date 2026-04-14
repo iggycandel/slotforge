@@ -52,6 +52,7 @@ const PSD={
 const EL_COMPUTED = {portrait:{}, landscape:{}};
 const USER_LOCKS = new Set(); // keys the user has manually locked
 const HIDDEN_LAYERS = new Set(); // keys the user has hidden via eye icon
+const EL_BLEND_MODES = {}; // key -> CSS mix-blend-mode value: 'normal'|'screen'|'multiply'
 
 const FRAME_MARGIN = 16; // px around reelArea for reelFrame
 const JP_H_P = 50;       // jackpot plaque height portrait (slim bar)
@@ -1400,6 +1401,8 @@ function buildCanvas(){
     }
     // Apply saved mask
     applyMaskToEl(k);
+    // Apply blend mode
+    if(EL_BLEND_MODES[k] && EL_BLEND_MODES[k] !== 'normal') el.style.mixBlendMode = EL_BLEND_MODES[k];
     // Apply HIDDEN_LAYERS after all rendering
     if(HIDDEN_LAYERS.has(k)){el.style.opacity='0';el.style.pointerEvents='none';}
     // Library drag-drop: accept asset drops onto canvas elements
@@ -1709,6 +1712,13 @@ document.addEventListener('keydown',e=>{
   if(!SEL_KEY||P.screen==='project')return;
   const step=e.shiftKey?10:1;
   if(e.key==='Escape'){deselect();return;}
+  // Delete selected custom layer
+  if((e.key==='Delete'||e.key==='Backspace')&&SEL_KEY&&SEL_KEY.startsWith('custom_')){
+    if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+    e.preventDefault();
+    deleteCustomLayer(SEL_KEY);
+    return;
+  }
   let p={...getPos(SEL_KEY)};
   if(e.key==='ArrowLeft'){p.x-=step;}
   else if(e.key==='ArrowRight'){p.x+=step;}
@@ -1962,6 +1972,135 @@ function attachUpload(row, storageKey, onDone){
 // Tracks whether the Symbols sub-group (under Reel Area) is expanded in the layers panel
 if(typeof window._symGroupExpanded === 'undefined') window._symGroupExpanded = false;
 
+// ─── Layer context menu ───────────────────────────────────────────────────────
+var _layerCtx = null;
+function closeLayerCtxMenu(){ if(_layerCtx){_layerCtx.remove();_layerCtx=null;} }
+
+function openLayerCtxMenu(key, cx, cy){
+  closeLayerCtxMenu();
+  var menu = document.createElement('div');
+  menu.id = 'layer-ctx-menu';
+  menu.style.cssText = [
+    'position:fixed','z-index:9999','background:#1a1a2e',
+    'border:1px solid #2a2a3e','border-radius:8px',
+    'box-shadow:0 8px 24px rgba(0,0,0,.6)',
+    'padding:4px 0','min-width:180px',
+    'font-family:Space Grotesk,sans-serif','font-size:12px','color:#e8e6e1',
+    'user-select:none',
+  ].join(';');
+
+  function item(label, fn, danger){
+    var d = document.createElement('div');
+    d.textContent = label;
+    d.style.cssText = 'padding:7px 14px;cursor:pointer;color:'+(danger?'#ef7a7a':'#e8e6e1')+';transition:background .1s';
+    d.addEventListener('mouseenter',function(){d.style.background=danger?'#ef7a7a18':'#c9a84c18';});
+    d.addEventListener('mouseleave',function(){d.style.background='';});
+    d.addEventListener('mousedown',function(e){e.stopPropagation();closeLayerCtxMenu();fn();});
+    return d;
+  }
+  function sep(){
+    var s=document.createElement('div');
+    s.style.cssText='height:1px;background:#2a2a3e;margin:3px 0';
+    return s;
+  }
+
+  var isCustom = key && key.startsWith('custom_');
+
+  // New Layer
+  menu.appendChild(item('＋ New Layer', function(){
+    document.getElementById('add-layer-btn')?.click();
+  }));
+
+  menu.appendChild(sep());
+
+  // Duplicate
+  menu.appendChild(item('⧉ Duplicate Layer', function(){ duplicateLayer(key); }));
+
+  // Delete (only custom layers)
+  if(isCustom){
+    menu.appendChild(item('✕ Delete Layer', function(){ deleteCustomLayer(key); }, true));
+  }
+
+  menu.appendChild(sep());
+
+  // Blend modes submenu header
+  var blendHeader = document.createElement('div');
+  blendHeader.textContent = 'Blending Mode';
+  blendHeader.style.cssText = 'padding:4px 14px 2px;font-size:9px;color:#9090b0;text-transform:uppercase;letter-spacing:.08em;font-family:DM Mono,monospace';
+  menu.appendChild(blendHeader);
+
+  var currentBlend = EL_BLEND_MODES[key] || 'normal';
+  [
+    {label:'Normal', value:'normal'},
+    {label:'Screen (Add)', value:'screen'},
+    {label:'Multiply', value:'multiply'},
+  ].forEach(function(bm){
+    var d = document.createElement('div');
+    var isActive = currentBlend === bm.value;
+    d.style.cssText = 'padding:6px 14px 6px 24px;cursor:pointer;color:'+(isActive?'#c9a84c':'#e8e6e1')+';background:'+(isActive?'#c9a84c11':'');
+    d.innerHTML = (isActive?'✓ ':'\u00a0\u00a0')+bm.label;
+    d.addEventListener('mouseenter',function(){d.style.background='#c9a84c18';});
+    d.addEventListener('mouseleave',function(){d.style.background=isActive?'#c9a84c11':'';});
+    d.addEventListener('mousedown',function(e){
+      e.stopPropagation();
+      closeLayerCtxMenu();
+      EL_BLEND_MODES[key] = bm.value;
+      buildCanvas(); markDirty();
+    });
+    menu.appendChild(d);
+  });
+
+  // Position on screen
+  document.body.appendChild(menu);
+  _layerCtx = menu;
+  var W=menu.offsetWidth||200, H=menu.offsetHeight||200;
+  var left = Math.min(cx, window.innerWidth - W - 8);
+  var top  = Math.min(cy, window.innerHeight - H - 8);
+  menu.style.left = left+'px';
+  menu.style.top  = top+'px';
+
+  // Close on outside click
+  function outsideClick(e){
+    if(!menu.contains(e.target)){ closeLayerCtxMenu(); document.removeEventListener('mousedown',outsideClick); }
+  }
+  setTimeout(function(){ document.addEventListener('mousedown', outsideClick); }, 0);
+}
+
+// ─── Send layer state to React shell ─────────────────────────────────────────
+function _sendLayersUpdate(){
+  try {
+    if(!window._sfPayloadLoaded) return;
+    var screen = P.screen || 'base';
+    var sdef = SDEFS[screen];
+    if(!sdef || !sdef.keys) return;
+    var keys = sdef.keys;
+    var layers = [];
+    keys.forEach(function(k){
+      var def = PSD[k]; if(!def) return;
+      layers.push({
+        key: k,
+        label: def.label || k,
+        type: def.type || 'template',
+        z: def.z || 5,
+        hasAsset: !!EL_ASSETS[k],
+        isOff: (k==='char'&&!P.char.enabled)||(k==='bannerBuy'&&!P.features.buy_feature)||(k==='bannerAnte'&&!P.ante.enabled),
+        isHidden: HIDDEN_LAYERS.has(k),
+        isLocked: USER_LOCKS.has(k),
+        isSelected: k===SEL_KEY,
+        blendMode: EL_BLEND_MODES[k]||'normal',
+      });
+    });
+    // Send highest-z first (visual Photoshop order)
+    layers.sort(function(a,b){ return b.z - a.z; });
+    window.parent.postMessage({
+      type: 'SF_LAYERS_UPDATE',
+      layers: layers,
+      screen: screen,
+      screenLabel: (sdef.label||screen),
+    }, '*');
+  } catch(ex){}
+}
+
 function renderLayers(){
   const list=document.getElementById('layers-list');
   const keys=SDEFS[P.screen]?.keys||[];
@@ -2037,6 +2176,10 @@ function renderLayers(){
         cel.style.outlineOffset='2px';
         setTimeout(()=>{cel.style.outline='';cel.style.outlineOffset='';},600);
       }
+    });
+    row.addEventListener('contextmenu', function(e){
+      e.preventDefault(); e.stopPropagation();
+      openLayerCtxMenu(k, e.clientX, e.clientY);
     });
     // Double-click layer name = rename inline
     const nameEl=row.querySelector('.li-name');
@@ -2161,6 +2304,8 @@ function renderLayers(){
   });
   // Render overlay sub-layers section below main layers
   renderOvLayers();
+  // Notify shell of layer state change
+  try { _sendLayersUpdate(); } catch(e){}
 }
 
 // ═══ ASSET LIBRARY ═══
@@ -2653,6 +2798,46 @@ function _setSaveStatus(cls, text){
   ts.className = cls;
   ts.textContent = text;
 }
+
+// ─── Delete a custom layer by key ───────────────────────────────────────────
+function deleteCustomLayer(key){
+  if(!key || !key.startsWith('custom_')) return;
+  const commit = beginAction('delete layer '+key);
+  delete PSD[key];
+  delete EL_ASSETS[key];
+  delete EL_ADJ[key];
+  delete EL_MASKS[key];
+  delete EL_BLEND_MODES[key];
+  // Remove from every screen's key list
+  Object.values(SDEFS).forEach(function(def){
+    if(def.keys){var i=def.keys.indexOf(key);if(i!==-1)def.keys.splice(i,1);}
+  });
+  if(SEL_KEY===key) SEL_KEY=null;
+  buildCanvas(); renderLayers(); markDirty();
+  commit();
+}
+
+// ─── Duplicate a layer by key ────────────────────────────────────────────────
+function duplicateLayer(key){
+  if(!key||!PSD[key]) return;
+  var src=PSD[key];
+  var existingNums=Object.keys(PSD).filter(function(k){return k.startsWith('custom_');})
+    .map(function(k){return parseInt(k.slice(7),10);}).filter(function(n){return !isNaN(n);});
+  var nextN=existingNums.length?Math.max.apply(null,existingNums)+1:1;
+  var newKey='custom_'+nextN;
+  PSD[newKey]=JSON.parse(JSON.stringify(src));
+  PSD[newKey].label=(src.label||key)+' copy';
+  if(EL_ASSETS[key]) EL_ASSETS[newKey]=EL_ASSETS[key];
+  if(EL_ADJ[key]) EL_ADJ[newKey]=JSON.parse(JSON.stringify(EL_ADJ[key]));
+  if(EL_BLEND_MODES[key]) EL_BLEND_MODES[newKey]=EL_BLEND_MODES[key];
+  // Add to the same screen
+  Object.entries(SDEFS).forEach(function(e){
+    if(e[1].keys&&e[1].keys.includes(key)&&!e[1].keys.includes(newKey)) e[1].keys.push(newKey);
+  });
+  SEL_KEY=newKey;
+  buildCanvas(); renderLayers(); markDirty();
+}
+
 function markDirty(){
   if(typeof window.updateHistoryUI==='function' && document.getElementById('hist-panel')?.classList.contains('show')) window.updateHistoryUI();
 
@@ -7757,49 +7942,47 @@ function hideSnapGuides(){
     });
   }
 
-  document.addEventListener('DOMContentLoaded', function(){
-    // Close button
-    var closeBtn = document.getElementById('rs-close-btn');
-    if(closeBtn) closeBtn.addEventListener('click', closeReelSettings);
+  // Close button
+  var closeBtn = document.getElementById('rs-close-btn');
+  if(closeBtn) closeBtn.addEventListener('click', closeReelSettings);
 
-    // Escape key to close
-    document.addEventListener('keydown', function(e){
-      if(e.key === 'Escape') closeReelSettings();
-    });
+  // Escape key to close
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape') closeReelSettings();
+  });
 
-    // ── Slider handlers ──
-    function wire(id, fn){
-      var el = document.getElementById(id);
-      if(el) el.addEventListener('input', fn);
-    }
-    wire('rs-scale', function(e){
-      P.reelSettings.scale = parseFloat(e.target.value)/100;
-      document.getElementById('rs-scale-val').textContent = P.reelSettings.scale.toFixed(1)+'×';
-      buildCanvas(); markDirty();
-    });
-    wire('rs-padx', function(e){
-      P.reelSettings.padX = parseInt(e.target.value);
-      document.getElementById('rs-padx-val').textContent = P.reelSettings.padX+'px';
-      buildCanvas(); markDirty();
-    });
-    wire('rs-pady', function(e){
-      P.reelSettings.padY = parseInt(e.target.value);
-      document.getElementById('rs-pady-val').textContent = P.reelSettings.padY+'px';
-      buildCanvas(); markDirty();
-    });
-    wire('rs-overlap-sym', function(e){
-      if(!P.reelSettings) P.reelSettings = {};
-      if(!P.reelSettings.overlap) P.reelSettings.overlap = {id:null, amount:0};
-      P.reelSettings.overlap.id = e.target.value || null;
-      buildCanvas(); markDirty();
-    });
-    wire('rs-overlap-amt', function(e){
-      if(!P.reelSettings) P.reelSettings = {};
-      if(!P.reelSettings.overlap) P.reelSettings.overlap = {id:null, amount:0};
-      P.reelSettings.overlap.amount = parseInt(e.target.value);
-      document.getElementById('rs-overlap-amt-val').textContent = P.reelSettings.overlap.amount+'%';
-      buildCanvas(); markDirty();
-    });
+  // ── Slider handlers ──
+  function wire(id, fn){
+    var el = document.getElementById(id);
+    if(el) el.addEventListener('input', fn);
+  }
+  wire('rs-scale', function(e){
+    P.reelSettings.scale = parseFloat(e.target.value)/100;
+    document.getElementById('rs-scale-val').textContent = P.reelSettings.scale.toFixed(1)+'×';
+    buildCanvas(); markDirty();
+  });
+  wire('rs-padx', function(e){
+    P.reelSettings.padX = parseInt(e.target.value);
+    document.getElementById('rs-padx-val').textContent = P.reelSettings.padX+'px';
+    buildCanvas(); markDirty();
+  });
+  wire('rs-pady', function(e){
+    P.reelSettings.padY = parseInt(e.target.value);
+    document.getElementById('rs-pady-val').textContent = P.reelSettings.padY+'px';
+    buildCanvas(); markDirty();
+  });
+  wire('rs-overlap-sym', function(e){
+    if(!P.reelSettings) P.reelSettings = {};
+    if(!P.reelSettings.overlap) P.reelSettings.overlap = {id:null, amount:0};
+    P.reelSettings.overlap.id = e.target.value || null;
+    buildCanvas(); markDirty();
+  });
+  wire('rs-overlap-amt', function(e){
+    if(!P.reelSettings) P.reelSettings = {};
+    if(!P.reelSettings.overlap) P.reelSettings.overlap = {id:null, amount:0};
+    P.reelSettings.overlap.amount = parseInt(e.target.value);
+    document.getElementById('rs-overlap-amt-val').textContent = P.reelSettings.overlap.amount+'%';
+    buildCanvas(); markDirty();
   });
 
   // Expose so _loadDefaultSymbols can refresh thumbnails after fetch
@@ -7897,6 +8080,7 @@ window._sfApplyPayload = function(payload){
   try { if(s.holdnspin && typeof s.holdnspin==='object') P.holdnspin = Object.assign(P.holdnspin||{}, s.holdnspin); } catch(e){}
   try { if(s.adjs  && typeof EL_ADJ   !== 'undefined') Object.assign(EL_ADJ,   s.adjs);  } catch(e){}
   try { if(s.masks && typeof EL_MASKS !== 'undefined') Object.assign(EL_MASKS, s.masks); } catch(e){}
+  try { if(s.blendModes && typeof EL_BLEND_MODES!=='undefined') { Object.keys(EL_BLEND_MODES).forEach(function(k){delete EL_BLEND_MODES[k];}); Object.assign(EL_BLEND_MODES, s.blendModes); } } catch(e){}
   try { if(Array.isArray(s.userLocks) && typeof USER_LOCKS !== 'undefined'){ USER_LOCKS.clear(); s.userLocks.forEach(function(k){ USER_LOCKS.add(k); }); } } catch(e){}
   try { if(s.elVP && s.elVP.portrait)  Object.assign(EL_VP.portrait,  s.elVP.portrait);  } catch(e){}
   try { if(s.elVP && s.elVP.landscape) Object.assign(EL_VP.landscape, s.elVP.landscape); } catch(e){}
@@ -7986,6 +8170,7 @@ window._sfBridge = (function(){
       keyOrders:   (function(){ var ko={}; try{ Object.entries(typeof SDEFS!=='undefined'?SDEFS:{}).forEach(function(e){ if(e[1].keys) ko[e[0]]=[].concat(e[1].keys); }); }catch(ex){} return ko; })(),
       // Save custom layer definitions (PSD entries for custom_N keys) — required for layers to survive reload
       customPsd:   (function(){ var cp={}; try{ Object.entries(typeof PSD!=='undefined'?PSD:{}).forEach(function(e){ if(e[0].indexOf('custom_')===0) cp[e[0]]=e[1]; }); }catch(ex){} return cp; })(),
+      blendModes:  (function(){ var bm={}; try{ Object.entries(EL_BLEND_MODES).forEach(function(e){ if(e[1]&&e[1]!=='normal') bm[e[0]]=e[1]; }); }catch(ex){} return bm; })(),
     };
   }
 
@@ -8192,6 +8377,19 @@ window._sfBridge = (function(){
         if(typeof renderLayers  === 'function') renderLayers();
         if(typeof markDirty     === 'function') markDirty();
       } catch(e) { console.warn('[SF] SF_INJECT_IMAGE_LAYER failed:', e); }
+    }
+
+    if(msg.type === 'SF_LAYER_OP'){
+      var op=msg.op, k=msg.key;
+      try {
+        if(op==='select'&&k) { selectEl(k); }
+        else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas();renderLayers();markDirty(); }
+        else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers();markDirty(); }
+        else if(op==='delete'&&k){ deleteCustomLayer(k); }
+        else if(op==='duplicate'&&k){ duplicateLayer(k); }
+        else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas();markDirty(); }
+        else if(op==='addLayer'){ document.getElementById('add-layer-btn')?.click(); }
+      } catch(ex){ console.error('[SF_LAYER_OP]',ex); }
     }
   });
 

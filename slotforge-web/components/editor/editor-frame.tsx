@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { autosaveProject, createSnapshot, getSnapshots, restoreSnapshot } from '../../actions/editor'
 import type { ProjectSnapshot, SaveState } from '../../types'
 import { AssetsPanel } from '../generate/AssetsPanel'
+import { LayersPanel } from './LayersPanel'
 import type { AssetType } from '@/types/assets'
 
 interface EditorFrameProps { projectId: string; orgSlug: string; initialPayload: Record<string, unknown> | null; projectName: string }
@@ -12,15 +13,18 @@ const TOOLBAR_H = 44
 
 // Version string — propagated to editor.js via slotforge.html?v= so the browser
 // re-fetches editor.js whenever this value changes. Bump on every editor.js deploy.
-const EDITOR_VERSION = 'v28'
+const EDITOR_VERSION = 'v29'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe to hide the duplicate Assets tab
+// and the built-in right panel (layers panel is now in the React shell).
 const IFRAME_HIDE_ASSETS_CSS = `
   /* Hide the Assets tab button so only Layers is shown */
   #rp-tab-assets { display: none !important; }
   /* Ensure library section stays hidden */
   #library-section { display: none !important; }
+  /* Hide the built-in right panel — React LayersPanel replaces it */
+  #right-panel { display: none !important; }
 `
 
 function SaveBadge({ state }: { state: SaveState }) {
@@ -295,6 +299,9 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           onAddToCanvas={handleAddToCanvas}
           toolbarHeight={TOOLBAR_H}
         />
+
+        {/* Floating Layers panel — snaps beside the Assets panel (320px offset from right) */}
+        <LayersPanel toolbarHeight={TOOLBAR_H} rightOffset={320} />
 
         {/* Version history slide-in */}
         {historyOpen && (
