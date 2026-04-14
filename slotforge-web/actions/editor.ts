@@ -19,11 +19,11 @@ export async function autosaveProject(projectId: string, payload: Record<string,
   delete cleanPayload._thumbnail
 
   // Strip base64 data URLs from assets — they can be several MB each and blow the payload limit.
-  // Only keep assets that are proper https:// URLs (Supabase Storage / CDN).
+  // Exception: custom_N layers have no CDN path, so their base64 is the only copy — keep it.
   if (cleanPayload.assets && typeof cleanPayload.assets === 'object') {
     const safeAssets: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(cleanPayload.assets as Record<string, unknown>)) {
-      if (typeof v === 'string' && v.startsWith('data:')) continue // skip base64
+      if (typeof v === 'string' && v.startsWith('data:') && !k.startsWith('custom_')) continue
       safeAssets[k] = v
     }
     cleanPayload.assets = safeAssets
