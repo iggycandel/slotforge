@@ -2628,6 +2628,10 @@ document.getElementById('add-layer-btn').addEventListener('click',()=>{
     reader.onload=ev=>{
       EL_ASSETS[key]=ev.target.result;
       buildCanvas(); renderLayers(); markDirty();
+      // Upload to CDN so asset survives autosaveProject's base64-strip.
+      // _sfUploadDataUrlToStorage swaps EL_ASSETS[key] to CDN URL when done,
+      // then calls _sfSaveNow() to persist the CDN URL immediately.
+      if(typeof _sfUploadDataUrlToStorage==='function') _sfUploadDataUrlToStorage(key, ev.target.result);
     };
     reader.readAsDataURL(file);
   };
@@ -4671,9 +4675,12 @@ function pasteAsset(targetKey){
 
   if(!k){ showToast('Select a layer to paste onto'); return; }
 
-  // Paste asset URL
+  // Paste asset URL — if it's still base64, trigger a CDN upload so it survives the save strip
   if(ASSET_CLIPBOARD.assetURL){
     EL_ASSETS[k] = ASSET_CLIPBOARD.assetURL;
+    if(typeof ASSET_CLIPBOARD.assetURL === 'string' && ASSET_CLIPBOARD.assetURL.startsWith('data:') && typeof _sfUploadDataUrlToStorage==='function'){
+      _sfUploadDataUrlToStorage(k, ASSET_CLIPBOARD.assetURL);
+    }
   }
   // Paste adjustments
   const adj = EL_ADJ[k] || {brightness:0,contrast:0,saturation:0,opacity:100};
