@@ -1948,6 +1948,9 @@ function attachUpload(row, storageKey, onDone){
         EL_ASSETS[storageKey]=ev.target.result;
         const cel=document.getElementById('el-'+storageKey);
         if(cel){ cel.innerHTML=''; const img=document.createElement('img'); img.src=ev.target.result; img.style.cssText='width:100%;height:100%;object-fit:contain;pointer-events:none;border-radius:inherit'; cel.appendChild(img); }
+        // Kick off CDN upload so the asset gets a persistent https:// URL in Supabase.
+        // Without this, base64 is stripped on save and the asset is lost on re-entry.
+        if(typeof _sfUploadDataUrlToStorage === 'function') _sfUploadDataUrlToStorage(storageKey, ev.target.result);
         if(onDone) onDone();
       };
       reader.readAsDataURL(file);
@@ -2075,7 +2078,11 @@ function renderLayers(){
         inp.onchange=()=>{
           const file=inp.files[0]; if(!file) return;
           const reader=new FileReader();
-          reader.onload=ev=>{ EL_ASSETS[scrKey]=ev.target.result; buildCanvas(); renderLayers(); markDirty(); };
+          reader.onload=ev=>{
+            EL_ASSETS[scrKey]=ev.target.result;
+            if(typeof _sfUploadDataUrlToStorage === 'function') _sfUploadDataUrlToStorage(scrKey, ev.target.result);
+            buildCanvas(); renderLayers(); markDirty();
+          };
           reader.readAsDataURL(file);
         }; inp.click();
       });
@@ -8080,7 +8087,7 @@ window._sfBridge = (function(){
     } catch(ex){}
     window.parent.postMessage({ type: 'SF_DIRTY', snapshot: settingsSnapshot }, '*');
     clearTimeout(_autosaveTimer);
-    _autosaveTimer = setTimeout(triggerSave, 4000);
+    _autosaveTimer = setTimeout(triggerSave, 1500);
   };
 
   /* ─── 8b. Expose immediate-save for CDN upload callback ─── */
