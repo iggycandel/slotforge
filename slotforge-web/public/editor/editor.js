@@ -3336,6 +3336,11 @@ function _sfUploadDataUrlToStorage(assetKey, dataUrl){
         // payloadRef with the CDN URL (handles the beforeunload / unmount save path).
         window.parent.postMessage({ type: 'SF_ASSET_CDN_URL', assetKey: assetKey, url: url }, '*');
         try{
+          // Guard: only save if the payload has already been applied.
+          // CDN callbacks can fire asynchronously during init (resolving URLs from a
+          // previous session) BEFORE _sfApplyPayload has run, which would trigger a
+          // save with default P state (char.enabled=false) and overwrite the user's settings.
+          if(typeof window._sfPayloadLoaded !== 'undefined' && !window._sfPayloadLoaded) return;
           if(typeof window._sfSaveNow === 'function') window._sfSaveNow();
           else if(typeof markDirty === 'function') markDirty();
         }catch(e){}
@@ -7853,8 +7858,9 @@ window._sfPickAndUpload = function(assetKey, onDone){
 
 window._sfApplyPayload = function(payload){
   var s = payload;
-  // DIAGNOSTIC — remove once char bug is confirmed fixed
-  console.log('[SF] _sfApplyPayload called. payload.char =', JSON.stringify(s.char));
+  // Reset the load gate so markDirty can't fire a stale save if the editor
+  // is reloaded / re-initialised without a full page reload.
+  window._sfPayloadLoaded = false;
   try { if(s.gameName !== undefined) P.gameName = s.gameName; } catch(e){}
   try { if(s.theme    !== undefined) P.theme    = s.theme;    } catch(e){}
   try { if(s.colors   !== undefined) P.colors   = s.colors;   } catch(e){}
@@ -7876,8 +7882,6 @@ window._sfApplyPayload = function(payload){
       if(s.char.scale   !== undefined) P.char.scale   = s.char.scale;
     }
   } catch(e){}
-  // DIAGNOSTIC
-  console.log('[SF] After char restore: P.char.enabled =', P.char.enabled);
   try { if(s.ante) Object.assign(P.ante, s.ante); } catch(e){}
   try { if(s.msgPos !== undefined) P.msgPos = s.msgPos; } catch(e){}
   try { if(s.viewport) P.viewport = s.viewport; } catch(e){}
@@ -7916,6 +7920,8 @@ window._sfApplyPayload = function(payload){
   try { if(typeof renderLayers==='function')  renderLayers();  } catch(e){}
   try { if(typeof renderLibrary==='function') renderLibrary(); } catch(e){}
   try { document.getElementById('ov-props-panel')?.classList.remove('show'); } catch(e){}
+  // Mark payload as fully applied so markDirty / CDN callbacks are allowed to trigger saves.
+  window._sfPayloadLoaded = true;
 };
 
 /* ── SlotForge postMessage bridge ── */
@@ -7987,8 +7993,6 @@ window._sfBridge = (function(){
   /* ─── 5. Trigger save ─── */
   function triggerSave(){
     var p = getPayload();
-    // DIAGNOSTIC — remove once char bug is confirmed fixed
-    console.log('[SF] triggerSave: char.enabled =', p.char && p.char.enabled);
     window.parent.postMessage({
       type: 'SF_AUTOSAVE',
       payload: p,
@@ -8059,6 +8063,11 @@ window._sfBridge = (function(){
   /* ─── 8. Hook markDirty ─── */
   var _origMarkDirty = window.markDirty;
   var _autosaveTimer = null;
+  // _sfPayloadLoaded: set to true at the end of _sfApplyPayload.
+  // Prevents init-time markDirty calls (CDN callbacks, canvas renders, etc.)
+  // from scheduling an autosave BEFORE the saved payload has been applied,
+  // which would overwrite stored settings (e.g. char.enabled=true) with defaults.
+  window._sfPayloadLoaded = false;
   window.markDirty = function(){
     if(_origMarkDirty) _origMarkDirty.apply(this, arguments);
     // Send a lightweight settings-only snapshot with every SF_DIRTY so the shell
@@ -8093,6 +8102,11 @@ window._sfBridge = (function(){
       };
     } catch(ex){}
     window.parent.postMessage({ type: 'SF_DIRTY', snapshot: settingsSnapshot }, '*');
+    // Only schedule an autosave if the payload has already been fully applied.
+    // Without this guard, renders and CDN callbacks that fire during init would
+    // schedule a save with default P values (char.enabled=false) before
+    // _sfApplyPayload has a chance to restore the user's saved settings.
+    if(!window._sfPayloadLoaded) return;
     clearTimeout(_autosaveTimer);
     _autosaveTimer = setTimeout(triggerSave, 1500);
   };
