@@ -10,7 +10,7 @@ const VP={
   desktop:   {label:'Desktop 16:9',    cx:0,  cy:0,   cw:2000,ch:1125}
 };
 
-// Positions measured from reference screenshots (Fruity Thrills) and scaled to 2000×2000 canvas.
+// Positions measured from reference screenshots (Fuity Thrills) and scaled to 2000×2000 canvas.
 // Portrait display: canvas crops x:441–1425 (w:984) at full 2000px height.
 // Landscape display: canvas full 2000px wide × 1125px height.
 //
