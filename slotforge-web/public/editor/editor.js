@@ -1,4 +1,4 @@
-// ═══ STATE ═══ 
+// ═══ STATE ═══
 const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:true,t2:true,t3:true},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{}};
 let LIB_CAT='All'; // active library category filter
 let LIB_TAB='uploads'; // 'uploads' or 'placeholders'
@@ -10,7 +10,7 @@ const VP={
   desktop:   {label:'Desktop 16:9',    cx:0,  cy:0,   cw:2000,ch:1125}
 };
 
-// Positions measured from reference screenshots (Fuity Thrills) and scaled to 2000×2000 canvas.
+// Positions measured from reference screenshots (Fruity Thrills) and scaled to 2000×2000 canvas.
 // Portrait display: canvas crops x:441–1425 (w:984) at full 2000px height.
 // Landscape display: canvas full 2000px wide × 1125px height.
 //
@@ -8076,8 +8076,9 @@ window._sfBridge = (function(){
     var settingsSnapshot = null;
     try {
       var p = getPayload();
-      // Keep everything except the large blobs
-      // Filter assets to CDN URLs only — drop base64 blobs to keep message small.
+      // Filter assets to CDN URLs only — drop base64 blobs to keep the message small.
+      // adjs, masks, keyOrders are included so payloadRef always has complete layer data
+      // and the unmount save doesn't lose newly-added layers.
       var cdnAssets = {};
       try {
         Object.entries(p.assets || {}).forEach(function(kv){
@@ -8110,13 +8111,10 @@ window._sfBridge = (function(){
       };
     } catch(ex){}
     window.parent.postMessage({ type: 'SF_DIRTY', snapshot: settingsSnapshot }, '*');
-    // Only schedule an autosave if the payload has already been fully applied.
-    // Without this guard, renders and CDN callbacks that fire during init would
-    // schedule a save with default P values (char.enabled=false) before
-    // _sfApplyPayload has a chance to restore the user's saved settings.
-    if(!window._sfPayloadLoaded) return;
-    clearTimeout(_autosaveTimer);
-    _autosaveTimer = setTimeout(triggerSave, 1500);
+    // Debounced autosave removed. Saves are triggered by:
+    //   1. The explicit "Save" button / Cmd+S in the shell (SF_REQUEST_SAVE → triggerSave)
+    //   2. The 30-second periodic nudge in the shell when status is dirty
+    // This prevents stale partial-payload writes that caused layers to disappear.
   };
 
   /* ─── 8b. Expose immediate-save for CDN upload callback ─── */
