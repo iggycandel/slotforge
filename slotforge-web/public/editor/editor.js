@@ -9556,6 +9556,10 @@ window._sfBridge = (function(){
             }
           }
         }
+        else if(op==='zForward'&&k){ layerReorder(k,'forward'); }
+        else if(op==='zFront'&&k){   layerReorder(k,'front');   }
+        else if(op==='zBackward'&&k){ layerReorder(k,'backward'); }
+        else if(op==='zBack'&&k){    layerReorder(k,'back');    }
         else if(op==='addGroup'){
           var gNum=Object.keys(PSD).filter(function(x){return x.startsWith('group_');}).length+1;
           var gKey='group_'+gNum;

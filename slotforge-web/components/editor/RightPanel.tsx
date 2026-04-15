@@ -86,9 +86,7 @@ export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
   // Context menu state
   const [ctxMenu, setCtxMenu] = useState<{ key: string; x: number; y: number } | null>(null)
 
-  // Drag-to-reorder state
-  const dragKey    = useRef<string | null>(null)
-  const [dragOver, setDragOver] = useState<string | null>(null)
+  // (drag-to-reorder removed — use ▲▼ z-order buttons instead)
 
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -147,48 +145,16 @@ export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
     return () => window.removeEventListener('mousedown', close)
   }, [blendOpen])
 
-  // ── Drag-to-reorder handlers (fixed: use onDragEnter for state, onDragOver just prevents default) ──
+  // ── Z-order helpers ────────────────────────────────────────────────────────
 
-  function onDragStart(key: string, e: React.DragEvent) {
-    dragKey.current = key
-    e.dataTransfer.effectAllowed = 'move'
-    // Invisible ghost so we control the visual feedback ourselves
-    const ghost = document.createElement('div')
-    ghost.style.cssText = 'position:fixed;top:-999px;left:-999px;width:1px;height:1px;opacity:0'
-    document.body.appendChild(ghost)
-    e.dataTransfer.setDragImage(ghost, 0, 0)
-    requestAnimationFrame(() => { if (ghost.parentNode) document.body.removeChild(ghost) })
+  function zUp(key: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    sendOp(e.altKey ? 'zFront' : 'zForward', key)
   }
 
-  function onDragEnter(targetKey: string, e: React.DragEvent) {
-    e.preventDefault()
-    if (dragKey.current && dragKey.current !== targetKey) setDragOver(targetKey)
-  }
-
-  function onDragOverRow(e: React.DragEvent) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }
-
-  function onDragLeave(targetKey: string, e: React.DragEvent) {
-    const related = e.relatedTarget as HTMLElement | null
-    if (!related || !(e.currentTarget as HTMLElement).contains(related)) {
-      setDragOver(v => v === targetKey ? null : v)
-    }
-  }
-
-  function onDrop(targetKey: string, e: React.DragEvent) {
-    e.preventDefault()
-    const from = dragKey.current
-    dragKey.current = null
-    setDragOver(null)
-    if (!from || from === targetKey) return
-    sendOp('reorder', from, { targetKey, position: 'before' })
-  }
-
-  function onDragEnd() {
-    dragKey.current = null
-    setDragOver(null)
+  function zDown(key: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    sendOp(e.altKey ? 'zBack' : 'zBackward', key)
   }
 
   // ── Context menu handler ───────────────────────────────────────────────────
@@ -303,35 +269,36 @@ export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
               layers.map(layer => (
                 <div
                   key={layer.key}
-                  draggable
-                  onDragStart={e => onDragStart(layer.key, e)}
-                  onDragEnter={e => onDragEnter(layer.key, e)}
-                  onDragOver={onDragOverRow}
-                  onDragLeave={e => onDragLeave(layer.key, e)}
-                  onDrop={e => onDrop(layer.key, e)}
-                  onDragEnd={onDragEnd}
                   onClick={() => { sendOp('select', layer.key); setBlendOpen(null); setCtxMenu(null) }}
                   onContextMenu={e => openCtx(layer.key, e)}
                   style={{
-                    display:       'flex',
-                    alignItems:    'center',
-                    gap:           6,
-                    padding:       '5px 10px',
-                    cursor:        'pointer',
-                    background:    layer.isSelected
-                      ? 'rgba(201,168,76,.08)'
-                      : dragOver === layer.key
-                        ? 'rgba(201,168,76,.04)'
-                        : 'transparent',
-                    borderLeft:    layer.isSelected ? `2px solid ${T.gold}` : '2px solid transparent',
-                    borderTop:     dragOver === layer.key ? `1px solid ${T.gold}` : '1px solid transparent',
-                    opacity:       layer.isOff || layer.isHidden ? 0.4 : 1,
-                    userSelect:    'none',
-                    transition:    'background .1s',
+                    display:    'flex',
+                    alignItems: 'center',
+                    gap:        6,
+                    padding:    '5px 10px',
+                    cursor:     'pointer',
+                    background: layer.isSelected ? 'rgba(201,168,76,.08)' : 'transparent',
+                    borderLeft: layer.isSelected ? `2px solid ${T.gold}` : '2px solid transparent',
+                    opacity:    layer.isOff || layer.isHidden ? 0.4 : 1,
+                    userSelect: 'none',
+                    transition: 'background .1s',
                   }}
                 >
-                  {/* Drag handle + type icon */}
-                  <span style={{ fontSize: 12, flexShrink: 0, lineHeight: 1, cursor: 'grab', color: T.textFaint }}>⠿</span>
+                  {/* Z-order buttons */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0 }}>
+                    <button
+                      onClick={e => zUp(layer.key, e)}
+                      title="Move Forward  (alt = Bring to Front)"
+                      style={{ ...iconBtn, color: T.textFaint, padding: '1px 2px', fontSize: 8, lineHeight: 1 }}
+                    >▲</button>
+                    <button
+                      onClick={e => zDown(layer.key, e)}
+                      title="Move Backward  (alt = Send to Back)"
+                      style={{ ...iconBtn, color: T.textFaint, padding: '1px 2px', fontSize: 8, lineHeight: 1 }}
+                    >▼</button>
+                  </div>
+
+                  {/* Type icon */}
                   <span style={{ fontSize: 12, flexShrink: 0, lineHeight: 1 }}>
                     {layerTypeIcon(layer.type)}
                   </span>
