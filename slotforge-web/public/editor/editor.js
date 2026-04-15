@@ -6901,6 +6901,11 @@ function init(){
   initHistory();
   rebuildTabs();
   switchScreen('base'); // start on base game so placeholders are immediately visible
+  // Ensure workspace topbars start in the correct hidden/visible state immediately
+  // (before any switchWorkspace call, so #topbar-features etc. are not shown)
+  updateWorkspaceUI();
+  // Ensure proj-fs overlay is dismissed — it may have been left open from a prior session
+  document.getElementById('proj-fs')?.classList.remove('show');
 }
 init();
 

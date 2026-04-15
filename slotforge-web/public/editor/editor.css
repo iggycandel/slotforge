@@ -743,6 +743,7 @@ svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:non
 #topbar-canvas{display:flex;flex:1;overflow:hidden;align-items:center}
 #topbar-flow{display:none;flex:1;align-items:center;padding:0 12px;gap:8px}
 #topbar-project{display:none;flex:1;align-items:center;padding:0 12px;gap:8px}
+#topbar-features{display:none;flex:1;align-items:center;padding:0 12px;gap:8px}
 #topbar-marketing{display:none;flex:1;align-items:center;padding:0 12px;gap:8px}
 .tb-ws-label{font-size:11px;color:#9898b8;font-family:'Space Grotesk',sans-serif;display:flex;align-items:center;gap:6px}
 .tb-ws-label strong{color:#e0deda}
