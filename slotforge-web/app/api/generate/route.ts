@@ -10,6 +10,12 @@ import { z }                     from 'zod'
 import { generateSlotAssets }    from '@/lib/generation/pipeline'
 import type { AssetType }        from '@/types/assets'
 
+// ─── Vercel function timeout ─────────────────────────────────────────────────
+// 15 assets × ~25 s each (in batches of 3) ≈ 125 s.
+// Raise the limit so the stream isn't cut mid-generation.
+// Vercel Pro allows up to 300 s; adjust to 60 for Hobby plans.
+export const maxDuration = 300
+
 // ─── Request schema ──────────────────────────────────────────────────────────
 
 const RequestSchema = z.object({
@@ -67,6 +73,12 @@ export async function POST(req: NextRequest) {
           {
             onProgress: (completed, total, lastType) => {
               emit('progress', { completed, total, lastType })
+            },
+            // Stream each asset the moment it's generated + uploaded.
+            // The client handles 'asset' events to show tiles progressively
+            // instead of waiting for the full 'complete' event.
+            onAssetComplete: (asset) => {
+              emit('asset', asset)
             },
           }
         )

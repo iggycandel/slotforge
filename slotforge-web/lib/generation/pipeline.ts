@@ -30,8 +30,10 @@ const GENERATION_CONCURRENCY = 3
 // ─── Main pipeline ───────────────────────────────────────────────────────────
 
 export interface PipelineOptions {
-  provider?:      AIProvider
-  onProgress?:    (completed: number, total: number, lastType: AssetType) => void
+  provider?:        AIProvider
+  onProgress?:      (completed: number, total: number, lastType: AssetType) => void
+  /** Called immediately after each asset is generated AND uploaded — enables per-asset SSE streaming */
+  onAssetComplete?: (asset: GeneratedAsset) => void
 }
 
 export interface PipelineResult {
@@ -48,15 +50,19 @@ export async function generateSlotAssets(
 ): Promise<PipelineResult> {
   const { theme, project_id } = req
   const provider = (req.provider ?? opts.provider ?? 'auto') as AIProvider
-  const { onProgress } = opts
+  const { onProgress, onAssetComplete } = opts
 
   const total    = ALL_TYPES.length
   let completed  = 0
 
-  // ── Step 1: Generate all images in parallel batches ───────────────────────
-
-  const generatedUrls: Map<AssetType, { url: string; provider: 'runway' | 'openai' | 'mock' }> = new Map()
   const generationErrors: Map<AssetType, string> = new Map()
+  const failedStorage: Array<{ type: AssetType; error: string }> = []
+  const assetMap = new Map<AssetType, GeneratedAsset>()
+
+  // ── Generate + upload in interleaved batches ───────────────────────────────
+  // Each batch: generate in parallel → upload immediately → notify via onAssetComplete
+  // This lets the SSE stream deliver assets one-by-one instead of all-at-once,
+  // avoiding Vercel's 60 s function timeout on large generations.
 
   for (let i = 0; i < ALL_TYPES.length; i += GENERATION_CONCURRENCY) {
     const batch = ALL_TYPES.slice(i, i + GENERATION_CONCURRENCY)
@@ -69,11 +75,24 @@ export async function generateSlotAssets(
       })
     )
 
+    // Separate successes from failures and report progress
+    const batchUploads: Array<{
+      type:      AssetType
+      sourceUrl: string
+      prompt:    string
+      provider:  'runway' | 'openai' | 'mock'
+    }> = []
+
     for (let j = 0; j < results.length; j++) {
       const r = results[j]
       const t = batch[j]
       if (r.status === 'fulfilled') {
-        generatedUrls.set(t, { url: r.value.url, provider: r.value.provider })
+        batchUploads.push({
+          type:      t,
+          sourceUrl: r.value.url,
+          prompt:    r.value.prompt,
+          provider:  r.value.provider,
+        })
       } else {
         generationErrors.set(t, r.reason instanceof Error ? r.reason.message : String(r.reason))
         console.error(`[pipeline] Generation failed for ${t}:`, r.reason)
@@ -81,31 +100,23 @@ export async function generateSlotAssets(
       completed++
       onProgress?.(completed, total, t)
     }
-  }
 
-  // ── Step 2: Upload successful images to Supabase Storage ──────────────────
-
-  const uploadJobs = Array.from(generatedUrls.entries()).map(([type, val]) => ({
-    type,
-    sourceUrl: val.url,
-    prompt:    buildPrompt(type, theme).prompt,
-    provider:  val.provider,
-  }))
-
-  const uploadResults = await uploadGeneratedAssets(project_id, theme, uploadJobs)
-
-  // ── Step 3: Assemble result structure ─────────────────────────────────────
-
-  const assetMap = new Map<AssetType, GeneratedAsset>()
-  const failedStorage: Array<{ type: AssetType; error: string }> = []
-
-  for (const r of uploadResults) {
-    if ('error' in r) {
-      failedStorage.push(r)
-    } else {
-      assetMap.set(r.type, r)
+    // Upload this batch to Supabase Storage immediately (don't wait for all 15)
+    if (batchUploads.length > 0) {
+      const batchResults = await uploadGeneratedAssets(project_id, theme, batchUploads)
+      for (const r of batchResults) {
+        if ('error' in r) {
+          failedStorage.push(r)
+        } else {
+          assetMap.set(r.type, r)
+          // Fire per-asset callback so the route can emit an SSE 'asset' event immediately
+          onAssetComplete?.(r)
+        }
+      }
     }
   }
+
+  // ── Assemble result structure ─────────────────────────────────────────────
 
   const allFailed: Array<{ type: AssetType; error: string }> = [
     ...Array.from(generationErrors.entries()).map(([type, error]) => ({ type, error })),

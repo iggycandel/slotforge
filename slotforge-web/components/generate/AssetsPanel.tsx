@@ -392,36 +392,72 @@ function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddTo
           const ev  = chunk.match(/^event: (\w+)/m)?.[1]
           const raw = chunk.match(/^data: ([\s\S]+)/m)?.[1]
           if (!ev || !raw) continue
-          const data = JSON.parse(raw)
-          if (ev === 'start')    setGenStatus(s => ({ ...s, total: data.total }))
-          if (ev === 'progress') setGenStatus(s => ({ ...s, completed: data.completed, total: data.total }))
-          if (ev === 'complete') {
-            const newAssets: Partial<Record<AssetType, GeneratedAsset>> = {}
-            if (data.partial?.backgrounds?.base)  newAssets.background_base  = data.partial.backgrounds.base
-            if (data.partial?.backgrounds?.bonus) newAssets.background_bonus = data.partial.backgrounds.bonus
-            data.partial?.symbols?.high?.forEach((a: GeneratedAsset, i: number) => {
-              if (a) newAssets[`symbol_high_${i+1}` as AssetType] = a
-            })
-            data.partial?.symbols?.low?.forEach((a: GeneratedAsset, i: number) => {
-              if (a) newAssets[`symbol_low_${i+1}` as AssetType] = a
-            })
-            if (data.partial?.symbols?.wild)    newAssets.symbol_wild    = data.partial.symbols.wild
-            if (data.partial?.symbols?.scatter) newAssets.symbol_scatter = data.partial.symbols.scatter
-            if (Array.isArray(data.assets)) {
-              data.assets.forEach((a: GeneratedAsset) => { if (a?.type && a?.url) newAssets[a.type as AssetType] = a })
+          let data: unknown
+          try { data = JSON.parse(raw) } catch { continue }
+
+          if (ev === 'start') {
+            setGenStatus(s => ({ ...s, total: (data as { total: number }).total }))
+          }
+
+          if (ev === 'progress') {
+            const d = data as { completed: number; total: number }
+            setGenStatus(s => ({ ...s, completed: d.completed, total: d.total }))
+          }
+
+          // ── Per-asset streaming event — show tile the moment it's ready ──
+          if (ev === 'asset') {
+            const a = data as GeneratedAsset
+            if (a?.type && a?.url) {
+              setAssets(prev => ({ ...prev, [a.type as AssetType]: a }))
+              // Prepend to history without duplicates
+              setExisting(prev => [a, ...prev.filter(e => e.id !== a.id)])
             }
-            if (data.partial?.logo) newAssets.logo = data.partial.logo
-            setAssets(newAssets)
+          }
+
+          if (ev === 'complete') {
+            const d = data as {
+              success: boolean
+              partial?: {
+                backgrounds?: { base?: GeneratedAsset; bonus?: GeneratedAsset }
+                symbols?: { high?: GeneratedAsset[]; low?: GeneratedAsset[]; wild?: GeneratedAsset; scatter?: GeneratedAsset }
+                logo?: GeneratedAsset
+              }
+              assets?: GeneratedAsset[]
+              failed?: Array<{ type: AssetType; error: string }>
+            }
+            // Merge any assets from 'complete' that weren't already received via 'asset' events
+            // (keeps backward compat if the server is still on the old pipeline)
+            const mergeAssets: Partial<Record<AssetType, GeneratedAsset>> = {}
+            if (d.partial?.backgrounds?.base)  mergeAssets.background_base  = d.partial.backgrounds.base
+            if (d.partial?.backgrounds?.bonus) mergeAssets.background_bonus = d.partial.backgrounds.bonus
+            d.partial?.symbols?.high?.forEach((a, i) => { if (a) mergeAssets[`symbol_high_${i+1}` as AssetType] = a })
+            d.partial?.symbols?.low?.forEach((a,  i) => { if (a) mergeAssets[`symbol_low_${i+1}`  as AssetType] = a })
+            if (d.partial?.symbols?.wild)    mergeAssets.symbol_wild    = d.partial.symbols.wild
+            if (d.partial?.symbols?.scatter) mergeAssets.symbol_scatter = d.partial.symbols.scatter
+            if (d.partial?.logo)             mergeAssets.logo           = d.partial.logo
+            if (Array.isArray(d.assets)) {
+              d.assets.forEach(a => { if (a?.type && a?.url) mergeAssets[a.type as AssetType] = a })
+            }
+            // Merge (not replace) — 'asset' events may have already populated most tiles
+            setAssets(prev => ({ ...prev, ...mergeAssets }))
             setExisting(prev => {
-              const nl = Object.values(newAssets).filter(Boolean) as GeneratedAsset[]
-              return [...nl, ...prev]
+              const nl = Object.values(mergeAssets).filter(Boolean) as GeneratedAsset[]
+              const ids = new Set(nl.map(a => a.id))
+              return [...nl, ...prev.filter(e => !ids.has(e.id))]
             })
+            const failedCount = d.failed?.length ?? 0
             setGenStatus({
-              phase: 'done', completed: 15 - (data.failed?.length ?? 0), total: 15,
-              message: data.failed?.length > 0 ? `${data.failed.length} asset(s) failed` : undefined,
+              phase:     'done',
+              completed: 15 - failedCount,
+              total:     15,
+              message:   failedCount > 0 ? `${failedCount} asset(s) failed` : undefined,
             })
           }
-          if (ev === 'error') setGenStatus({ phase: 'error', completed: 0, total: 15, message: data.message })
+
+          if (ev === 'error') {
+            const d = data as { message?: string }
+            setGenStatus({ phase: 'error', completed: 0, total: 15, message: d.message })
+          }
         }
       }
     } catch (err) {
@@ -511,9 +547,11 @@ function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddTo
         <StatusBanner ok={false} message={genStatus.message ?? 'Generation failed'} />
       )}
 
-      {/* Newly generated this session */}
+      {/* Newly generated this session — appears as soon as the first 'asset' event arrives */}
       {assetCount > 0 && (
-        <AssetGrid label="Just generated" items={Object.entries(assets) as [AssetType, GeneratedAsset][]}
+        <AssetGrid
+          label={genStatus.phase === 'running' ? `Generating… (${assetCount}/15)` : 'Just generated'}
+          items={Object.entries(assets) as [AssetType, GeneratedAsset][]}
           onAddToCanvas={onAddToCanvas}
           onDelete={a => handleDeleteGenerated((a as GeneratedAsset).id)}
         />
