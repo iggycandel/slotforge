@@ -1700,6 +1700,13 @@ document.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key==='z'){e.preventDefault();undo();return;}
   if((e.metaKey||e.ctrlKey)&&e.shiftKey&&e.key==='s'){e.preventDefault();saveProjectFile(true);return;}
   if((e.metaKey||e.ctrlKey)&&e.key==='s'){e.preventDefault();saveProject();return;}
+  // Layer z-order: ⌘] forward, ⌥⌘] bring to front, ⌘[ backward, ⌥⌘[ send to back
+  if((e.metaKey||e.ctrlKey)&&(e.key===']'||e.key==='[')){
+    e.preventDefault();
+    const lk=SEL_KEY||(P.activeLayer!=null?SDEFS[P.screen]?.keys?.[P.activeLayer]:null);
+    if(lk) layerReorder(lk, e.key===']'?(e.altKey?'front':'forward'):(e.altKey?'back':'backward'));
+    return;
+  }
   if((e.metaKey||e.ctrlKey)&&e.key==='o'){e.preventDefault();loadProjectFile();return;}
   if(e.key==='a'&&!e.metaKey&&!e.ctrlKey&&!e.target.matches('input,textarea,select')){e.preventDefault();toggleAutoSelect();return;}
   if(e.key==='o'&&!e.metaKey&&!e.ctrlKey&&!e.target.matches('input,textarea,select')){e.preventDefault();toggleCanvasOverflow();return;}
@@ -1841,6 +1848,53 @@ document.addEventListener('keyup',e=>{
 document.getElementById('gf').addEventListener('contextmenu',e=>e.preventDefault());
 document.getElementById('gf-outer').addEventListener('contextmenu',e=>e.preventDefault());
 
+// ═══ LAYER Z-ORDER ═══
+// Normalise z values to consecutive integers 1,2,3… preserving relative order.
+function _normalizeLayerZ(keys){
+  const sorted=[...keys].filter(k=>PSD[k]).sort((a,b)=>(PSD[a].z??5)-(PSD[b].z??5));
+  sorted.forEach((k,i)=>{ if(PSD[k]) PSD[k].z=i+1; });
+}
+
+// action: 'forward' | 'front' | 'backward' | 'back'
+function layerReorder(key, action){
+  const scrDef=SDEFS[P.screen]; if(!scrDef||!scrDef.keys) return;
+  const keys=scrDef.keys;
+  // Sorted layer list for this screen (lowest z first)
+  const layers=keys.filter(k=>PSD[k])
+    .map(k=>({key:k, z:PSD[k].z??5}))
+    .sort((a,b)=>a.z-b.z);
+  const idx=layers.findIndex(l=>l.key===key); if(idx<0) return;
+  // Background guard: z===1 is always the bottom; never move below it
+  const bgIdx=layers.findIndex(l=>l.z===1);
+  const minMovable=bgIdx>=0?bgIdx+1:0;
+
+  if(action==='forward'||action==='front'){
+    if(idx>=layers.length-1) return; // already at top
+    if(action==='forward'){
+      const other=layers[idx+1];
+      const tmp=PSD[key].z; PSD[key].z=PSD[other.key].z; PSD[other.key].z=tmp;
+    } else {
+      // Bring to front: set z above current max
+      PSD[key].z=(layers[layers.length-1].z)+1;
+    }
+  } else if(action==='backward'||action==='back'){
+    if(idx<=minMovable) return; // already at min movable position
+    if(action==='backward'){
+      const other=layers[idx-1];
+      if(other.z===1) return; // don't cross bg
+      const tmp=PSD[key].z; PSD[key].z=PSD[other.key].z; PSD[other.key].z=tmp;
+    } else {
+      // Send to back: set z just above bg
+      const bgZ=bgIdx>=0?layers[bgIdx].z:0;
+      PSD[key].z=bgZ+0.5; // will be normalized to integer
+    }
+  }
+  // Normalize to clean integers and sync keys array to z-order
+  _normalizeLayerZ(keys);
+  keys.sort((a,b)=>(PSD[a]?.z??5)-(PSD[b]?.z??5));
+  buildCanvas(); renderLayers(); markDirty(); pushHistory('layer z-order');
+}
+
 // ═══ LAYERS PANEL ═══
 function makeLayerRow(label, key, type, hasAsset, isOff, isActive, indent){
   const ic={ai:'#7c5cbf',template:'#2e7d5a',symbol:'#c9a84c22'};
@@ -1856,10 +1910,11 @@ function makeLayerRow(label, key, type, hasAsset, isOff, isActive, indent){
   row.style.alignItems='center';
   if(indent) row.style.paddingLeft='22px';
   row.style.opacity=isOff?'0.38':'1';
-  row.draggable = true;
+  row.draggable = false;
   row.dataset.layerKey = key;
   row.innerHTML=`
-    <span class="li-drag" title="Drag to reorder">⠿</span>
+    <span class="li-zup" data-zkey="${key}" title="Move Forward  ⌘]\nBring to Front  ⌥⌘]">▲</span>
+    <span class="li-zdn" data-zkey="${key}" title="Move Backward  ⌘[\nSend to Back  ⌥⌘[">▼</span>
     <span class="li-eye ${isHidden?'hid':'vis'}" data-eye-key="${key}" title="${isHidden?'Show layer':'Hide layer'}">
       <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">${isHidden?'<path d="M1 1l12 8M2 6.5C3.5 5 5.1 4 7 4c.8 0 1.6.2 2.3.5M12 2c.7.9 1.3 2 1.3 3"/><line x1="1" y1="1" x2="13" y2="9"/>':'<path d="M1 5C2.5 2.5 4.5 1 7 1s4.5 1.5 6 4c-1.5 2.5-3.5 4-6 4S2.5 7.5 1 5z"/><circle cx="7" cy="5" r="1.5" fill="currentColor"/>'}</svg>
     </span>
@@ -1906,44 +1961,11 @@ function makeLayerRow(label, key, type, hasAsset, isOff, isActive, indent){
       inp.addEventListener('keydown', ev=>{ if(ev.key==='Enter') inp.blur(); if(ev.key==='Escape'){inp.value=def.label;inp.blur();} });
     });
   }
-  // Drag-to-reorder events
-  row.addEventListener('dragstart', e=>{
-    e.dataTransfer.setData('text/plain', key);
-    e.dataTransfer.effectAllowed = 'move';
-    setTimeout(()=>row.classList.add('dragging'), 0);
-  });
-  row.addEventListener('dragend', ()=>row.classList.remove('dragging'));
-  row.addEventListener('dragover', e=>{
-    e.preventDefault(); e.dataTransfer.dropEffect='move';
-    document.querySelectorAll('.li.drag-over').forEach(r=>r.classList.remove('drag-over'));
-    row.classList.add('drag-over');
-  });
-  row.addEventListener('dragleave', ()=>row.classList.remove('drag-over'));
-  row.addEventListener('drop', e=>{
-    e.preventDefault(); e.stopPropagation();
-    row.classList.remove('drag-over');
-    const fromKey = e.dataTransfer.getData('text/plain');
-    const toKey = key;
-    if(fromKey === toKey) return;
-    const keys = SDEFS[P.screen]?.keys;
-    if(!keys) return;
-    const fi = keys.indexOf(fromKey), ti = keys.indexOf(toKey);
-    if(fi < 0 || ti < 0) return;
-    // Remove fromKey then re-insert — adjust target index for the removal
-    keys.splice(fi, 1);
-    const adjustedTi = fi < ti ? ti - 1 : ti;
-    keys.splice(adjustedTi, 0, fromKey);
-    // Swap z values only when it would change the visual stack order AND
-    // neither layer is the background (bg must stay at z=1 — the bottom).
-    // This prevents bg from jumping to the top of the layers panel.
-    const fromDef = PSD[fromKey], toDef = PSD[toKey];
-    if(fromDef && toDef && fromDef.z !== toDef.z && fromDef.z !== 1 && toDef.z !== 1){
-      const tmpZ = fromDef.z;
-      fromDef.z = toDef.z;
-      toDef.z = tmpZ;
-    }
-    buildCanvas(); renderLayers(); markDirty();
-  });
+  // Z-order buttons
+  const zupBtn = row.querySelector('.li-zup');
+  const zdnBtn = row.querySelector('.li-zdn');
+  if(zupBtn) zupBtn.addEventListener('click', e=>{ e.stopPropagation(); layerReorder(key, e.altKey?'front':'forward'); });
+  if(zdnBtn) zdnBtn.addEventListener('click', e=>{ e.stopPropagation(); layerReorder(key, e.altKey?'back':'backward'); });
   return row;
 }
 
