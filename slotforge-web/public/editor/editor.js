@@ -2482,9 +2482,12 @@ function switchScreen(scr){
   } else {
     projFs.classList.remove('show');
   }
-  // left panel removed — layers are in right panel
-  document.getElementById('right-panel').classList.toggle('hidden',isProj);
-  document.getElementById('canvas-wrap').style.display=isProj?'none':'flex';
+  // Only touch canvas-wrap/right-panel visibility when we are in the canvas workspace.
+  // Other workspaces handle their own layout via updateWorkspaceUI().
+  if(typeof activeWorkspace === 'undefined' || activeWorkspace === 'canvas'){
+    document.getElementById('right-panel').classList.toggle('hidden', isProj);
+    document.getElementById('canvas-wrap').style.display = isProj ? 'none' : 'flex';
+  }
   document.getElementById('sb-scr').textContent=SDEFS[scr]?.label||scr;
   document.getElementById('ctx-scr').textContent=SDEFS[scr]?.label||'—';
   const as=document.getElementById('ai-sub');if(as)as.textContent=(SDEFS[scr]?.label||'')+' selected';
@@ -7735,6 +7738,8 @@ let activeWorkspace = 'canvas';
 
 function switchWorkspace(ws){
   if(ws === activeWorkspace) return;
+  // Hide the project settings fullscreen overlay whenever leaving/entering any workspace
+  document.getElementById('proj-fs')?.classList.remove('show');
   activeWorkspace = ws;
   updateWorkspaceUI();
   if(ws === 'flow')    _activateFlowWorkspace();
@@ -8378,24 +8383,19 @@ function buildFeaturesEditor(){
   }
 }
 
-// ─── Helper: open project settings panel ────────────────
+/// ─── Helper: open project settings panel ────────────────
 function openProjectSettings(){
-  switchScreen('project');
+  switchWorkspace('project');
 }
 
 // ─── Workspace tab clicks ───────────────────────────────
 document.querySelectorAll('.ws-tab').forEach(btn => {
   btn.addEventListener('click', () => {
-    // "Project" tab opens Project Settings directly, not the project workspace
-    if(btn.dataset.ws === 'project'){
-      openProjectSettings();
-    } else {
-      switchWorkspace(btn.dataset.ws);
-    }
+    switchWorkspace(btn.dataset.ws);
   });
 });
-// Also wire the menu-item m-project to open Settings directly
-document.getElementById('m-project')?.addEventListener('click', () => { closeAllMenus(); openProjectSettings(); });
+// Also wire the menu-item m-project to open the project workspace
+document.getElementById('m-project')?.addEventListener('click', () => { closeAllMenus(); switchWorkspace('project'); });
 
 // ─── Project workspace: populate from project state ─────
 function updateProjectWorkspace(){
@@ -8409,22 +8409,16 @@ function updateProjectWorkspace(){
   set('proj-ov-reels', P.reelset || '5×3');
   set('proj-ov-vp', P.viewport === 'landscape' ? '📱 Landscape' : '📱 Portrait');
 
-  // Features
+  // Features — simple toggles, full config lives in the Features workspace
   const featEl = document.getElementById('proj-feat-list');
-  if(featEl){
-    const feats = [
-      {key:'fs',    label:'Free Spins',  ico:'⭐', color:'#5eca8a'},
-      {key:'bonus', label:'Bonus Game',  ico:'🎯', color:'#ef7a7a'},
-      {key:'gamble',label:'Gamble',      ico:'🃏', color:'#a084dc'},
-      {key:'ante',  label:'Ante Bet',    ico:'➕', color:'#c9a84c'},
-      {key:'buyBonus',label:'Buy Bonus', ico:'💳', color:'#4ac8f0'},
-    ];
-    featEl.innerHTML = feats.map(f => {
-      const on = P.features?.[f.key]?.on;
-      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:${on?f.color+'18':'#1a1a26'};border:1px solid ${on?f.color+'44':'#2a2a3a'}">
-        <span style="font-size:14px">${f.ico}</span>
-        <span style="font-size:11px;font-weight:600;color:${on?f.color:'#6a6a8a'}">${f.label}</span>
-        <span style="margin-left:auto;font-size:9px;padding:2px 8px;border-radius:10px;background:${on?f.color+'22':'#2a2a3a'};color:${on?f.color:'#5a5a72'};font-family:'DM Mono',monospace">${on?'ON':'OFF'}</span>
+  if(featEl && typeof FDEFS !== 'undefined'){
+    featEl.innerHTML = FDEFS.map(f => {
+      const on = !!P.features[f.key];
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${on?f.color+'12':'transparent'};border:1px solid ${on?f.color+'33':'rgba(255,255,255,.05)'}">
+        <span style="width:8px;height:8px;border-radius:50%;background:${on?f.color:'#3e3e4e'};flex-shrink:0"></span>
+        <span style="font-size:11px;font-weight:600;color:${on?f.color:'#6a6a8a'};flex:1">${escH(f.label)}</span>
+        <span style="font-size:9px;color:#5a5a72">${f.group}</span>
+        <div class="fe-toggle${on?' on':''}" onclick="_feToggle('${f.key}');updateProjectWorkspace()" title="${on?'Disable':'Enable'}"></div>
       </div>`;
     }).join('');
   }
@@ -9147,17 +9141,32 @@ window._sfApplyPayload = function(payload){
   try { if(s.customPsd && typeof PSD!=='undefined') Object.assign(PSD, s.customPsd); } catch(e){}
   // Fill any symbol slots that the saved project didn't have assets for
   try { if(typeof window._loadDefaultSymbols==='function') setTimeout(window._loadDefaultSymbols, 50); } catch(e){}
-  // Restore Game Flow Designer state (nodes + connections)
+  // Restore Game Flow Designer state — handles both multi-flow and legacy formats
   try {
-    if(s.gfd && Array.isArray(s.gfd.nodes) && s.gfd.nodes.length > 0 && typeof GFD !== 'undefined'){
-      GFD.nodes       = JSON.parse(JSON.stringify(s.gfd.nodes));
-      GFD.connections = JSON.parse(JSON.stringify(s.gfd.connections || []));
-      GFD._seq        = s.gfd._seq || 0;
+    if(s.gfd && typeof GFD !== 'undefined'){
+      if(s.gfd.flows && s.gfd.flows.length > 0){
+        // New multi-flow format
+        GFD.flows        = JSON.parse(JSON.stringify(s.gfd.flows));
+        GFD.activeFlowId = s.gfd.activeFlowId || GFD.flows[0].id;
+        GFD._seq         = s.gfd._seq || 0;
+        // Point live refs at the active flow
+        const af = GFD.flows.find(function(f){ return f.id === GFD.activeFlowId; }) || GFD.flows[0];
+        if(af){ GFD.nodes = af.nodes; GFD.connections = af.connections; GFD.pan = af.pan || {x:60,y:60}; GFD.scale = af.scale || 0.85; }
+      } else if(Array.isArray(s.gfd.nodes) && s.gfd.nodes.length > 0){
+        // Legacy single-canvas — migrate to a single flow
+        var legId = 'flow_legacy_' + Date.now();
+        GFD.flows = [{ id: legId, name: 'Base Game',
+          nodes:       JSON.parse(JSON.stringify(s.gfd.nodes)),
+          connections: JSON.parse(JSON.stringify(s.gfd.connections || [])),
+          pan: {x:60,y:60}, scale: 0.85 }];
+        GFD.activeFlowId = legId;
+        GFD._seq         = s.gfd._seq || 0;
+        GFD.nodes        = GFD.flows[0].nodes;
+        GFD.connections  = GFD.flows[0].connections;
+      }
       GFD.selected    = null;
       GFD.selConn     = null;
-      // Don't call gfdRender here — the flow workspace may not be visible yet.
-      // It will render correctly the next time the user opens the flow tab.
-      GFD._eventsInit = false; // force re-init on next open so pan/zoom listeners re-attach
+      GFD._eventsInit = false;
     }
   } catch(e){}
   // Restore feature editor configurations
@@ -9377,28 +9386,29 @@ window._sfBridge = (function(){
         });
       } catch(ae){}
       settingsSnapshot = {
-        gameName:    p.gameName,
-        theme:       p.theme,
-        colors:      p.colors,
-        reelset:     p.reelset,
-        viewport:    p.viewport,
-        jackpots:    p.jackpots,
-        features:    p.features,
-        char:        p.char,
-        ante:        p.ante,
-        msgPos:      p.msgPos,
-        holdnspin:   p.holdnspin,
-        symbols:     p.symbols,
-        expandWild:  p.expandWild,
-        reelSettings:p.reelSettings,
-        ovProps:     p.ovProps,
-        ovPos:       p.ovPos,
-        elVP:        p.elVP,
-        userLocks:   p.userLocks,
-        keyOrders:   p.keyOrders,
-        adjs:        p.adjs,
-        masks:       p.masks,
-        assets:      cdnAssets,
+        gameName:       p.gameName,
+        theme:          p.theme,
+        colors:         p.colors,
+        reelset:        p.reelset,
+        viewport:       p.viewport,
+        jackpots:       p.jackpots,
+        features:       p.features,
+        featureConfigs: p.featureConfigs,
+        char:           p.char,
+        ante:           p.ante,
+        msgPos:         p.msgPos,
+        holdnspin:      p.holdnspin,
+        symbols:        p.symbols,
+        expandWild:     p.expandWild,
+        reelSettings:   p.reelSettings,
+        ovProps:        p.ovProps,
+        ovPos:          p.ovPos,
+        elVP:           p.elVP,
+        userLocks:      p.userLocks,
+        keyOrders:      p.keyOrders,
+        adjs:           p.adjs,
+        masks:          p.masks,
+        assets:         cdnAssets,
       };
     } catch(ex){}
     window.parent.postMessage({ type: 'SF_DIRTY', snapshot: settingsSnapshot }, '*');
