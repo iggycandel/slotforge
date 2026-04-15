@@ -19,9 +19,9 @@
   <div id="ws-switcher">
     <button class="ws-tab" data-ws="project">Project</button>
     <div class="ws-sep"></div>
-    <button class="ws-tab ws-active" data-ws="canvas">Canvas</button>
-    <div class="ws-sep"></div>
     <button class="ws-tab" data-ws="features">Features</button>
+    <div class="ws-sep"></div>
+    <button class="ws-tab ws-active" data-ws="canvas">Canvas</button>
     <div class="ws-sep"></div>
     <button class="ws-tab" data-ws="flow">Flow</button>
     <div class="ws-sep"></div>
@@ -184,6 +184,14 @@
     <button class="tb-ws-action" onclick="openProjectSettings()">⚙ Settings</button>
     <button class="tb-ws-action" onclick="openGDDModal()">📋 GDD</button>
     <button class="tb-ws-action" onclick="switchWorkspace('flow')" style="margin-left:auto">🔀 Open Flow →</button>
+  </div>
+  <!-- Features workspace topbar -->
+  <div id="topbar-features">
+    <span class="tb-ws-label">Features</span>
+    <button class="tb-ws-action" onclick="_feSetFilter('all')">All</button>
+    <button class="tb-ws-action" onclick="_feSetFilter('active')">Active Only</button>
+    <button class="tb-ws-action" onclick="_feSetFilter('warnings')">⚠ Warnings</button>
+    <button class="tb-ws-action primary" style="margin-left:auto" onclick="_feAddMenu()">+ Add Feature</button>
   </div>
   <!-- Marketing workspace topbar -->
   <div id="topbar-marketing">
@@ -378,7 +386,7 @@
   <!-- ══════════════════════════════════════════════
        FEATURES EDITOR WORKSPACE
        ══════════════════════════════════════════════ -->
-  <div id="ws-features" style="display:none;flex:1;overflow:hidden;flex-direction:row;font-family:'Inter',system-ui,sans-serif;background:#06060a">
+  <div id="ws-features" style="font-family:'Inter',system-ui,sans-serif;background:#06060a">
     <!-- Left -->
     <div id="fe-list-col" style="width:240px;background:#0a0a0f;border-right:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden">
       <div style="padding:0 12px;height:44px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0">

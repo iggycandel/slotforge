@@ -12,7 +12,7 @@ const TOOLBAR_H  = 44
 const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v37'
+const EDITOR_VERSION = 'v38'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -78,6 +78,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [snapshots,       setSnapshots]       = useState<ProjectSnapshot[]>([])
   const [historyOpen,     setHistoryOpen]     = useState(false)
   const [liveProjectName, setLiveProjectName] = useState(projectName)
+  const [editorWorkspace, setEditorWorkspace] = useState<string>('canvas')
 
   async function loadSnapshots() {
     const { data } = await getSnapshots(projectId)
@@ -128,6 +129,10 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         setTimeout(() => {
           iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_LAYERS_UPDATE' }, '*')
         }, 400)
+      }
+
+      if (msg.type === 'SF_WORKSPACE_CHANGED' && msg.workspace) {
+        setEditorWorkspace(msg.workspace as string)
       }
 
       if (msg.type === 'SF_DIRTY') {
@@ -328,19 +333,21 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           />
         </div>
 
-        {/* Right panel — fixed PS-style sidebar */}
-        <RightPanel
-          projectId={projectId}
-          onAddToCanvas={handleAddToCanvas}
-          width={PANEL_W}
-        />
+        {/* Right panel — only visible in Canvas workspace */}
+        {editorWorkspace === 'canvas' && (
+          <RightPanel
+            projectId={projectId}
+            onAddToCanvas={handleAddToCanvas}
+            width={PANEL_W}
+          />
+        )}
 
         {/* Version history slide-in (over the right panel) */}
         {historyOpen && (
           <div style={{
             position:      'absolute',
             top:           TOOLBAR_H,
-            right:         PANEL_W,
+            right:         editorWorkspace === 'canvas' ? PANEL_W : 0,
             width:         260,
             height:        `calc(100% - ${TOOLBAR_H}px)`,
             background:    C.surface,

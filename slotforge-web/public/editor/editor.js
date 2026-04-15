@@ -7740,6 +7740,8 @@ function switchWorkspace(ws){
   if(ws === 'flow')    _activateFlowWorkspace();
   if(ws === 'features') buildFeaturesEditor();
   if(ws === 'project') updateProjectWorkspace();
+  // Notify parent frame so it can show/hide React RightPanel (layers/assets)
+  try { window.parent.postMessage({ type: 'SF_WORKSPACE_CHANGED', workspace: ws }, '*'); } catch(e) {}
 }
 
 function updateWorkspaceUI(){
