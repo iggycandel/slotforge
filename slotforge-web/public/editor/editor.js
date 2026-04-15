@@ -7738,6 +7738,7 @@ function switchWorkspace(ws){
   activeWorkspace = ws;
   updateWorkspaceUI();
   if(ws === 'flow')    _activateFlowWorkspace();
+  if(ws === 'features') buildFeaturesEditor();
   if(ws === 'project') updateProjectWorkspace();
 }
 
@@ -7747,7 +7748,7 @@ function updateWorkspaceUI(){
     btn.classList.toggle('ws-active', btn.dataset.ws === activeWorkspace);
   });
   // Show/hide non-canvas workspace panels
-  ['flow','project','marketing'].forEach(ws => {
+  ['flow','project','marketing','features'].forEach(ws => {
     const el = document.getElementById('ws-' + ws);
     if(el) el.classList.toggle('ws-visible', activeWorkspace === ws);
   });
@@ -7760,7 +7761,7 @@ function updateWorkspaceUI(){
   if(cw) cw.style.display = isCanvas ? '' : 'none';
   if(rp) rp.style.display = isCanvas ? '' : 'none';
   // Contextual topbar sections
-  ['canvas','flow','project','marketing'].forEach(ws => {
+  ['canvas','flow','project','marketing','features'].forEach(ws => {
     const tb = document.getElementById('topbar-' + ws);
     if(tb) tb.style.display = (activeWorkspace === ws) ? 'flex' : 'none';
   });
@@ -7774,6 +7775,605 @@ function _activateFlowWorkspace(){
   openGameFlowDesigner();
   // gfdFit with a small delay to allow layout to settle
   setTimeout(gfdFit, 120);
+}
+
+// ─── Feature Editor State ─────────────────────────────────────────────────────
+const FEATURES_STATE = {
+  selectedKey: null,
+  activeTab: 'trigger',
+  filter: 'all',
+  search: '',
+};
+
+if(!window.P_featureConfigs) window.P_featureConfigs = {};
+
+const FE_FLOW_TEMPLATES = {
+  freespin: function(cfg, baseNodeId) {
+    const tc = cfg.trigger || {};
+    const trigLabel = tc.count ? `${tc.count}+ ${tc.symbol||'Scatter'}` : 'Scatter trigger';
+    const spins = cfg.mechanics?.find(m=>m.type==='SPIN_COUNT'&&m.enabled)?.params?.count || 10;
+    const nodes = [
+      { label:'FS TRIGGER', type:'event',  notes:`Triggered by ${trigLabel}` },
+      { label:'FREE SPINS', type:'screen', notes:`${spins} free spins with enhanced reels` },
+      { label:'FS SUMMARY', type:'screen', notes:'Total win reveal. Returns to base game.' },
+    ];
+    const retrig = cfg.mechanics?.find(m=>m.type==='RETRIGGER'&&m.enabled);
+    if(retrig) nodes.splice(2,0,{ label:'FS RETRIGGER', type:'event', notes:'Scatter lands during free spins — adds more spins' });
+    return nodes;
+  },
+  holdnspin: function(cfg) {
+    const tc = cfg.trigger || {};
+    const trigLabel = tc.count ? `${tc.count}+ ${tc.symbol||'Coin'}` : 'Coin trigger';
+    return [
+      { label:'H&S TRIGGER', type:'event',  notes:`Triggered by ${trigLabel}` },
+      { label:'HOLD & SPIN', type:'screen', notes:'Coins held. Respins reset on new coin land.' },
+      { label:'H&S RESULT',  type:'screen', notes:'Total coin value revealed.' },
+    ];
+  },
+  bonus_pick: function(cfg) {
+    return [
+      { label:'BONUS TRIGGER', type:'event',  notes:'Bonus symbols activate the pick game' },
+      { label:'BONUS PICK',    type:'screen', notes:'Player picks items to reveal prizes' },
+      { label:'PICK RESULT',   type:'screen', notes:'Summary of prizes collected' },
+    ];
+  },
+  wheel_bonus: function(cfg) {
+    return [
+      { label:'WHEEL TRIGGER', type:'event',  notes:'Wheel bonus triggered' },
+      { label:'WHEEL BONUS',   type:'screen', notes:'Prize wheel spin. Multiplier or feature award.' },
+    ];
+  },
+  buy_feature: function(cfg) {
+    return [
+      { label:'BUY FEATURE',   type:'action',  notes:'Player pays to enter the bonus' },
+      { label:'BUY CONFIRM',   type:'decision',notes:'Player confirms purchase' },
+    ];
+  },
+  gamble: function(cfg) {
+    return [
+      { label:'GAMBLE',        type:'decision',notes:'Player opts to gamble current win' },
+      { label:'GAMBLE RESULT', type:'screen',  notes:'Win or lose. Return to base game.' },
+    ];
+  },
+};
+
+const FE_TRIGGER_DEFAULTS = {
+  freespin:     { type:'SCATTER_COUNT', symbol:'Scatter', count:3, activeIn:['BASE_GAME'] },
+  holdnspin:    { type:'SCATTER_COUNT', symbol:'Coin',    count:6, activeIn:['BASE_GAME'] },
+  bonus_pick:   { type:'SCATTER_COUNT', symbol:'Bonus',   count:3, activeIn:['BASE_GAME'] },
+  wheel_bonus:  { type:'SCATTER_COUNT', symbol:'Bonus',   count:3, activeIn:['BASE_GAME'] },
+  buy_feature:  { type:'MANUAL',        cost:75, costUnit:'bet_multiplier' },
+  gamble:       { type:'WIN_AMOUNT',    winThreshold:1, winThresholdUnit:'bet_multiplier' },
+};
+
+const FE_MECHANICS_DEFAULTS = {
+  freespin:  [
+    { id:'mc_spin', type:'SPIN_COUNT',  label:'Spin Count',  enabled:true,  params:{ count:10 } },
+    { id:'mc_mult', type:'MULTIPLIER',  label:'Multiplier',  enabled:false, params:{ type:'fixed', value:3 } },
+    { id:'mc_ret',  type:'RETRIGGER',   label:'Retrigger',   enabled:false, params:{ count:10 } },
+  ],
+  holdnspin: [
+    { id:'mc_resp', type:'SPIN_COUNT',  label:'Respins',     enabled:true,  params:{ count:3 } },
+  ],
+  bonus_pick:[ { id:'mc_pick', type:'COLLECT',  label:'Pick Count',  enabled:true,  params:{ count:3 } } ],
+  wheel_bonus:[ { id:'mc_wh',  type:'SPIN_COUNT',label:'Wheel Spins',enabled:true,  params:{ count:1 } } ],
+  buy_feature:[ { id:'mc_buy', type:'MULTIPLIER',label:'Cost Multiplier',enabled:true, params:{ value:75 } } ],
+  gamble:    [ { id:'mc_gam', type:'MULTIPLIER',label:'Max Multiplier',enabled:true, params:{ value:10 } } ],
+};
+
+const FE_SCREENS_DEFAULTS = {
+  freespin:  { gameplay:{enabled:true,label:'FS_GAMEPLAY'}, trigger_anim:{enabled:true,label:'FS_TRIGGER'}, intro:{enabled:true,label:'FS_INTRO'}, retrigger:{enabled:false,label:'FS_RETRIGGER'}, summary:{enabled:true,label:'FS_SUMMARY'} },
+  holdnspin: { gameplay:{enabled:true,label:'HS_GAMEPLAY'}, trigger_anim:{enabled:true,label:'HS_TRIGGER'}, result:{enabled:true,label:'HS_RESULT'} },
+  bonus_pick:{ gameplay:{enabled:true,label:'BP_GAMEPLAY'}, intro:{enabled:true,label:'BP_INTRO'}, result:{enabled:true,label:'BP_RESULT'} },
+  wheel_bonus:{ gameplay:{enabled:true,label:'WH_GAMEPLAY'}, intro:{enabled:true,label:'WH_INTRO'}, result:{enabled:true,label:'WH_RESULT'} },
+  buy_feature:{ menu:{enabled:true,label:'BF_MENU'}, confirm:{enabled:true,label:'BF_CONFIRM'} },
+  gamble:    { gameplay:{enabled:true,label:'GAMBLE'}, result:{enabled:true,label:'GAMBLE_RESULT'} },
+};
+
+function _feGetConfig(key){
+  if(!window.P_featureConfigs[key]){
+    window.P_featureConfigs[key] = {
+      trigger:  JSON.parse(JSON.stringify(FE_TRIGGER_DEFAULTS[key]||{ type:'SCATTER_COUNT', symbol:'Symbol', count:3 })),
+      mechanics:JSON.parse(JSON.stringify(FE_MECHANICS_DEFAULTS[key]||[])),
+      screens:  JSON.parse(JSON.stringify(FE_SCREENS_DEFAULTS[key]||{ gameplay:{ enabled:true, label:(key.toUpperCase()+'_GAMEPLAY') } })),
+      notes:    '',
+    };
+  }
+  return window.P_featureConfigs[key];
+}
+
+function _feStatus(key){
+  if(!P.features[key]) return 'disabled';
+  const cfg = _feGetConfig(key);
+  const msgs = [];
+  if(!cfg.trigger?.type) msgs.push({ level:'error', code:'MISSING_TRIGGER', message:'No trigger configured.' });
+  const hasGameplay = Object.values(cfg.screens||{}).some(s=>s.enabled&&s.label);
+  if(!hasGameplay) msgs.push({ level:'error', code:'NO_GAMEPLAY_SCREEN', message:'No gameplay screen enabled.' });
+  if(msgs.some(m=>m.level==='error')) return 'error';
+  if(msgs.some(m=>m.level==='warning')) return 'warning';
+  if(!cfg.trigger?.type) return 'incomplete';
+  return 'valid';
+}
+
+function _feStatusIcon(st){
+  return { valid:'✓', warning:'⚠', error:'✕', incomplete:'◐', disabled:'○' }[st]||'○';
+}
+function _feStatusColor(st){
+  return { valid:'#34d399', warning:'#f59e0b', error:'#f87171', incomplete:'#60a5fa', disabled:'#3e3e5e' }[st]||'#3e3e5e';
+}
+
+function _feSmartSummary(key){
+  const cfg = _feGetConfig(key);
+  const t = cfg.trigger||{};
+  let trigStr = '';
+  if(t.type==='SCATTER_COUNT') trigStr = `⚡ ${t.count||3}+ ${t.symbol||'Scatter'}`;
+  else if(t.type==='MANUAL') trigStr = `🛒 Manual (${t.cost||75}× bet)`;
+  else if(t.type==='WIN_AMOUNT') trigStr = `💰 Win threshold`;
+  else if(t.type==='LINKED') trigStr = `🔗 Linked feature`;
+  else if(t.type==='PROBABILITY') trigStr = `🎲 Random ~1:${Math.round(1/(t.probability||0.005))}`;
+  const mc = (cfg.mechanics||[]).find(m=>m.enabled);
+  let mechStr = '';
+  if(mc){
+    if(mc.type==='SPIN_COUNT') mechStr = `${mc.params?.count||10} spins`;
+    else if(mc.type==='MULTIPLIER') mechStr = `${mc.params?.value||3}× mult`;
+    else if(mc.type==='COLLECT') mechStr = `pick ${mc.params?.count||3}`;
+    else if(mc.type==='RETRIGGER') mechStr = `retriggerable`;
+  }
+  return [trigStr, mechStr].filter(Boolean).join(' · ');
+}
+
+function _feScreenCount(key){
+  const cfg = _feGetConfig(key);
+  return Object.values(cfg.screens||{}).filter(s=>s.enabled).length;
+}
+
+function _feListRender(){
+  const list = document.getElementById('fe-list'); if(!list) return;
+  const bar  = document.getElementById('fe-filter-bar');
+  if(bar && !bar.dataset.init){
+    bar.dataset.init='1';
+    bar.innerHTML=['all','active','warnings'].map(f=>`<button class="fe-filter-btn${FEATURES_STATE.filter===f?' active':''}" data-filter="${f}" onclick="_feSetFilter('${f}')">${f==='warnings'?'⚠ Warnings':f.charAt(0).toUpperCase()+f.slice(1)}</button>`).join('');
+  }
+  const q = (FEATURES_STATE.search||'').toLowerCase();
+  let items = FDEFS.filter(f=>{
+    if(q && !f.label.toLowerCase().includes(q) && !f.group.toLowerCase().includes(q)) return false;
+    if(FEATURES_STATE.filter==='active' && !P.features[f.key]) return false;
+    if(FEATURES_STATE.filter==='warnings'){
+      const st=_feStatus(f.key);
+      if(st!=='warning'&&st!=='error') return false;
+    }
+    return true;
+  });
+  let lastGroup='', html='';
+  items.forEach(f=>{
+    if(f.group!==lastGroup){
+      lastGroup=f.group;
+      html+=`<div style="font-size:8px;font-weight:700;color:#3e3e4e;letter-spacing:.1em;text-transform:uppercase;padding:10px 2px 4px;font-family:'Inter',system-ui,sans-serif">${escH(f.group)}</div>`;
+    }
+    const isOn=!!P.features[f.key];
+    const st=_feStatus(f.key);
+    const stIcon=_feStatusIcon(st);
+    const stColor=_feStatusColor(st);
+    const isSel=FEATURES_STATE.selectedKey===f.key;
+    const summary=isOn?_feSmartSummary(f.key):'Disabled';
+    const sc=isOn?_feScreenCount(f.key):0;
+    html+=`<div class="fe-list-item${isSel?' selected':''}${!isOn?' disabled':''}" onclick="_feSelect('${f.key}')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${f.color};flex-shrink:0"></div>
+          <span class="fe-list-item-name" style="${!isOn?'color:#5a5a7a':''}">${escH(f.label)}</span>
+        </div>
+        <span style="font-size:11px;color:${stColor};font-weight:700;flex-shrink:0">${stIcon}</span>
+      </div>
+      <div class="fe-list-item-summary">${isOn?escH(summary):'<span style="color:#3e3e4e;font-style:italic">Disabled — toggle to enable</span>'}</div>
+      ${isOn&&sc>0?`<div class="fe-list-item-footer"><span>🖥 ${sc} screen${sc!==1?'s':''}</span></div>`:''}
+    </div>`;
+  });
+  if(!items.length) html='<div style="font-size:10px;color:#3e3e4e;text-align:center;margin-top:24px;font-family:Inter,system-ui,sans-serif">No features match filter</div>';
+  list.innerHTML=html;
+}
+
+function _feSetFilter(f){
+  FEATURES_STATE.filter=f;
+  document.querySelectorAll('.fe-filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===f));
+  _feListRender();
+}
+function _feListFilter(q){ FEATURES_STATE.search=q; _feListRender(); }
+
+function _feSelect(key){
+  FEATURES_STATE.selectedKey=key;
+  _feListRender();
+  _feEditorRender(key);
+  _feImpactRender(key);
+}
+
+function _feEditorRender(key){
+  const f=FDEFS.find(d=>d.key===key); if(!f) return;
+  const cfg=_feGetConfig(key);
+  const isOn=!!P.features[key];
+  const st=_feStatus(key);
+  const stColor=_feStatusColor(st);
+
+  const hdr=document.getElementById('fe-editor-header'); if(!hdr) return;
+  hdr.innerHTML=`
+    <div style="width:10px;height:10px;border-radius:50%;background:${f.color};flex-shrink:0"></div>
+    <div style="font-size:14px;font-weight:700;color:#eeede6;letter-spacing:-.01em;flex:1">${escH(f.label)}</div>
+    <span style="font-size:9px;padding:2px 8px;border-radius:100px;background:${f.color}14;border:1px solid ${f.color}33;color:${f.color};font-weight:700;letter-spacing:.06em;text-transform:uppercase;flex-shrink:0">${escH(f.group)}</span>
+    <div class="fe-toggle${isOn?' on':''}" onclick="_feToggle('${key}')" title="${isOn?'Disable':'Enable'} this feature" style="flex-shrink:0"></div>
+    <span style="font-size:11px;color:${stColor};font-weight:700;min-width:14px;text-align:center">${_feStatusIcon(st)}</span>
+  `;
+
+  const tabs=['setup','trigger','mechanics','screens','flow'];
+  const tabLabels={setup:'Setup',trigger:'Trigger',mechanics:'Mechanics',screens:'Screens',flow:'Flow'};
+  const tabBar=document.getElementById('fe-tab-bar'); if(!tabBar) return;
+  tabBar.innerHTML=tabs.map(t=>`<button class="fe-tab${FEATURES_STATE.activeTab===t?' active':''}" onclick="_feSetTab('${key}','${t}')">${tabLabels[t]}</button>`).join('');
+
+  const content=document.getElementById('fe-editor-content'); if(!content) return;
+  if(!isOn){
+    content.innerHTML=`<div style="text-align:center;padding:40px 0;font-family:'Inter',system-ui,sans-serif">
+      <div style="font-size:28px;margin-bottom:12px">○</div>
+      <div style="font-size:13px;color:#7a7a8a;margin-bottom:8px">${escH(f.label)} is disabled</div>
+      <div style="font-size:11px;color:#3e3e4e;margin-bottom:20px">Enable it to configure triggers, mechanics, and screens.</div>
+      <button onclick="_feToggle('${key}')" style="padding:8px 24px;border-radius:100px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);color:#c9a84c;font-size:12px;font-family:'Inter',system-ui,sans-serif;cursor:pointer;font-weight:600">Enable ${escH(f.label)}</button>
+    </div>`;
+    return;
+  }
+  switch(FEATURES_STATE.activeTab){
+    case 'setup':     content.innerHTML=_feTabSetup(key,f,cfg); break;
+    case 'trigger':   content.innerHTML=_feTabTrigger(key,f,cfg); break;
+    case 'mechanics': content.innerHTML=_feTabMechanics(key,f,cfg); break;
+    case 'screens':   content.innerHTML=_feTabScreens(key,f,cfg); break;
+    case 'flow':      content.innerHTML=_feTabFlow(key,f,cfg); break;
+  }
+}
+
+function _feSetTab(key,tab){
+  FEATURES_STATE.activeTab=tab;
+  _feEditorRender(key);
+}
+
+function _inp(style=''){return `class="fe-input" style="${style}"`;}
+function _sel(){return `class="fe-select"`;}
+
+function _feTabSetup(key,f,cfg){
+  return `
+  <div class="fe-section-title">Identity</div>
+  <div class="fe-field"><div class="fe-label">Type</div>
+    <div style="font-size:11px;color:${f.color};font-weight:600;padding:6px 8px;background:#13131a;border-radius:6px;border:1px solid rgba(255,255,255,.06)">${escH(f.label)} <span style="color:#3e3e4e;font-weight:400">— ${escH(f.group)}</span></div>
+  </div>
+  <div class="fe-field"><div class="fe-label">Description</div>
+    <div style="font-size:11px;color:#7a7a8a;padding:6px 8px;background:#13131a;border-radius:6px;border:1px solid rgba(255,255,255,.06);line-height:1.5">${escH(f.desc||'—')}</div>
+  </div>
+  <div class="fe-divider"></div>
+  <div class="fe-section-title">Notes</div>
+  <div class="fe-field">
+    <textarea ${_inp()} rows="4" style="resize:vertical;line-height:1.6;color:#7a7a8a;font-size:10px" placeholder="Design notes, cert requirements, scope…" oninput="_feSetNotes('${key}',this.value)">${escH(cfg.notes||'')}</textarea>
+  </div>
+  <div class="fe-divider"></div>
+  <div class="fe-section-title">Danger</div>
+  <button onclick="_feToggle('${key}')" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(224,112,112,.2);background:transparent;color:#e07070;font-size:10px;font-family:'Inter',system-ui,sans-serif;cursor:pointer;font-weight:600;transition:background .12s" onmouseover="this.style.background='rgba(224,112,112,.08)'" onmouseout="this.style.background='transparent'">Disable ${escH(f.label)}</button>
+  `;
+}
+
+function _feTabTrigger(key,f,cfg){
+  const t=cfg.trigger||{};
+  const types=[
+    {type:'SCATTER_COUNT', icon:'🎯', label:'Scatter Count', desc:'N scatter symbols anywhere on reels'},
+    {type:'MANUAL',        icon:'🛒', label:'Buy / Manual', desc:'Player pays or presses a button'},
+    {type:'WIN_AMOUNT',    icon:'💰', label:'Win Threshold', desc:'Triggered when win exceeds value'},
+    {type:'LINKED',        icon:'🔗', label:'Linked Feature', desc:'Fires when another feature exits'},
+    {type:'PROBABILITY',   icon:'🎲', label:'Probability',  desc:'Random chance per base spin'},
+  ];
+  const sel=t.type||'SCATTER_COUNT';
+  let fields='';
+  if(sel==='SCATTER_COUNT') fields=`
+    <div class="fe-field"><div class="fe-label">Symbol</div><input ${_inp()} value="${escH(t.symbol||'Scatter')}" placeholder="Symbol name" oninput="_feTriggerSet('${key}','symbol',this.value)"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fe-field" style="flex:1"><div class="fe-label">Minimum Count</div><input type="number" min="1" max="20" ${_inp('width:80px')} value="${t.count||3}" style="color:${f.color}" oninput="_feTriggerSet('${key}','count',parseInt(this.value)||3)"></div>
+      <div class="fe-field" style="flex:1"><div class="fe-label">Active In</div><div style="font-size:10px;color:#7a7a8a;margin-top:6px">Base game (default)</div></div>
+    </div>
+    <div style="padding:8px 10px;border-radius:7px;background:#0d1a12;border:1px solid rgba(94,202,138,.12);font-size:9px;color:#5eca8a;line-height:1.6">
+      ≈ Probability depends on reel configuration and scatter placement. Provide exact hit-rate in the Math Cert document.
+    </div>`;
+  else if(sel==='MANUAL') fields=`
+    <div style="display:flex;gap:10px">
+      <div class="fe-field" style="flex:1"><div class="fe-label">Cost</div><input type="number" min="1" ${_inp()} value="${t.cost||75}" style="width:80px;color:${f.color}" oninput="_feTriggerSet('${key}','cost',parseFloat(this.value)||75)"></div>
+      <div class="fe-field" style="flex:1"><div class="fe-label">Unit</div><select ${_sel()} onchange="_feTriggerSet('${key}','costUnit',this.value)"><option value="bet_multiplier" ${(t.costUnit||'bet_multiplier')==='bet_multiplier'?'selected':''}>× Total Bet</option><option value="credits" ${t.costUnit==='credits'?'selected':''}>Credits</option></select></div>
+    </div>`;
+  else if(sel==='WIN_AMOUNT') fields=`
+    <div style="display:flex;gap:10px">
+      <div class="fe-field" style="flex:1"><div class="fe-label">Threshold</div><input type="number" min="0" step="0.5" ${_inp()} value="${t.winThreshold||1}" style="width:90px;color:${f.color}" oninput="_feTriggerSet('${key}','winThreshold',parseFloat(this.value)||1)"></div>
+      <div class="fe-field" style="flex:1"><div class="fe-label">Unit</div><select ${_sel()} onchange="_feTriggerSet('${key}','winThresholdUnit',this.value)"><option value="bet_multiplier" ${(t.winThresholdUnit||'bet_multiplier')==='bet_multiplier'?'selected':''}>× Total Bet</option><option value="credits" ${t.winThresholdUnit==='credits'?'selected':''}>Credits</option></select></div>
+    </div>`;
+  else if(sel==='LINKED') fields=`
+    <div class="fe-field"><div class="fe-label">Linked Feature</div><select ${_sel()} onchange="_feTriggerSet('${key}','linkedFeatureKey',this.value)">
+      <option value="">Select feature…</option>
+      ${FDEFS.filter(d=>d.key!==key&&P.features[d.key]).map(d=>`<option value="${d.key}" ${t.linkedFeatureKey===d.key?'selected':''}>${escH(d.label)}</option>`).join('')}
+    </select></div>
+    <div class="fe-field"><div class="fe-label">When</div><select ${_sel()} onchange="_feTriggerSet('${key}','linkedOnEvent',this.value)"><option value="exit" ${t.linkedOnEvent==='exit'?'selected':''}>On feature exit</option><option value="enter" ${t.linkedOnEvent==='enter'?'selected':''}>On feature enter</option></select></div>`;
+  else if(sel==='PROBABILITY') fields=`
+    <div class="fe-field"><div class="fe-label">Probability (0–100%)</div><input type="number" min="0" max="100" step="0.01" ${_inp()} value="${((t.probability||0.005)*100).toFixed(2)}" style="width:100px;color:${f.color}" oninput="_feTriggerSet('${key}','probability',parseFloat(this.value)/100||0.005)"></div>
+    <div style="font-size:9px;color:#5a5a7a;padding:4px 0">≈ 1 in ${Math.round(1/((t.probability||0.005)))} base spins</div>`;
+
+  return `
+  <div class="fe-section-title">Trigger Type</div>
+  <div class="fe-trigger-type-grid">${types.map(tt=>`
+    <button class="fe-trigger-type-btn${sel===tt.type?' active':''}" onclick="_feTriggerSet('${key}','type','${tt.type}');_feSetTab('${key}','trigger')">
+      <div class="fe-tt-icon">${tt.icon}</div>
+      <div class="fe-tt-label">${tt.label}</div>
+      <div class="fe-tt-desc">${tt.desc}</div>
+    </button>`).join('')}
+  </div>
+  <div class="fe-divider"></div>
+  <div class="fe-section-title">Trigger Configuration</div>
+  ${fields}`;
+}
+
+function _feTabMechanics(key,f,cfg){
+  const mechanics=cfg.mechanics||[];
+  let html=`<div class="fe-section-title">Mechanic Blocks</div>`;
+  if(!mechanics.length) html+=`<div style="font-size:11px;color:#3e3e4e;padding:16px 0">No mechanics configured.</div>`;
+  mechanics.forEach((mc,i)=>{
+    const col=mc.enabled?f.color:'#5a5a7a';
+    let paramHtml='';
+    if(mc.type==='SPIN_COUNT') paramHtml=`<div class="fe-field"><div class="fe-label">Spins Awarded</div><input type="number" min="1" max="999" ${_inp('width:80px')} value="${mc.params?.count||10}" style="color:${col}" oninput="_feMechSet('${key}',${i},'count',parseInt(this.value)||10)"></div>`;
+    else if(mc.type==='MULTIPLIER') paramHtml=`<div style="display:flex;gap:10px"><div class="fe-field" style="flex:1"><div class="fe-label">Type</div><select ${_sel()} onchange="_feMechSet('${key}',${i},'type',this.value)"><option value="fixed" ${(mc.params?.type||'fixed')==='fixed'?'selected':''}>Fixed</option><option value="progressive" ${mc.params?.type==='progressive'?'selected':''}>Progressive</option></select></div><div class="fe-field" style="flex:1"><div class="fe-label">Value (×)</div><input type="number" min="1" ${_inp('width:80px')} value="${mc.params?.value||3}" style="color:${col}" oninput="_feMechSet('${key}',${i},'value',parseFloat(this.value)||3)"></div></div>`;
+    else if(mc.type==='RETRIGGER') paramHtml=`<div class="fe-field"><div class="fe-label">Extra Spins</div><input type="number" min="1" ${_inp('width:80px')} value="${mc.params?.count||10}" style="color:${col}" oninput="_feMechSet('${key}',${i},'count',parseInt(this.value)||10)"></div>`;
+    else if(mc.type==='COLLECT') paramHtml=`<div class="fe-field"><div class="fe-label">Pick Count</div><input type="number" min="1" max="20" ${_inp('width:80px')} value="${mc.params?.count||3}" style="color:${col}" oninput="_feMechSet('${key}',${i},'count',parseInt(this.value)||3)"></div>`;
+    html+=`<div class="fe-mechanic-block">
+      <div class="fe-mechanic-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <div class="fe-toggle${mc.enabled?' on':''}" onclick="event.stopPropagation();_feMechToggle('${key}',${i})" style="--c:${col}"></div>
+        <span style="font-size:11px;font-weight:700;color:${mc.enabled?'#eeede6':'#5a5a7a'};flex:1">${escH(mc.label||mc.type)}</span>
+        <span style="font-size:9px;color:${col}70;font-family:monospace">${escH(mc.type)}</span>
+        <span style="font-size:12px;color:#3e3e4e;margin-left:4px">▾</span>
+      </div>
+      <div class="fe-mechanic-body" style="display:none">${mc.enabled?paramHtml:'<div style="font-size:10px;color:#3e3e4e">Enable this mechanic to configure its parameters.</div>'}</div>
+    </div>`;
+  });
+  return html;
+}
+
+function _feTabScreens(key,f,cfg){
+  const screens=cfg.screens||{};
+  let html=`<div class="fe-section-title">Generated Screens</div><div style="font-size:9px;color:#5a5a7a;font-family:'Inter',system-ui,sans-serif;margin:-6px 0 12px">These screens are added to the canvas when the feature is enabled. Required screens cannot be disabled.</div>`;
+  Object.entries(screens).forEach(([type,sc])=>{
+    const required=['gameplay'].includes(type);
+    html+=`<div class="fe-screen-row">
+      <div class="fe-toggle${sc.enabled?' on':''}${required?' disabled':''}" onclick="${required?'':`_feScreenToggle('${key}','${type}')`}" style="${required?'opacity:.4;cursor:not-allowed':''}"></div>
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:600;color:${sc.enabled?'#eeede6':'#5a5a7a'}">${escH(sc.label||type)}</div>
+        <div style="font-size:9px;color:#3e3e4e">${required?'Required':'Optional'} · ${escH(type)}</div>
+      </div>
+      <div style="font-size:9px;color:#3e3e4e;cursor:pointer" onclick="switchWorkspace('canvas')" title="Go to canvas">→ Canvas</div>
+    </div>`;
+  });
+  return html;
+}
+
+function _feTabFlow(key,f,cfg){
+  const tmpl=FE_FLOW_TEMPLATES[key];
+  if(!tmpl) return `<div style="font-size:11px;color:#3e3e4e;padding:16px 0">No flow template for this feature type. Flow connections must be created manually in the Flow Designer.</div>`;
+  const nodes=tmpl(cfg, 'BASE_GAME');
+  let html=`<div class="fe-section-title">Flow Module</div>
+  <div style="font-size:9px;color:#5a5a7a;font-family:'Inter',system-ui,sans-serif;margin:-6px 0 14px">This is the flow subgraph that will be added to the Game Flow Designer when this feature is synced. Nodes are managed automatically.</div>
+  <div style="display:flex;flex-direction:column;gap:3px">
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;background:#13131a;border:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:10px">⚙</span>
+      <span style="font-size:10px;color:#7a7a8a;font-weight:600">BASE GAME</span>
+      <span style="font-size:9px;color:#3e3e4e;margin-left:auto">entry point</span>
+    </div>`;
+  nodes.forEach((n,i)=>{
+    const t=GFD_TYPES[n.type]||GFD_TYPES.screen;
+    html+=`<div style="display:flex;align-items:center;padding-left:16px;color:#3e3e4e;font-size:12px">↓</div>
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;background:${t.bg};border:1px solid ${t.color}33">
+      <span style="font-size:10px">${t.icon}</span>
+      <div><div style="font-size:10px;color:#eeede6;font-weight:600">${escH(n.label)}</div><div style="font-size:8.5px;color:#5a5a7a">${escH(n.notes||'')}</div></div>
+    </div>`;
+  });
+  html+=`<div style="display:flex;align-items:center;padding-left:16px;color:#3e3e4e;font-size:12px">↓</div>
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;background:#13131a;border:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:10px">⚙</span>
+      <span style="font-size:10px;color:#7a7a8a;font-weight:600">BASE GAME</span>
+      <span style="font-size:9px;color:#3e3e4e;margin-left:auto">exit point</span>
+    </div>
+  </div>
+  <div class="fe-divider"></div>
+  <button onclick="_feFlowSync('${key}',true)" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(201,168,76,.25);background:rgba(201,168,76,.07);color:#c9a84c;font-size:11px;font-family:'Inter',system-ui,sans-serif;cursor:pointer;font-weight:600">↺ Sync to Flow Designer</button>`;
+  return html;
+}
+
+function _feImpactRender(key){
+  const panel=document.getElementById('fe-impact'); if(!panel) return;
+  if(!key){ panel.innerHTML='<div style="font-size:10px;color:#3e3e4e;text-align:center;margin-top:40px;font-family:Inter,system-ui,sans-serif;letter-spacing:.04em">Select a feature<br>to see its impact</div>'; return; }
+  const f=FDEFS.find(d=>d.key===key);
+  const cfg=_feGetConfig(key);
+  const isOn=!!P.features[key];
+  const st=_feStatus(key);
+
+  const warnings=[];
+  if(!cfg.trigger?.type) warnings.push({ level:'error', code:'MISSING_TRIGGER', message:'No trigger configured. Feature cannot activate.', tab:'trigger' });
+  if(!Object.values(cfg.screens||{}).some(s=>s.enabled)) warnings.push({ level:'error', code:'NO_GAMEPLAY_SCREEN', message:'No screens enabled. Feature has no playable state.', tab:'screens' });
+
+  const screens=cfg.screens||{};
+  const enabledScreens=Object.entries(screens).filter(([,s])=>s.enabled);
+  const canvasHTML=enabledScreens.length
+    ? enabledScreens.map(([type,sc])=>`<div class="fe-impact-row"><span style="color:#5eca8a;font-size:9px;font-weight:700">+</span> ${escH(sc.label||type)}</div>`).join('')
+    : `<div style="font-size:9px;color:#3e3e4e">No screens enabled</div>`;
+
+  const tmpl=FE_FLOW_TEMPLATES[key];
+  const flowNodes=tmpl?tmpl(cfg,'BASE_GAME'):[];
+  const flowHTML=flowNodes.length
+    ? [`<div class="fe-impact-row"><span style="color:#3e3e4e">BASE_GAME</span></div>`,...flowNodes.map(n=>`<div class="fe-impact-row"><span style="color:#3e3e4e;font-size:9px">→</span> <span style="color:#5eca8a;font-size:9px;font-weight:700">+</span> ${escH(n.label)}</div>`),`<div class="fe-impact-row"><span style="color:#3e3e4e;font-size:9px">→</span> <span style="color:#3e3e4e">BASE_GAME</span></div>`].join('')
+    : `<div style="font-size:9px;color:#3e3e4e">No flow template</div>`;
+
+  panel.innerHTML=`
+  <div class="fe-impact-section">
+    <div class="fe-impact-title"><span>Canvas</span> <span style="color:${enabledScreens.length>0?'#34d399':'#f87171'}">${enabledScreens.length} screen${enabledScreens.length!==1?'s':''}</span></div>
+    ${isOn?canvasHTML:`<div style="font-size:9px;color:#3e3e4e">Feature is disabled</div>`}
+  </div>
+  <div style="height:1px;background:rgba(255,255,255,.05);margin:12px 0"></div>
+  <div class="fe-impact-section">
+    <div class="fe-impact-title"><span>Flow</span> <span style="color:${flowNodes.length>0?'#34d399':'#3e3e4e'}">${flowNodes.length} node${flowNodes.length!==1?'s':''}</span></div>
+    ${isOn?flowHTML:`<div style="font-size:9px;color:#3e3e4e">Feature is disabled</div>`}
+    ${isOn&&flowNodes.length>0?`<button onclick="_feFlowSync('${key}',true)" style="margin-top:8px;padding:5px 10px;border-radius:100py;border:1px solid rgba(201,168,76,.2);background:transparent;color:#c9a84c;font-size:9px;font-family:'Inter',system-ui,sans-serif;cursor:pointer;font-weight:600">↺ Sync to Flow</button>`:''}
+  </div>
+  <div style="height:1px;background:rgba(255,255,255,.05);margin:12px 0"></div>
+  <div class="fe-impact-section">
+    <div class="fe-impact-title"><span>Warnings</span> <span style="color:${warnings.length?'#f59e0b':'#34d399'}">${warnings.length||'✓'}</span></div>
+    ${warnings.length?warnings.map(w=>`<div class="fe-warning-card${w.level==='error'?' error':''}">
+      <div style="font-size:9px;font-weight:700;color:${w.level==='error'?'#f87171':'#f59e0b'};margin-bottom:3px">${w.code}</div>
+      <div style="font-size:9px;color:#7a7a8a;line-height:1.5">${escH(w.message)}</div>
+      ${w.tab?`<div style="margin-top:4px"><span onclick="_feSetTab('${key}','${w.tab}')" style="font-size:9px;color:#c9a84c;cursor:pointer;text-decoration:underline">→ Fix in ${w.tab} tab</span></div>`:''}
+    </div>`).join(''):isOn?`<div style="font-size:9px;color:#34d399">No issues detected ✓</div>`:'<div style="font-size:9px;color:#3e3e4e">Enable feature to validate</div>'}
+  </div>`;
+}
+
+function _feToggle(key){
+  P.features[key] = !P.features[key];
+  _feCanvasSync();
+  _feFlowSync(key, P.features[key]);
+  _feListRender();
+  _feEditorRender(key);
+  _feImpactRender(key);
+  markDirty();
+}
+
+function _feTriggerSet(key,field,value){
+  const cfg=_feGetConfig(key);
+  cfg.trigger=cfg.trigger||{};
+  cfg.trigger[field]=value;
+  _feFlowSync(key, P.features[key]);
+  _feImpactRender(key);
+  markDirty();
+}
+
+function _feMechSet(key,idx,param,value){
+  const cfg=_feGetConfig(key);
+  if(cfg.mechanics[idx]){ cfg.mechanics[idx].params=cfg.mechanics[idx].params||{}; cfg.mechanics[idx].params[param]=value; }
+  _feFlowSync(key, P.features[key]);
+  _feImpactRender(key);
+  markDirty();
+}
+
+function _feMechToggle(key,idx){
+  const cfg=_feGetConfig(key);
+  if(cfg.mechanics[idx]) cfg.mechanics[idx].enabled=!cfg.mechanics[idx].enabled;
+  _feFlowSync(key, P.features[key]);
+  _feEditorRender(key);
+  _feImpactRender(key);
+  markDirty();
+}
+
+function _feScreenToggle(key,type){
+  const cfg=_feGetConfig(key);
+  if(cfg.screens[type]) cfg.screens[type].enabled=!cfg.screens[type].enabled;
+  _feCanvasSync();
+  _feImpactRender(key);
+  markDirty();
+}
+
+function _feSetNotes(key,notes){
+  const cfg=_feGetConfig(key);
+  cfg.notes=notes;
+  markDirty();
+}
+
+function _feAddMenu(){
+  const disabled=FDEFS.filter(f=>!P.features[f.key]);
+  if(!disabled.length){ alert('All available features are already enabled.'); return; }
+  const choice=prompt(`Add feature:\n\n${disabled.map((f,i)=>`${i+1}. ${f.label} (${f.group})`).join('\n')}\n\nEnter number:`);
+  if(!choice) return;
+  const idx=parseInt(choice)-1;
+  if(idx>=0&&idx<disabled.length){
+    const f=disabled[idx];
+    P.features[f.key]=true;
+    _feCanvasSync();
+    _feFlowSync(f.key, true);
+    _feListRender();
+    _feSelect(f.key);
+    markDirty();
+  }
+}
+
+function _feCanvasSync(){
+  if(typeof registerFeatureScreens==='function') registerFeatureScreens();
+  if(typeof rebuildTabs==='function') rebuildTabs();
+  if(typeof refresh==='function') refresh();
+  if(typeof renderLayers==='function') renderLayers();
+}
+
+function _feFlowSync(key, enabled){
+  if(!GFD.flows||!GFD.flows.length) return;
+  const flow=GFD.flows.find(f=>f.id===GFD.activeFlowId)||GFD.flows[0];
+  if(!flow||!flow.nodes) return;
+
+  const toRemove=flow.nodes.filter(n=>n.meta&&n.meta.featureKey===key).map(n=>n.id);
+  if(toRemove.length){
+    flow.nodes=flow.nodes.filter(n=>!toRemove.includes(n.id));
+    flow.connections=flow.connections.filter(c=>!toRemove.includes(c.fromNode)&&!toRemove.includes(c.toNode));
+    GFD.nodes=flow.nodes; GFD.connections=flow.connections;
+  }
+
+  if(!enabled) { if(typeof gfdRender==='function') gfdRender(); _gfdMarkDirty(); return; }
+
+  const tmpl=FE_FLOW_TEMPLATES[key];
+  if(!tmpl) return;
+  const cfg=_feGetConfig(key);
+  const templateNodes=tmpl(cfg,'BASE_GAME');
+  if(!templateNodes.length) return;
+
+  const baseNode=flow.nodes.find(n=>n.label==='BASE GAME'||n.label==='BASE_GAME');
+
+  const existingMaxX=flow.nodes.length?Math.max(...flow.nodes.map(n=>n.x)):100;
+  const startX=existingMaxX+GFD_NODE_W+90;
+  const startY=baseNode?baseNode.y:(60);
+  const rowH=GFD_NODE_H+80;
+
+  const addedIds=[];
+  templateNodes.forEach((n,i)=>{
+    const id=_gfdUid();
+    const t=GFD_TYPES[n.type]||GFD_TYPES.screen;
+    const meta={...( GFD_META_DEFAULTS[n.type]||{} ), featureKey:key};
+    flow.nodes.push({
+      id, type:n.type, label:n.label, notes:n.notes||'',
+      x:startX, y:startY+i*rowH,
+      meta, state:{name:n.label.toLowerCase().replace(/\s+/g,'_'),context:''},
+      onEnter:[], onExit:[],
+    });
+    GFD._seq=(GFD._seq||0)+1;
+    addedIds.push(id);
+  });
+
+  for(let i=0;i<addedIds.length-1;i++){
+    const connId='c'+(++GFD._seq)+'_'+Math.random().toString(36).slice(2,5);
+    flow.connections.push({ id:connId, fromNode:addedIds[i], toNode:addedIds[i+1], label:'', condition:null, priority:1 });
+  }
+
+  if(baseNode&&addedIds.length){
+    const trigLabel=cfg.trigger?.count?`${cfg.trigger.count}+ ${cfg.trigger.symbol||'Scatter'}`:'Trigger';
+    const connId='c'+(++GFD._seq)+'_'+Math.random().toString(36).slice(2,5);
+    flow.connections.push({ id:connId, fromNode:baseNode.id, toNode:addedIds[0], label:trigLabel, condition:null, priority:10 });
+    const retConnId='c'+(++GFD._seq)+'_'+Math.random().toString(36).slice(2,5);
+    flow.connections.push({ id:retConnId, fromNode:addedIds[addedIds.length-1], toNode:baseNode.id, label:'Feature ends', condition:null, priority:1 });
+  }
+
+  GFD.nodes=flow.nodes; GFD.connections=flow.connections;
+  if(typeof gfdRender==='function') gfdRender();
+  _gfdMarkDirty();
+}
+
+function openFeaturesWorkspace(){
+  switchWorkspace('features');
+}
+
+function buildFeaturesEditor(){
+  _feListRender();
+  if(FEATURES_STATE.selectedKey){
+    _feEditorRender(FEATURES_STATE.selectedKey);
+    _feImpactRender(FEATURES_STATE.selectedKey);
+  } else {
+    _feImpactRender(null);
+  }
 }
 
 // ─── Helper: open project settings panel ────────────────
@@ -8558,6 +9158,12 @@ window._sfApplyPayload = function(payload){
       GFD._eventsInit = false; // force re-init on next open so pan/zoom listeners re-attach
     }
   } catch(e){}
+  // Restore feature editor configurations
+  try {
+    if(s.featureConfigs){
+      try{ window.P_featureConfigs=JSON.parse(JSON.stringify(s.featureConfigs)); }catch(e){}
+    }
+  } catch(e){}
   // Sync UI toggles for settings that have visual toggle buttons
   try {
     var charTog=document.getElementById('char-tog');
@@ -8654,6 +9260,9 @@ window._sfBridge = (function(){
           };
         } catch(ex){}
         return null;
+      })(),
+      featureConfigs: (function(){
+        try{ return JSON.parse(JSON.stringify(window.P_featureConfigs||{})); }catch(e){ return {}; }
       })(),
     };
   }
