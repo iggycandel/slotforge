@@ -3454,7 +3454,16 @@ function _renderRecentFiles(){
   } catch(e){}
 }
 document.getElementById('save-btn').addEventListener('click',saveProject);
-document.getElementById('proj-close-btn')?.addEventListener('click',()=>{if(P._prevScreen)switchScreen(P._prevScreen);else switchScreen('base');});
+document.getElementById('proj-close-btn')?.addEventListener('click',()=>{
+  if(activeWorkspace === 'project'){
+    // Project tab opened proj-fs — close goes back to canvas
+    switchWorkspace('canvas');
+  } else {
+    // proj-fs was opened from within canvas (e.g. Edit Settings) — restore previous screen
+    document.getElementById('proj-fs')?.classList.remove('show');
+    if(P._prevScreen && P._prevScreen !== 'project') switchScreen(P._prevScreen); else switchScreen('base');
+  }
+});
 document.getElementById('proj-body').addEventListener('input',markDirty);
 
 // AI
@@ -7749,7 +7758,6 @@ function switchWorkspace(ws){
   updateWorkspaceUI();
   if(ws === 'flow')    _activateFlowWorkspace();
   if(ws === 'features') buildFeaturesEditor();
-  if(ws === 'project') updateProjectWorkspace();
   // Notify parent frame so it can show/hide React RightPanel (layers/assets)
   try { window.parent.postMessage({ type: 'SF_WORKSPACE_CHANGED', workspace: ws }, '*'); } catch(e) {}
 }
@@ -7759,11 +7767,18 @@ function updateWorkspaceUI(){
   document.querySelectorAll('.ws-tab').forEach(btn => {
     btn.classList.toggle('ws-active', btn.dataset.ws === activeWorkspace);
   });
-  // Show/hide non-canvas workspace panels
-  ['flow','project','marketing','features'].forEach(ws => {
+  // Show/hide non-canvas workspace panels (project handled separately via #proj-fs)
+  ['flow','marketing','features'].forEach(ws => {
     const el = document.getElementById('ws-' + ws);
     if(el) el.classList.toggle('ws-visible', activeWorkspace === ws);
   });
+  // Project workspace: surface the full #proj-fs settings panel instead of #ws-project
+  if(activeWorkspace === 'project'){
+    const menuH = document.getElementById('menubar')?.offsetHeight || 0;
+    const tabH  = document.getElementById('topbar')?.offsetHeight  || 0;
+    const pfs   = document.getElementById('proj-fs');
+    if(pfs){ pfs.style.top = (menuH+tabH)+'px'; pfs.classList.add('show'); }
+  }
   // Show/hide canvas workspace panels
   const isCanvas = activeWorkspace === 'canvas';
   const tp = document.getElementById('tools-panel');
