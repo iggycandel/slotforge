@@ -7739,7 +7739,7 @@ function closeAllMenus(){
   });
 }
 
-let activeWorkspace = 'canvas';
+var activeWorkspace = 'canvas'; // var (not let) — must be hoisted so switchScreen can access it before this line executes
 
 function switchWorkspace(ws){
   if(ws === activeWorkspace) return;
