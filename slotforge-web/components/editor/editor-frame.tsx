@@ -12,7 +12,7 @@ const TOOLBAR_H  = 44
 const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v44'
+const EDITOR_VERSION = 'v45'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -329,7 +329,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             ref={iframeRef}
             src={editorSrc}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', display: 'block' }}
-            title="SlotForge Editor"
+            title="Spinative Editor"
           />
         </div>
 

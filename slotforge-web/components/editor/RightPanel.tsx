@@ -93,7 +93,7 @@ export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
   // ── postMessage helpers ────────────────────────────────────────────────────
 
   function getIframe(): HTMLIFrameElement | null {
-    return document.querySelector<HTMLIFrameElement>('iframe[title="SlotForge Editor"]')
+    return document.querySelector<HTMLIFrameElement>('iframe[title="Spinative Editor"]')
   }
 
   const sendOp = useCallback((op: string, key?: string, extra?: Record<string, unknown>) => {

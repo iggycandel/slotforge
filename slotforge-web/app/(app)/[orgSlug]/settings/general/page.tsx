@@ -37,7 +37,7 @@ export default async function GeneralSettingsPage({ params }: Props) {
             </label>
             <div className="flex items-center gap-0">
               <span className="px-3 py-2.5 bg-sf-overlay border border-r-0 border-sf-border rounded-l-xl text-sf-subtle text-sm">
-                slotforge.com/
+                spinative.com/
               </span>
               <input
                 defaultValue={org?.slug ?? params.orgSlug}

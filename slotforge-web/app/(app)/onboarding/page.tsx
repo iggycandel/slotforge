@@ -15,7 +15,7 @@ export default function OnboardingPage() {
 
   return (
     <main style={{ minHeight: '100vh', background: '#0d0d14', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: '#9090b0', fontFamily: 'sans-serif' }}>Entering SlotForge…</p>
+      <p style={{ color: '#9090b0', fontFamily: 'sans-serif' }}>Entering Spinative…</p>
     </main>
   )
 }

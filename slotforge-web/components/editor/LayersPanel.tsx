@@ -120,7 +120,7 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
 
   // ── Send SF_LAYER_OP to iframe ───────────────────────────────────────────────
   const sendOp = useCallback((op: string, key?: string, extra?: Record<string, unknown>) => {
-    const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="SlotForge Editor"]')
+    const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="Spinative Editor"]')
     iframe?.contentWindow?.postMessage({ type: 'SF_LAYER_OP', op, key, ...extra }, '*')
   }, [])
 

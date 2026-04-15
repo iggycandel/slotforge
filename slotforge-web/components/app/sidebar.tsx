@@ -27,7 +27,7 @@ export function Sidebar() {
       <div className="h-14 flex items-center px-5 border-b border-sf-border flex-shrink-0">
         <Link href={slug ? `/${slug}/dashboard` : '/'} className="flex items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="SlotForge" style={{ height: 28, width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo.png" alt="Spinative" style={{ height: 28, width: 'auto', objectFit: 'contain' }} />
         </Link>
       </div>
 

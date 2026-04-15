@@ -54,7 +54,7 @@ function UserMenu() {
     {
       label: 'Help & Docs',
       icon: '📖',
-      action: () => { setOpen(false); window.open('https://slotforge.io/docs', '_blank') },
+      action: () => { setOpen(false); window.open('https://spinative.com/docs', '_blank') },
     },
   ]
 
@@ -404,7 +404,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 40, paddingTop: 40, paddingBottom: 24, borderBottom: '1px solid rgba(255,255,255,.06)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="SlotForge" style={{ height: 28, width: 'auto', objectFit: 'contain' }} />
+          <img src="/logo.png" alt="Spinative" style={{ height: 28, width: 'auto', objectFit: 'contain' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {/* Team button */}
             <button
@@ -481,7 +481,7 @@ export default function DashboardPage() {
             padding: '60px 24px', textAlign: 'center', color: '#7a7a8a',
           }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="SlotForge" style={{ height: 48, width: 'auto', objectFit: 'contain', marginBottom: 12, opacity: 0.5 }} />
+            <img src="/logo.png" alt="Spinative" style={{ height: 48, width: 'auto', objectFit: 'contain', marginBottom: 12, opacity: 0.5 }} />
             <div style={{ fontSize: 15, fontWeight: 600, color: '#eeede6', marginBottom: 8 }}>No projects yet</div>
             <div style={{ fontSize: 13 }}>Create your first slot game project above.</div>
           </div>
