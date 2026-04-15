@@ -390,7 +390,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 48 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/spinative-logo.svg" alt="Spinative" style={{ height: 22, width: 'auto', display: 'block' }} />
+          <img src="/spinative-logo.png" alt="Spinative" style={{ height: 22, width: 'auto', display: 'block' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {/* Team button */}
             <button
