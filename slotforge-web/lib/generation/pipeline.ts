@@ -10,9 +10,10 @@ import type { AssetType, GeneratedAsset, GenerationResult, GenerateRequest } fro
 import type { AIProvider }          from '@/lib/ai'
 
 // ─── All asset types in generation order ────────────────────────────────────
-// Ordered from largest → smallest to surface failures early
+// Ordered from largest → smallest to surface failures early.
+// Exported so route.ts can derive the total count dynamically.
 
-const ALL_TYPES: AssetType[] = [
+export const ALL_TYPES: AssetType[] = [
   'background_base',
   'background_bonus',
   'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
@@ -20,6 +21,9 @@ const ALL_TYPES: AssetType[] = [
   'symbol_wild',
   'symbol_scatter',
   'logo',
+  'reel_frame',
+  'spin_button',
+  'jackpot_label',
 ]
 
 // ─── Generation concurrency ──────────────────────────────────────────────────

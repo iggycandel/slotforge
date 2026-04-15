@@ -11,14 +11,14 @@ import type { AssetType, BuiltPrompt, PromptCategory } from '@/types/assets'
 const MASTER_PROMPT =
   'Slot game asset, clean professional casino style, high-end 3D rendering, ' +
   'consistent art direction, isolated subject, centered composition, ' +
-  'transparent background where applicable, no UI overlays, no text unless logo, ' +
-  'no watermarks, no mockups, strong silhouette, production-ready game art, ' +
-  '4K quality, Unreal Engine cinematic lighting'
+  'no UI overlays, no watermarks, no mockups, strong silhouette, ' +
+  'production-ready game art, 4K quality, Unreal Engine cinematic lighting'
 
 const NEGATIVE_PROMPT =
-  'blurry, low quality, watermark, text overlay, UI elements, screenshot, ' +
+  'blurry, low quality, watermark, text overlay, screenshot, ' +
   'photo, realistic photograph, amateur, cropped, out of frame, ugly, distorted, ' +
-  'duplicate, multiple subjects in one image, border, frame'
+  'duplicate, multiple subjects in one image, solid plain background, white background, ' +
+  'grey background, gradient background'
 
 // ─── Per-category prompt templates ──────────────────────────────────────────
 
@@ -30,34 +30,53 @@ const TEMPLATES: Record<PromptCategory, (theme: string) => string> = {
     `premium casino game background, no UI elements, cinematic quality`,
 
   symbol_high: (theme) =>
-    `Slot game premium symbol, ${theme} theme, high-value icon, ` +
-    `ornate golden details, glossy material, jeweled accents, strong visual contrast, ` +
-    `centered on transparent background, bold silhouette, glowing edges, ` +
-    `3D rendered casino symbol, square composition`,
+    `Single isolated slot game symbol, ${theme} theme, high-value premium icon, ` +
+    `ornate golden details, glossy jeweled material, strong visual contrast, ` +
+    `floating isolated object with no background, bold silhouette, glowing rim light, ` +
+    `3D rendered casino symbol, square composition, cutout ready`,
 
   symbol_low: (theme) =>
-    `Slot game symbol, ${theme} theme, standard playing card symbol variant, ` +
-    `clean colorful icon, simplified flat-to-semi-3D style, bright colors, ` +
-    `centered on transparent background, clear readable shape, no gradients, ` +
-    `casino card game symbol, square composition`,
+    `Single isolated slot game symbol, ${theme} theme, playing card rank icon, ` +
+    `clean colorful semi-3D style, bright vibrant colors, ` +
+    `floating isolated object with no background, clear readable shape, ` +
+    `casino card symbol, square composition, cutout ready`,
 
   symbol_wild: (theme) =>
-    `Slot game WILD symbol, ${theme} theme, powerful magical energy, ` +
+    `Single isolated slot game WILD symbol, ${theme} theme, powerful magical energy, ` +
     `glowing aura, electric particles, supernatural presence, ` +
-    `"WILD" text integrated naturally into the design, centered transparent background, ` +
-    `premium 3D render, explosive visual presence, square composition`,
+    `"WILD" text integrated naturally into the design, floating isolated object with no background, ` +
+    `premium 3D render, explosive visual presence, square composition, cutout ready`,
 
   symbol_scatter: (theme) =>
-    `Slot game SCATTER symbol, ${theme} theme, mystical special object, ` +
+    `Single isolated slot game SCATTER symbol, ${theme} theme, mystical special object, ` +
     `radiant light particles, sacred geometry, glowing center, ` +
-    `"SCATTER" text integrated naturally into the design, centered transparent background, ` +
-    `premium 3D render, magical aura, square composition`,
+    `"SCATTER" text integrated naturally into the design, floating isolated object with no background, ` +
+    `premium 3D render, magical aura, square composition, cutout ready`,
 
   logo: (theme) =>
-    `Slot game logo, ${theme} theme, bold stylized typography, ` +
-    `metallic gold lettering, dramatic lighting, dark background, ` +
-    `premium casino brand identity, no subtitles, centered composition, ` +
-    `3D embossed text effect, wide banner format`,
+    `Slot game logo title treatment, ${theme} theme, bold stylized typography, ` +
+    `metallic gold lettering, dramatic rim lighting, ` +
+    `premium casino brand wordmark, no subtitles, centered composition, ` +
+    `3D embossed text effect, isolated floating text with no background, wide banner format`,
+
+  reel_frame: (theme) =>
+    `Slot machine reel window frame, ${theme} theme, decorative architectural border, ` +
+    `ornate metallic trim with themed engravings, golden or jeweled accents, ` +
+    `hollow center — only the frame border itself, NO reel content or symbols inside, ` +
+    `isolated frame shape with no background, portrait or square composition, ` +
+    `premium casino game UI art, cutout ready`,
+
+  spin_button: (theme) =>
+    `Slot machine spin button, ${theme} theme, 3D game UI button element, ` +
+    `bold circular or rounded shape, glowing animated rim, themed metallic finish, ` +
+    `arrow icon or "SPIN" text integrated into the design, floating isolated object with no background, ` +
+    `premium casino button art, vivid materials, square composition, cutout ready`,
+
+  jackpot_label: (theme) =>
+    `Casino jackpot display badge, ${theme} theme, glowing ornamental banner shape, ` +
+    `bold "JACKPOT" lettering with golden gleaming text, radiant light particles, ` +
+    `crown or star embellishments, floating isolated badge with no background, ` +
+    `premium slot machine typography, wide banner format, cutout ready`,
 }
 
 // ─── Asset type → category mapping ──────────────────────────────────────────
@@ -78,7 +97,10 @@ const TYPE_TO_CATEGORY: Record<AssetType, PromptCategory> = {
   symbol_wild:       'symbol_wild',
   symbol_scatter:    'symbol_scatter',
   logo:              'logo',
-  character:         'logo',   // character uses the same style prompt category as logo
+  character:         'logo',
+  reel_frame:        'reel_frame',
+  spin_button:       'spin_button',
+  jackpot_label:     'jackpot_label',
 }
 
 // ─── Bonus scene modifier ────────────────────────────────────────────────────

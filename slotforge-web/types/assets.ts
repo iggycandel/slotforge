@@ -19,6 +19,9 @@ export type AssetType =
   | 'symbol_scatter'
   | 'logo'
   | 'character'
+  | 'reel_frame'
+  | 'spin_button'
+  | 'jackpot_label'
 
 export const ASSET_TYPES: AssetType[] = [
   'background_base',
@@ -37,6 +40,9 @@ export const ASSET_TYPES: AssetType[] = [
   'symbol_scatter',
   'logo',
   'character',
+  'reel_frame',
+  'spin_button',
+  'jackpot_label',
 ]
 
 export const ASSET_LABELS: Record<AssetType, string> = {
@@ -56,6 +62,9 @@ export const ASSET_LABELS: Record<AssetType, string> = {
   symbol_scatter:    'Scatter Symbol',
   logo:              'Game Logo',
   character:         'Character',
+  reel_frame:        'Reel Frame',
+  spin_button:       'Spin Button',
+  jackpot_label:     'Jackpot Label',
 }
 
 // ─── Generated asset record (what we store in DB) ───────────────────────────
@@ -140,6 +149,9 @@ export type PromptCategory =
   | 'symbol_wild'
   | 'symbol_scatter'
   | 'logo'
+  | 'reel_frame'
+  | 'spin_button'
+  | 'jackpot_label'
 
 export interface BuiltPrompt {
   category: PromptCategory

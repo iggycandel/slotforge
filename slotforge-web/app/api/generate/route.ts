@@ -7,8 +7,8 @@
 import { auth }                  from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                     from 'zod'
-import { generateSlotAssets }    from '@/lib/generation/pipeline'
-import type { AssetType }        from '@/types/assets'
+import { generateSlotAssets, ALL_TYPES } from '@/lib/generation/pipeline'
+import type { AssetType }               from '@/types/assets'
 
 // ─── Vercel function timeout ─────────────────────────────────────────────────
 // 15 assets × ~25 s each (in batches of 3) ≈ 125 s.
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { theme, project_id, provider } = parsed.data
-  const TOTAL = 15 // total assets to generate
+  const TOTAL = ALL_TYPES.length // derived from pipeline — stays correct as types are added/removed
 
   // ── SSE stream ─────────────────────────────────────────────────────────────
   const stream = new ReadableStream({

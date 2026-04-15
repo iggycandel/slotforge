@@ -45,6 +45,9 @@ const ASSET_TO_EL_KEY: Partial<Record<AssetType, string>> = {
   symbol_scatter:   'sym_Scatter',
   logo:             'logo',
   character:        'char',
+  reel_frame:       'reel_frame',
+  spin_button:      'spin_button',
+  jackpot_label:    'jackpot_label',
 } as const
 void ASSET_TO_EL_KEY
 
@@ -65,6 +68,9 @@ const ASSET_LABELS: Partial<Record<AssetType, string>> = {
   symbol_scatter:   'Scatter',
   logo:             'Logo',
   character:        'Character',
+  reel_frame:       'Reel Frame',
+  spin_button:      'Spin Button',
+  jackpot_label:    'Jackpot Label',
 }
 
 const ALL_ASSET_TYPES: AssetType[] = [
@@ -72,6 +78,7 @@ const ALL_ASSET_TYPES: AssetType[] = [
   'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
   'symbol_low_1',  'symbol_low_2',  'symbol_low_3',  'symbol_low_4',  'symbol_low_5',
   'symbol_wild', 'symbol_scatter', 'logo', 'character',
+  'reel_frame', 'spin_button', 'jackpot_label',
 ]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -341,7 +348,7 @@ function snapBtnStyle(active: boolean): React.CSSProperties {
 function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddToCanvas: (type: AssetType, url: string) => void }) {
   const [theme,      setTheme]      = useState('')
   const [provider,   setProvider]   = useState<'auto' | 'runway' | 'openai'>('auto')
-  const [genStatus,  setGenStatus]  = useState<GenStatus>({ phase: 'idle', completed: 0, total: 15 })
+  const [genStatus,  setGenStatus]  = useState<GenStatus>({ phase: 'idle', completed: 0, total: 18 })
   const [assets,     setAssets]     = useState<Partial<Record<AssetType, GeneratedAsset>>>({})
   const [existing,   setExisting]   = useState<GeneratedAsset[]>([])
   const [loadingEx,  setLoadingEx]  = useState(true)
@@ -363,7 +370,7 @@ function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddTo
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    setGenStatus({ phase: 'running', completed: 0, total: 15 })
+    setGenStatus({ phase: 'running', completed: 0, total: 18 })
     setAssets({})
 
     try {
@@ -375,7 +382,7 @@ function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddTo
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Request failed' }))
-        setGenStatus({ phase: 'error', completed: 0, total: 15, message: err.error })
+        setGenStatus({ phase: 'error', completed: 0, total: 18, message: err.error })
         return
       }
 
@@ -448,7 +455,7 @@ function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddTo
             const failedCount = d.failed?.length ?? 0
             setGenStatus({
               phase:     'done',
-              completed: 15 - failedCount,
+              completed: 18 - failedCount,
               total:     15,
               message:   failedCount > 0 ? `${failedCount} asset(s) failed` : undefined,
             })
@@ -456,13 +463,13 @@ function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddTo
 
           if (ev === 'error') {
             const d = data as { message?: string }
-            setGenStatus({ phase: 'error', completed: 0, total: 15, message: d.message })
+            setGenStatus({ phase: 'error', completed: 0, total: 18, message: d.message })
           }
         }
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        setGenStatus({ phase: 'error', completed: 0, total: 15, message: 'Generation failed' })
+        setGenStatus({ phase: 'error', completed: 0, total: 18, message: 'Generation failed' })
       }
     }
   }, [theme, provider, projectId, genStatus.phase])
@@ -522,7 +529,7 @@ function GeneratedTab({ projectId, onAddToCanvas }: { projectId: string; onAddTo
         >
           {genStatus.phase === 'running'
             ? <><Loader2 style={{ width: 13, height: 13, animation: 'sf-spin 1s linear infinite' }} /> Generating…</>
-            : <><Wand2   style={{ width: 13, height: 13 }} /> Generate 15 assets</>
+            : <><Wand2   style={{ width: 13, height: 13 }} /> Generate 18 assets</>
           }
         </button>
       </div>

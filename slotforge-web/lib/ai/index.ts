@@ -61,13 +61,45 @@ export async function generateImage(
         }
 
         case 'openai': {
-          const isWide = type.startsWith('background') || type === 'logo'
-          const r = await generateWithOpenAI({
-            prompt:  built.prompt,
-            size:    isWide ? '1792x1024' : '1024x1024',
-            quality: 'hd',
-          })
-          return { url: r.url, provider: 'openai' }
+          const isBackground = type.startsWith('background')
+          const isWide       = isBackground || type === 'logo'
+          // Backgrounds: dall-e-3 at high res (no transparency needed for full scenes)
+          // Everything else: gpt-image-1 with native transparent PNG output
+          if (isBackground) {
+            const r = await generateWithOpenAI({
+              prompt:  built.prompt,
+              model:   'dall-e-3',
+              size:    '1792x1024',
+              quality: 'hd',
+            })
+            return { url: r.url, provider: 'openai' }
+          }
+          // Symbols, UI elements, logo, character — try gpt-image-1 for native transparency
+          try {
+            const r = await generateWithOpenAI({
+              prompt:      built.prompt,
+              model:       'gpt-image-1',
+              size:        isWide ? '1536x1024' : '1024x1024',
+              quality:     'high',
+              background:  'transparent',
+              outputFormat: 'png',
+            })
+            return { url: r.url, provider: 'openai' }
+          } catch (gptErr) {
+            // gpt-image-1 not available on this account — fall back to dall-e-3
+            const msg = gptErr instanceof Error ? gptErr.message : String(gptErr)
+            if (msg.includes('model') || msg.includes('404') || msg.includes('not found') || msg.includes('permission')) {
+              console.warn(`[ai] gpt-image-1 unavailable for ${type}, falling back to dall-e-3: ${msg}`)
+              const r = await generateWithOpenAI({
+                prompt:  built.prompt,
+                model:   'dall-e-3',
+                size:    '1024x1024',
+                quality: 'hd',
+              })
+              return { url: r.url, provider: 'openai' }
+            }
+            throw gptErr
+          }
         }
 
         case 'mock': {
