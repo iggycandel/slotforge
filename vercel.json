@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "slotforge-web/app/api/generate/route.ts": { "maxDuration": 60 },
+    "slotforge-web/app/api/ai-test/route.ts":  { "maxDuration": 60 }
+  }
+}
