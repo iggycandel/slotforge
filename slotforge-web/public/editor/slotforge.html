@@ -7086,7 +7086,7 @@ document.getElementById('gdd-download-btn')?.addEventListener('click', ()=>{
   const name = P.gameName||'SlotForge';
   const fn = name.replace(/\s/g,'_')+'_'+(labels[GDD_CURRENT_TAB]||'Doc')+'.html';
   const fullDoc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${name} — ${labels[GDD_CURRENT_TAB]||'Document'}</title><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Space Grotesk,sans-serif;background:#111120;color:#c0c0d0;padding:48px 32px;max-width:860px;margin:0 auto;line-height:1.6}[contenteditable="true"]:hover{background:#ffffff08;border-radius:4px}[contenteditable="true"]:focus{outline:2px solid #c9a84c55;border-radius:4px;padding:2px 4px}table{border-collapse:collapse}th,td{padding:6px 10px}</style></head><body>${content}
-<script>
+<\x73cript>
 /* ── SlotForge postMessage bridge ── */
 window._sfBridge = (function(){
   'use strict';
@@ -7205,7 +7205,7 @@ window._sfBridge = (function(){
 
   return { getPayload: getPayload, triggerSave: triggerSave };
 })();
-</script>
+<\/script>
 </body></html>`;
   const blob = new Blob([fullDoc],{type:'text/html'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; a.click();
