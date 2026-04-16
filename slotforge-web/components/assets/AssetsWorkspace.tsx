@@ -147,13 +147,15 @@ interface Props {
   inlineMode?:   boolean
   /** Called when user wants to return to the canvas (only used in inlineMode) */
   onBackToCanvas?: () => void
+  /** Rich theme/art-direction meta forwarded from the editor's Project Settings panel */
+  projectMeta?:  Record<string, unknown>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas }: Props) {
+export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta }: Props) {
   // Asset state
   const [assets, setAssets] = useState<Partial<Record<AssetType, GeneratedAsset>>>(
     () => buildAssetMap(initialAssets)
@@ -199,6 +201,22 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       .catch(() => {/* non-fatal */})
   }, [projectId])
 
+  // ─── Auto-populate theme from projectMeta when editor sends it ──────────────
+  // Only fills the theme field if it's currently empty (don't overwrite what the
+  // user has already typed). Derives a sensible default from gameName + themeKey.
+  useEffect(() => {
+    if (!projectMeta) return
+    setTheme(prev => {
+      if (prev.trim()) return prev   // already set — don't overwrite
+      const parts: string[] = []
+      if (projectMeta.gameName)  parts.push(String(projectMeta.gameName))
+      if (projectMeta.themeKey && projectMeta.themeKey !== projectMeta.gameName)
+        parts.push(String(projectMeta.themeKey))
+      const derived = parts.join(' — ')
+      return derived || prev
+    })
+  }, [projectMeta])
+
   // ─── In inline mode, pre-load existing assets from API (no server-side fetch) ─
 
   useEffect(() => {
@@ -223,8 +241,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // ─── Batch generation via SSE ───────────────────────────────────────────────
 
   const handleGenerate = useCallback(async () => {
-    if (!theme.trim()) return
-
+    // Allow generation even with empty theme — the API falls back to 'slot game'
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current  = ctrl
@@ -233,17 +250,18 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     setBatchProgress({ completed: 0, total: 19 })
     setBatchLogs([])
     saveContext(theme, styleId, provider)
-    addLog(`Starting generation for theme: "${theme}"`)
+    addLog(`Starting generation for theme: "${theme || '(from project settings)'}"`)
 
     try {
       const res = await fetch('/api/generate', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          theme: theme.trim(),
-          project_id: projectId,
+          theme:        theme.trim(),
+          project_id:   projectId,
           provider,
-          style_id: styleId || undefined,
+          style_id:     styleId || undefined,
+          project_meta: projectMeta ?? undefined,
         }),
         signal: ctrl.signal,
       })
@@ -318,10 +336,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // ─── Single-asset regeneration ──────────────────────────────────────────────
 
   const handleRegen = useCallback(async (assetType: AssetType, overridePrompt?: string) => {
-    if (!theme.trim()) return
-
     setRegenTarget(assetType)
-    addLog(`Regenerating ${assetType}…`)
+    addLog(`Generating ${assetType}…`)
 
     try {
       const res = await fetch('/api/ai-single', {
@@ -334,6 +350,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           provider,
           style_id:      styleId || undefined,
           custom_prompt: overridePrompt || undefined,
+          project_meta:  projectMeta ?? undefined,
         }),
       })
 
@@ -894,20 +911,20 @@ function GenerationControlBar({
         {/* Generate button */}
         <button
           onClick={onGenerate}
-          disabled={generating || !theme.trim()}
+          disabled={generating}
           className="sf-btn"
           style={{
             display:    'flex',
             alignItems: 'center',
             gap:        6,
             padding:    '8px 18px',
-            background: generating || !theme.trim() ? C.surfHigh : C.gold,
-            color:      generating || !theme.trim() ? C.txMuted : '#06060a',
+            background: generating ? C.surfHigh : C.gold,
+            color:      generating ? C.txMuted : '#06060a',
             border:     'none',
             borderRadius: 8,
             fontSize:   13,
             fontWeight: 700,
-            cursor:     generating || !theme.trim() ? 'not-allowed' : 'pointer',
+            cursor:     generating ? 'not-allowed' : 'pointer',
             transition: 'all .15s',
             whiteSpace: 'nowrap',
           }}
@@ -1544,7 +1561,7 @@ function InspectorTab({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button
           onClick={() => onRegen(selectedType)}
-          disabled={isRegen || !theme.trim()}
+          disabled={isRegen}
           className="sf-btn"
           style={{
             display:        'flex',
@@ -1552,13 +1569,13 @@ function InspectorTab({
             justifyContent: 'center',
             gap:            6,
             padding:        '9px 0',
-            background:     isRegen || !theme.trim() ? C.surfHigh : C.goldBg,
-            border:         `1px solid ${isRegen || !theme.trim() ? C.border : C.gold + '50'}`,
+            background:     isRegen ? C.surfHigh : C.goldBg,
+            border:         `1px solid ${isRegen ? C.border : C.gold + '50'}`,
             borderRadius:   8,
-            color:          isRegen || !theme.trim() ? C.txMuted : C.gold,
+            color:          isRegen ? C.txMuted : C.gold,
             fontSize:       12,
             fontWeight:     700,
-            cursor:         isRegen || !theme.trim() ? 'not-allowed' : 'pointer',
+            cursor:         isRegen ? 'not-allowed' : 'pointer',
           }}
         >
           {isRegen
@@ -1591,12 +1608,6 @@ function InspectorTab({
             <Download size={13} />
             Download PNG
           </a>
-        )}
-
-        {!theme.trim() && (
-          <p style={{ fontSize: 11, color: C.txMuted, textAlign: 'center', margin: '4px 0 0' }}>
-            Enter a theme above to generate
-          </p>
         )}
       </div>
     </div>
@@ -1717,7 +1728,7 @@ function PromptTab({
 
       <button
         onClick={() => onRegen(selectedType, customPrompt || undefined)}
-        disabled={isRegen || !theme.trim()}
+        disabled={isRegen}
         className="sf-btn"
         style={{
           width:          '100%',
@@ -1726,13 +1737,13 @@ function PromptTab({
           justifyContent: 'center',
           gap:            6,
           padding:        '9px 0',
-          background:     isRegen || !theme.trim() ? C.surfHigh : C.gold,
+          background:     isRegen ? C.surfHigh : C.gold,
           border:         'none',
           borderRadius:   8,
-          color:          isRegen || !theme.trim() ? C.txMuted : '#06060a',
+          color:          isRegen ? C.txMuted : '#06060a',
           fontSize:       12,
           fontWeight:     700,
-          cursor:         isRegen || !theme.trim() ? 'not-allowed' : 'pointer',
+          cursor:         isRegen ? 'not-allowed' : 'pointer',
         }}
       >
         {isRegen

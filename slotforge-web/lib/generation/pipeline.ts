@@ -6,7 +6,7 @@
 import { buildPrompt }              from '@/lib/ai/promptBuilder'
 import { generateImage }            from '@/lib/ai'
 import { uploadGeneratedAssets }    from '@/lib/storage/assets'
-import type { AssetType, GeneratedAsset, GenerationResult, GenerateRequest } from '@/types/assets'
+import type { AssetType, GeneratedAsset, GenerationResult, GenerateRequest, ProjectMeta } from '@/types/assets'
 import type { AIProvider }          from '@/lib/ai'
 
 // ─── All asset types in generation order ────────────────────────────────────
@@ -53,6 +53,7 @@ export async function generateSlotAssets(
   opts: PipelineOptions = {}
 ): Promise<PipelineResult> {
   const { theme, project_id } = req
+  const meta     = req.project_meta
   const provider = (req.provider ?? opts.provider ?? 'auto') as AIProvider
   const { onProgress, onAssetComplete } = opts
 
@@ -73,7 +74,7 @@ export async function generateSlotAssets(
 
     const results = await Promise.allSettled(
       batch.map(async type => {
-        const built = buildPrompt(type, theme, req.style_id)
+        const built = buildPrompt(type, theme, req.style_id, meta)
         const result = await generateImage(type, built, provider)
         return { type, ...result, prompt: built.prompt }
       })

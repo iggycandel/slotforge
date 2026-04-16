@@ -2,6 +2,34 @@
 // SlotForge — Shared asset type definitions
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Rich project context from the Theme panel — fed directly into AI prompts */
+export interface ProjectMeta {
+  /** Game title (e.g. "Lucky Bull") */
+  gameName?:       string
+  /** Theme key (e.g. "western") */
+  themeKey?:       string
+  /** Setting / World free-text */
+  setting?:        string
+  /** Narrative arc free-text */
+  story?:          string
+  /** Mood / Tone selection */
+  mood?:           string
+  /** Bonus Round Narrative */
+  bonusNarrative?: string
+  /** Art Style selection (e.g. "Realistic", "Cartoon / Illustrated") */
+  artStyle?:       string
+  /** Visual Inspiration / Art Reference */
+  artRef?:         string
+  /** Art Direction Notes */
+  artNotes?:       string
+  /** Colour palette primary */
+  colorPrimary?:   string
+  /** Colour palette background */
+  colorBg?:        string
+  /** Colour palette accent */
+  colorAccent?:    string
+}
+
 export type AssetType =
   | 'background_base'
   | 'background_bonus'
@@ -99,10 +127,11 @@ export interface GenerationResult {
 // ─── Generation request ──────────────────────────────────────────────────────
 
 export interface GenerateRequest {
-  theme:      string      // user's raw prompt e.g. "ancient egypt"
-  project_id: string
-  provider?:  'runway' | 'openai' | 'auto'
-  style_id?:  string      // graphic style ID from GRAPHIC_STYLES (e.g. 'cartoon_3d')
+  theme:        string      // user's raw prompt e.g. "ancient egypt"
+  project_id:   string
+  provider?:    'runway' | 'openai' | 'auto'
+  style_id?:    string      // graphic style ID from GRAPHIC_STYLES (e.g. 'cartoon_3d')
+  project_meta?: ProjectMeta
 }
 
 export interface GenerateResponse {

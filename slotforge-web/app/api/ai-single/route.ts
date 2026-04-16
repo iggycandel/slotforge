@@ -20,7 +20,7 @@ import { z }                  from 'zod'
 import { buildPrompt }        from '@/lib/ai/promptBuilder'
 import { generateImage }      from '@/lib/ai'
 import { uploadGeneratedAsset } from '@/lib/storage/assets'
-import type { AssetType }     from '@/types/assets'
+import type { AssetType, ProjectMeta } from '@/types/assets'
 
 // Extend timeout for single-asset generation (~15-30 s)
 export const maxDuration = 60
@@ -40,12 +40,14 @@ const VALID_ASSET_TYPES: AssetType[] = [
 
 const RequestSchema = z.object({
   asset_type:    z.enum(VALID_ASSET_TYPES as [AssetType, ...AssetType[]]),
-  theme:         z.string().min(2).max(200).trim(),
+  theme:         z.string().max(200).trim().default(''),
   project_id:    z.string().uuid(),
   provider:      z.enum(['runway', 'openai', 'auto']).optional().default('auto'),
   style_id:      z.string().optional(),
   // If provided, overrides the assembled prompt entirely (user-edited prompt from the Prompt Editor)
   custom_prompt: z.string().max(2000).optional(),
+  // Rich project meta from the Theme panel — fed into prompt building
+  project_meta:  z.record(z.unknown()).optional(),
 })
 
 // ─── Route handler ───────────────────────────────────────────────────────────
@@ -67,14 +69,12 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, provider, style_id, custom_prompt } = parsed.data
+  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta } = parsed.data
 
   try {
     // ── Build prompt ──────────────────────────────────────────────────────────
-    // Use custom_prompt if provided (from Prompt Editor) — still appends MASTER_PROMPT
-    // by wrapping it in the built-prompt structure.
-    // Normal path: buildPrompt assembles the full prompt from templates + style.
-    const built = buildPrompt(asset_type, theme, style_id)
+    // Normal path: buildPrompt assembles the full prompt from templates + style + meta.
+    const built = buildPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined)
     if (custom_prompt) {
       // Replace the template portion with the user's custom prompt while still
       // applying the master quality requirements (handled inside buildPrompt).

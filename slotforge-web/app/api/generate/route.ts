@@ -8,7 +8,7 @@ import { auth }                  from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                     from 'zod'
 import { generateSlotAssets, ALL_TYPES } from '@/lib/generation/pipeline'
-import type { AssetType }               from '@/types/assets'
+import type { AssetType, ProjectMeta }  from '@/types/assets'
 
 // ─── Vercel function timeout ─────────────────────────────────────────────────
 // 15 assets × ~25 s each (in batches of 3) ≈ 125 s.
@@ -19,10 +19,11 @@ export const maxDuration = 300
 // ─── Request schema ──────────────────────────────────────────────────────────
 
 const RequestSchema = z.object({
-  theme:      z.string().min(2).max(200).trim(),
-  project_id: z.string().uuid(),
-  provider:   z.enum(['runway', 'openai', 'auto']).optional().default('auto'),
-  style_id:   z.string().optional(),
+  theme:        z.string().max(200).trim().default(''),
+  project_id:   z.string().uuid(),
+  provider:     z.enum(['runway', 'openai', 'auto']).optional().default('auto'),
+  style_id:     z.string().optional(),
+  project_meta: z.record(z.unknown()).optional(),
 })
 
 // ─── SSE helper ─────────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { theme, project_id, provider, style_id } = parsed.data
+  const { theme, project_id, provider, style_id, project_meta } = parsed.data
   const TOTAL = ALL_TYPES.length // derived from pipeline — stays correct as types are added/removed
 
   // ── SSE stream ─────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
         emit('start', { total: TOTAL, theme })
 
         const pipelineResult = await generateSlotAssets(
-          { theme, project_id, provider, style_id },
+          { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined },
           {
             onProgress: (completed, total, lastType) => {
               emit('progress', { completed, total, lastType })

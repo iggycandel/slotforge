@@ -3,7 +3,7 @@
 // All AI prompts flow through here. Never expose master prompt to the client.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AssetType, BuiltPrompt, PromptCategory } from '@/types/assets'
+import type { AssetType, BuiltPrompt, PromptCategory, ProjectMeta } from '@/types/assets'
 import { getStyleById } from '@/lib/ai/styles'
 
 // ─── Global Quality Blocks ───────────────────────────────────────────────────
@@ -159,13 +159,65 @@ const LOW_SYM_VARIANTS = [
   'Ten variant, minimal decoration',
 ]
 
+// ─── Build meta context block ─────────────────────────────────────────────────
+// Converts rich Theme-panel data into prompt modifiers.
+
+function buildMetaContext(type: AssetType, category: PromptCategory, meta?: ProjectMeta): string {
+  if (!meta) return ''
+
+  const parts: string[] = []
+
+  // Mood/Tone → universal
+  if (meta.mood) {
+    parts.push(`${meta.mood.toLowerCase()} mood`)
+  }
+
+  // Colour palette → universal (affects material and lighting choices)
+  if (meta.colorPrimary || meta.colorBg || meta.colorAccent) {
+    const colours = [
+      meta.colorPrimary && `primary ${meta.colorPrimary}`,
+      meta.colorBg      && `background ${meta.colorBg}`,
+      meta.colorAccent  && `accent ${meta.colorAccent}`,
+    ].filter(Boolean).join(', ')
+    if (colours) parts.push(`colour palette: ${colours}`)
+  }
+
+  // Setting/World → especially relevant for backgrounds
+  if (meta.setting && category === 'background') {
+    parts.push(`world: ${meta.setting}`)
+  }
+
+  // Bonus narrative → specifically for the bonus background
+  if (type === 'background_bonus' && meta.bonusNarrative) {
+    parts.push(`bonus narrative: ${meta.bonusNarrative}`)
+  }
+
+  // Art style → adds production style hint
+  if (meta.artStyle) {
+    parts.push(`art style: ${meta.artStyle}`)
+  }
+
+  // Visual Inspiration / Art Reference → concrete visual reference
+  if (meta.artRef) {
+    parts.push(`visual reference: ${meta.artRef}`)
+  }
+
+  // Art Direction Notes → explicit constraints from the art team
+  if (meta.artNotes) {
+    parts.push(`art direction: ${meta.artNotes}`)
+  }
+
+  return parts.length ? parts.join(', ') : ''
+}
+
 // ─── Main build function ──────────────────────────────────────────────────────
 // styleId is the ID of a GraphicStyle from GRAPHIC_STYLES (e.g. 'cartoon_3d').
-// Final prompt = CORE_QUALITY + TYPE_BLOCK + READABILITY + CONSISTENCY + TEMPLATE + VARIANT + STYLE_MODIFIER
+// meta is the optional rich Theme-panel context from ProjectMeta.
+// Final prompt = CORE_QUALITY + TYPE_BLOCK + META_CONTEXT + READABILITY + CONSISTENCY + TEMPLATE + VARIANT + STYLE_MODIFIER
 
-export function buildPrompt(type: AssetType, userTheme: string, styleId?: string): BuiltPrompt {
+export function buildPrompt(type: AssetType, userTheme: string, styleId?: string, meta?: ProjectMeta): BuiltPrompt {
   const category = TYPE_TO_CATEGORY[type]
-  const theme    = userTheme.trim().toLowerCase()
+  const theme    = userTheme.trim().toLowerCase() || 'slot game'
 
   let specificPrompt = TEMPLATES[category](theme)
 
@@ -182,6 +234,12 @@ export function buildPrompt(type: AssetType, userTheme: string, styleId?: string
   const lowIdx = ['symbol_low_1','symbol_low_2','symbol_low_3','symbol_low_4','symbol_low_5'].indexOf(type)
   if (lowIdx >= 0) {
     specificPrompt += `, ${LOW_SYM_VARIANTS[lowIdx]}`
+  }
+
+  // Inject rich project meta (mood, colours, setting, art direction…)
+  const metaContext = buildMetaContext(type, category, meta)
+  if (metaContext) {
+    specificPrompt += `, ${metaContext}`
   }
 
   // Inject graphic style modifier (server-side only — not shown to clients unfiltered)
@@ -215,7 +273,7 @@ export function buildPrompt(type: AssetType, userTheme: string, styleId?: string
 
 // ─── Build all prompts for a theme at once ───────────────────────────────────
 
-export function buildAllPrompts(theme: string): Record<AssetType, BuiltPrompt> {
+export function buildAllPrompts(theme: string, meta?: ProjectMeta): Record<AssetType, BuiltPrompt> {
   const types: AssetType[] = [
     'background_base', 'background_bonus',
     'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
@@ -224,6 +282,6 @@ export function buildAllPrompts(theme: string): Record<AssetType, BuiltPrompt> {
   ]
 
   return Object.fromEntries(
-    types.map(t => [t, buildPrompt(t, theme)])
+    types.map(t => [t, buildPrompt(t, theme, undefined, meta)])
   ) as Record<AssetType, BuiltPrompt>
 }

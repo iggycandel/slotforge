@@ -3130,6 +3130,17 @@ function _restoreFilePayload(d){
   // Update game name inputs in settings panel
   const gni = document.getElementById('gn-input');
   if(gni) gni.value = P.gameName || '';
+  // Restore Theme / Art Direction panel fields from saved meta
+  if(d.meta){
+    const setVal = (id, val) => { const el=document.getElementById(id); if(el&&val!=null) el.value=val; };
+    setVal('game-setting',          d.meta.setting);
+    setVal('game-story',            d.meta.story);
+    setVal('game-mood',             d.meta.mood);
+    setVal('game-bonus-narrative',  d.meta.bonusNarrative);
+    setVal('game-art-style',        d.meta.artStyle);
+    setVal('game-art-ref',          d.meta.artRef);
+    setVal('game-art-notes',        d.meta.artNotes);
+  }
 }
 
 // ─── Cloud Storage ───────────────────────────────────────
@@ -7795,6 +7806,27 @@ function closeAllMenus(){
 
 var activeWorkspace = 'canvas'; // var (not let) — must be hoisted so switchScreen can access it before this line executes
 
+// ─── Collect Theme-panel meta for AI prompt enrichment ────────────────────────
+// Reads the live DOM values of all Theme/Art Direction fields in Project Settings
+// and returns them as a ProjectMeta-compatible object to be forwarded to AssetsWorkspace.
+function collectMeta(){
+  const g = id => document.getElementById(id)?.value?.trim() || '';
+  return {
+    gameName:        g('game-name')       || P.gameName || '',
+    themeKey:        g('theme-sel')       || P.theme    || '',
+    setting:         g('game-setting'),
+    story:           g('game-story'),
+    mood:            g('game-mood'),
+    bonusNarrative:  g('game-bonus-narrative'),
+    artStyle:        g('game-art-style'),
+    artRef:          g('game-art-ref'),
+    artNotes:        g('game-art-notes'),
+    colorPrimary:    P.colors?.c1 || '',
+    colorBg:         P.colors?.c2 || '',
+    colorAccent:     P.colors?.c3 || '',
+  };
+}
+
 function switchWorkspace(ws){
   if(ws === activeWorkspace) return;
   // Hide the project settings fullscreen overlay whenever leaving/entering any workspace
@@ -7803,8 +7835,13 @@ function switchWorkspace(ws){
   updateWorkspaceUI();
   if(ws === 'flow')    _activateFlowWorkspace();
   if(ws === 'features') buildFeaturesEditor();
-  // Notify parent frame so it can show/hide React RightPanel (layers/assets)
-  try { window.parent.postMessage({ type: 'SF_WORKSPACE_CHANGED', workspace: ws }, '*'); } catch(e) {}
+  // Notify parent frame — include rich meta when switching to assets so the
+  // React AssetsWorkspace can pre-populate theme inputs and enrich AI prompts.
+  try {
+    const msg = { type: 'SF_WORKSPACE_CHANGED', workspace: ws };
+    if(ws === 'assets') msg.meta = collectMeta();
+    window.parent.postMessage(msg, '*');
+  } catch(e) {}
 }
 
 function updateWorkspaceUI(){
@@ -9340,6 +9377,8 @@ window._sfBridge = (function(){
       featureConfigs: (function(){
         try{ return JSON.parse(JSON.stringify(window.P_featureConfigs||{})); }catch(e){ return {}; }
       })(),
+      // Rich theme/art-direction meta for AI asset generation
+      meta: collectMeta(),
     };
   }
 

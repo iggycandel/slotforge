@@ -80,6 +80,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [historyOpen,     setHistoryOpen]     = useState(false)
   const [liveProjectName, setLiveProjectName] = useState(projectName)
   const [editorWorkspace, setEditorWorkspace] = useState<string>('canvas')
+  const [editorMeta, setEditorMeta] = useState<Record<string, unknown> | null>(null)
 
   async function loadSnapshots() {
     const { data } = await getSnapshots(projectId)
@@ -134,6 +135,8 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
       if (msg.type === 'SF_WORKSPACE_CHANGED' && msg.workspace) {
         setEditorWorkspace(msg.workspace as string)
+        // Capture rich theme/art-direction meta when switching to assets workspace
+        if (msg.meta) setEditorMeta(msg.meta as Record<string, unknown>)
       }
 
 
@@ -436,6 +439,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             projectName={liveProjectName}
             initialAssets={[]}
             inlineMode
+            projectMeta={editorMeta ?? undefined}
             onBackToCanvas={() => {
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, '*')
