@@ -63,16 +63,33 @@ export async function generateImage(
         case 'openai': {
           const isBackground = type.startsWith('background')
           const isWide       = isBackground || type === 'logo'
-          // Backgrounds: dall-e-3 at high res (no transparency needed for full scenes)
-          // Everything else: gpt-image-1 with native transparent PNG output
+          // Backgrounds: gpt-image-1 landscape at highest quality (opaque — full scene)
+          // Falls back to dall-e-3 hd if the account lacks gpt-image-1 access
           if (isBackground) {
-            const r = await generateWithOpenAI({
-              prompt:  built.prompt,
-              model:   'dall-e-3',
-              size:    '1792x1024',
-              quality: 'hd',
-            })
-            return { url: r.url, provider: 'openai' }
+            try {
+              const r = await generateWithOpenAI({
+                prompt:       built.prompt,
+                model:        'gpt-image-1',
+                size:         '1536x1024',
+                quality:      'high',
+                background:   'opaque',
+                outputFormat: 'png',
+              })
+              return { url: r.url, provider: 'openai' }
+            } catch (gptErr) {
+              const msg = gptErr instanceof Error ? gptErr.message : String(gptErr)
+              if (msg.includes('model') || msg.includes('404') || msg.includes('not found') || msg.includes('permission')) {
+                console.warn(`[ai] gpt-image-1 unavailable for background, falling back to dall-e-3: ${msg}`)
+                const r = await generateWithOpenAI({
+                  prompt:  built.prompt,
+                  model:   'dall-e-3',
+                  size:    '1792x1024',
+                  quality: 'hd',
+                })
+                return { url: r.url, provider: 'openai' }
+              }
+              throw gptErr
+            }
           }
           // Symbols, UI elements, logo, character — try gpt-image-1 for native transparency
           try {

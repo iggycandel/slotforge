@@ -1,6 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Prompt Engineering System V2
+// SlotForge — Prompt Engineering System V3
 // All AI prompts flow through here. Never expose master prompt to the client.
+//
+// V3 key changes:
+//   • Style is injected FIRST — it defines the entire visual language
+//   • Project identity anchor leads every prompt (game name + theme + style)
+//   • Stronger cross-asset consistency language on every tile
+//   • Symbol names from the GDD are woven into the tile description
+//   • Background uses the full world-building block (setting + story + mood)
+//   • Negative prompts tuned per category to prevent style drift
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AssetType, BuiltPrompt, PromptCategory, ProjectMeta } from '@/types/assets'
@@ -8,105 +16,109 @@ import { getStyleById } from '@/lib/ai/styles'
 
 // ─── Global Quality Blocks ───────────────────────────────────────────────────
 
-const CORE_QUALITY_PROMPT =
-  'slot game asset, premium casino game quality, production-ready game art, ' +
-  'strong silhouette, high readability, clean composition, consistent art direction, ' +
-  'polished finish, high detail, controlled lighting, commercially usable visual clarity'
+const CORE_QUALITY =
+  'premium casino slot game asset, production-ready game art, ' +
+  'commercially released quality, high detail, polished finish'
 
-const ISOLATED_ASSET_PROMPT =
-  'single subject, isolated object, centered composition, no background, cutout ready, ' +
-  'transparent background look, no UI elements, no mockup presentation'
+const READABILITY =
+  'strong silhouette, clear shape recognition, readable at small size, ' +
+  'high contrast edges, distinct form, low visual noise'
 
-const ENVIRONMENT_PROMPT =
-  'environment scene, cinematic depth, atmospheric perspective, layered composition, ' +
-  'immersive worldbuilding, no foreground UI, no logo overlays'
+const CONSISTENCY =
+  'cohesive asset set, same art pipeline, same lighting direction from upper-left, ' +
+  'same material response language, same colour temperature, unified visual family'
 
-const READABILITY_PROMPT =
-  'clear shape recognition, readable at small size, high contrast, low visual noise, ' +
-  'distinct silhouette, clean edge separation'
+const ISOLATED_BASE =
+  'single isolated subject, centered composition, pure transparent background, ' +
+  'cutout ready, no background elements, no ground shadow, no UI frame, no text overlay'
 
-const CONSISTENCY_PROMPT =
-  'consistent rendering pipeline, consistent lighting direction, consistent material response, ' +
-  'same visual family as the rest of the asset set'
+const ENVIRONMENT_BASE =
+  'wide environment scene, cinematic depth, atmospheric layered composition, ' +
+  'immersive world-building, rich background detail, no foreground UI, no character close-up'
 
 // ─── Negative Prompt Blocks ───────────────────────────────────────────────────
 
-const NEGATIVE_BASE =
-  'blurry, low quality, low detail, watermark, logo overlay, text overlay, ' +
-  'cropped, cut off, out of frame, distorted, malformed, duplicate object, ' +
-  'multiple unrelated objects, messy composition, noisy background, UI screenshot, mockup, presentation board'
+const NEG_UNIVERSAL =
+  'blurry, low resolution, pixelated, watermark, signature, logo overlay, ' +
+  'cropped edges, out of frame, distorted anatomy, duplicate elements, ' +
+  'UI screenshot, mockup, presentation board, collage, split-image'
 
-const NEGATIVE_ISOLATED =
-  'background scene, environment, horizon line, table surface, room interior, ' +
-  'hand holding object, packaging, frame mockup'
+const NEG_ISOLATED =
+  'background scene, horizon line, environment, table surface, room interior, ' +
+  'hand holding object, pedestal, packaging mockup, drop shadow scene, multiple objects'
 
-const NEGATIVE_ENVIRONMENT =
-  'characters in foreground, close-up object, isolated item on blank background, ' +
-  'UI overlay, menu buttons, reward text, slot reels'
+const NEG_ENVIRONMENT =
+  'close-up isolated object, item on blank background, slot reel overlay, ' +
+  'UI buttons, reward text banners, HUD elements, characters in tight foreground'
 
-// ─── Per-category prompt templates ──────────────────────────────────────────
+const NEG_SYMBOLS =
+  'text, letters, numbers, written words, readable glyphs, watermark'
 
-const TEMPLATES: Record<PromptCategory, (theme: string) => string> = {
-  background: (theme) =>
-    `${ENVIRONMENT_PROMPT}, ` +
-    `slot game background scene, ${theme} theme, wide panoramic environment, ` +
-    `no characters in foreground, immersive depth, rich atmospheric lighting, ` +
-    `dramatic color palette, highly detailed environment art, 16:9 landscape orientation, ` +
-    `premium casino game background, no UI elements, cinematic quality`,
+// ─── Per-category base templates ─────────────────────────────────────────────
+// Templates no longer include the theme — that is injected by the project
+// identity block to ensure it is tied to the graphic style consistently.
 
-  symbol_high: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `single isolated slot game symbol, ${theme} theme, premium high-value icon, ` +
-    `unique material identity, luxurious finish, bold silhouette, strong focal point, ` +
-    `readable at small size, visually prestigious, controlled detail density, ` +
-    `square composition, no text`,
+const TEMPLATES: Record<PromptCategory, () => string> = {
+  background: () =>
+    `${ENVIRONMENT_BASE}, ` +
+    `slot game background scene, wide panoramic vista, ` +
+    `dramatic atmospheric lighting, rich saturated colors, ` +
+    `deep parallax depth with foreground mid-ground background layers, ` +
+    `premium AAA casino game background art, 3:2 landscape orientation`,
 
-  symbol_low: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `single isolated slot game symbol, ${theme} theme, low-value card rank icon, ` +
-    `simple readable shape, minimal detail, bright controlled color palette, ` +
-    `clear rank hierarchy, readable at very small size, square composition, no text`,
+  symbol_high: () =>
+    `${ISOLATED_BASE}, ` +
+    `single slot game high-value symbol, premium icon design, ` +
+    `elaborate surface detail, unique material identity, luxurious finish, ` +
+    `bold dominant silhouette, strong focal point, controlled detail density, ` +
+    `square composition`,
 
-  symbol_wild: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `single isolated slot game wild symbol, ${theme} theme, powerful centerpiece design, ` +
-    `strong glow accents, dominant silhouette, ` +
-    `central plaque area reserved for later WILD text placement, no generated text`,
+  symbol_low: () =>
+    `${ISOLATED_BASE}, ` +
+    `single slot game low-value card symbol, clean readable shape, ` +
+    `minimal ornamental detail, bright controlled palette, ` +
+    `clear rank silhouette, readable at very small size, square composition`,
 
-  symbol_scatter: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `single isolated slot game scatter symbol, ${theme} theme, mystical reward object, ` +
-    `radiant center, magical particles, ` +
-    `plaque area reserved for later SCATTER text placement, no generated text`,
+  symbol_wild: () =>
+    `${ISOLATED_BASE}, ` +
+    `slot game Wild symbol, powerful centerpiece icon, ` +
+    `strong glowing energy accents, dominant hero silhouette, ` +
+    `plaque area in center reserved for WILD text (do not generate text), ` +
+    `maximum visual impact, square composition`,
 
-  logo: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `slot game logo title treatment, ${theme} theme, bold stylized typography, ` +
-    `metallic gold lettering, dramatic rim lighting, ` +
-    `premium casino brand wordmark, no subtitles, centered composition, ` +
-    `3D embossed text effect, isolated floating text with no background, wide banner format`,
+  symbol_scatter: () =>
+    `${ISOLATED_BASE}, ` +
+    `slot game Scatter/Bonus symbol, mystical reward object, ` +
+    `radiant emanating light, magical particle effects, ` +
+    `plaque area reserved for SCATTER text (do not generate text), ` +
+    `high visual excitement, square composition`,
 
-  reel_frame: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `slot machine reel window frame, ${theme} theme, decorative architectural border, ` +
-    `ornate metallic trim with themed engravings, golden or jeweled accents, ` +
-    `hollow center — only the frame border itself, NO reel content or symbols inside, ` +
-    `isolated frame shape with no background, portrait or square composition, ` +
-    `premium casino game UI art, cutout ready`,
+  logo: () =>
+    `${ISOLATED_BASE}, ` +
+    `slot game title logo treatment, bold stylized game wordmark, ` +
+    `metallic gold 3D lettering, dramatic rim lighting, ` +
+    `premium casino brand identity, no subtitles, wide banner format, ` +
+    `floating text with no background, embossed dimensional text effect`,
 
-  spin_button: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `slot machine spin button, ${theme} theme, 3D game UI button element, ` +
-    `bold circular or rounded shape, glowing animated rim, themed metallic finish, ` +
-    `arrow icon or "SPIN" text integrated into the design, floating isolated object with no background, ` +
-    `premium casino button art, vivid materials, square composition, cutout ready`,
+  reel_frame: () =>
+    `${ISOLATED_BASE}, ` +
+    `slot machine reel window frame, decorative architectural border only, ` +
+    `ornate metallic trim with themed engravings, golden jeweled accents, ` +
+    `hollow transparent center — frame border only, no symbols inside, ` +
+    `portrait or square composition`,
 
-  jackpot_label: (theme) =>
-    `${ISOLATED_ASSET_PROMPT}, ` +
-    `casino jackpot display badge, ${theme} theme, glowing ornamental banner shape, ` +
-    `bold "JACKPOT" lettering with golden gleaming text, radiant light particles, ` +
-    `crown or star embellishments, floating isolated badge with no background, ` +
-    `premium slot machine typography, wide banner format, cutout ready`,
+  spin_button: () =>
+    `${ISOLATED_BASE}, ` +
+    `slot machine spin button UI element, 3D game button, ` +
+    `bold circular rounded shape, glowing animated rim light, ` +
+    `themed metallic finish, integrated arrow motif, ` +
+    `vivid premium materials, square composition`,
+
+  jackpot_label: () =>
+    `${ISOLATED_BASE}, ` +
+    `casino jackpot display badge, ornamental glowing banner shape, ` +
+    `bold JACKPOT lettering with gleaming golden text, radiant light particles, ` +
+    `crown star embellishments, wide banner format`,
 }
 
 // ─── Asset type → category mapping ──────────────────────────────────────────
@@ -143,151 +155,234 @@ const TYPE_TO_CATEGORY: Record<AssetType, PromptCategory> = {
   jackpot_label:     'jackpot_label',
 }
 
-// ─── Bonus scene modifier ────────────────────────────────────────────────────
+// ─── High symbol tier differentiators ────────────────────────────────────────
+
+const HIGH_SYM_TIER = [
+  'tier-1 highest-value icon, most elaborate ornamentation, strongest glow, dominant visual weight',
+  'tier-2 premium icon, refined ornamentation, rich material surface, strong visual weight',
+  'tier-3 premium icon, balanced ornamentation, moderate detail density',
+  'tier-4 icon, cleaner silhouette, reduced ornamentation, lighter visual weight',
+  'tier-5 icon, simplest premium form, minimal ornament, lightest visual weight',
+  'tier-6 icon, simple clean form, understated design',
+  'tier-7 icon, minimal form, very simple design',
+  'tier-8 lowest high-value icon, flat simple icon',
+]
+
+// ─── Low symbol suit differentiators ─────────────────────────────────────────
+
+const LOW_SYM_SUIT = [
+  'Ace — strongest contrast, boldest weight',
+  'King — regal angular form',
+  'Queen — elegant curved form',
+  'Jack — playful balanced form',
+  'Ten — neutral simple form',
+  'Nine — small compact form',
+  'Eight — minimal rounded form',
+  'Seven — classic lucky seven form',
+]
+
+// ─── Bonus scene modifier ─────────────────────────────────────────────────────
 
 const BONUS_MODIFIER =
-  'bonus game variation, enhanced atmosphere, golden light, celebratory mood, ' +
-  'richer saturation, free spins visual tone, slightly different color palette'
+  'bonus feature variation, heightened atmosphere, golden warm light, ' +
+  'celebratory mood, richer saturation shift, free spins visual tone'
 
-// ─── High symbol differentiators (V2 — ensures strong visual variety) ────────
+// ─── Build project identity anchor ───────────────────────────────────────────
+// This block goes FIRST — it anchors the entire visual language of the prompt.
+// Style is the dominant signal; theme and game name reinforce the world.
 
-const HIGH_SYM_VARIANTS = [
-  'primary hero symbol, highest value, most elaborate silhouette, strongest glow accents',
-  'secondary premium symbol, refined silhouette, strong material richness',
-  'tertiary premium symbol, balanced silhouette, moderate ornamentation',
-  'fourth-tier symbol, cleaner silhouette, reduced detailing',
-  'fifth-tier symbol, simplest premium symbol, minimal detail',
-]
+function buildIdentityAnchor(theme: string, meta?: ProjectMeta, styleId?: string): string {
+  const style    = styleId ? getStyleById(styleId) : undefined
+  const gameName = meta?.gameName || ''
+  const artStyle = meta?.artStyle || ''
 
-// ─── Low symbol differentiators (V2) ─────────────────────────────────────────
+  const parts: string[] = []
 
-const LOW_SYM_VARIANTS = [
-  'Ace variant, strongest contrast',
-  'King variant, regal shape language',
-  'Queen variant, elegant readable form',
-  'Jack variant, simple silhouette',
-  'Ten variant, minimal decoration',
-]
+  // 1. Graphic style is the dominant visual language — goes absolutely first
+  if (style) {
+    parts.push(style.promptModifier)
+  } else if (artStyle) {
+    parts.push(`${artStyle} art style`)
+  }
 
-// ─── Build meta context block ─────────────────────────────────────────────────
-// Converts rich Theme-panel data into prompt modifiers.
+  // 2. Game + theme world context
+  const worldParts: string[] = []
+  if (gameName) worldParts.push(`"${gameName}"`)
+  if (theme)    worldParts.push(`${theme} theme`)
+  if (worldParts.length) parts.push(`slot game ${worldParts.join(', ')}`)
 
-function buildMetaContext(type: AssetType, category: PromptCategory, meta?: ProjectMeta): string {
+  return parts.join(', ')
+}
+
+// ─── Build per-asset meta context ────────────────────────────────────────────
+// Injected AFTER the template — adds world/mood/colour specifics for this asset.
+
+function buildAssetContext(type: AssetType, category: PromptCategory, meta?: ProjectMeta): string {
   if (!meta) return ''
 
   const parts: string[] = []
 
-  // Mood/Tone → universal
-  if (meta.mood) {
-    parts.push(`${meta.mood.toLowerCase()} mood`)
+  // Mood / Tone — all assets
+  if (meta.mood) parts.push(`${meta.mood.toLowerCase()} atmosphere`)
+
+  // Colour palette — all assets (drives material and lighting)
+  const colours = [
+    meta.colorPrimary && `primary ${meta.colorPrimary}`,
+    meta.colorBg      && `background ${meta.colorBg}`,
+    meta.colorAccent  && `accent ${meta.colorAccent}`,
+  ].filter(Boolean).join(', ')
+  if (colours) parts.push(`colour palette: ${colours}`)
+
+  // World-building — backgrounds especially
+  if (category === 'background') {
+    if (meta.setting) parts.push(`world: ${meta.setting}`)
+    if (meta.story)   parts.push(`narrative context: ${meta.story}`)
   }
 
-  // Colour palette → universal (affects material and lighting choices)
-  if (meta.colorPrimary || meta.colorBg || meta.colorAccent) {
-    const colours = [
-      meta.colorPrimary && `primary ${meta.colorPrimary}`,
-      meta.colorBg      && `background ${meta.colorBg}`,
-      meta.colorAccent  && `accent ${meta.colorAccent}`,
-    ].filter(Boolean).join(', ')
-    if (colours) parts.push(`colour palette: ${colours}`)
-  }
-
-  // Setting/World → especially relevant for backgrounds
-  if (meta.setting && category === 'background') {
-    parts.push(`world: ${meta.setting}`)
-  }
-
-  // Bonus narrative → specifically for the bonus background
+  // Bonus narrative — bonus background only
   if (type === 'background_bonus' && meta.bonusNarrative) {
-    parts.push(`bonus narrative: ${meta.bonusNarrative}`)
+    parts.push(`bonus scenario: ${meta.bonusNarrative}`)
   }
 
-  // Art style → adds production style hint
-  if (meta.artStyle) {
-    parts.push(`art style: ${meta.artStyle}`)
-  }
+  // Art direction notes — explicit constraints from the art team
+  if (meta.artNotes) parts.push(`art direction: ${meta.artNotes}`)
 
-  // Visual Inspiration / Art Reference → concrete visual reference
-  if (meta.artRef) {
-    parts.push(`visual reference: ${meta.artRef}`)
-  }
+  // Visual reference — concrete inspiration
+  if (meta.artRef) parts.push(`visual reference: ${meta.artRef}`)
 
-  // Art Direction Notes → explicit constraints from the art team
-  if (meta.artNotes) {
-    parts.push(`art direction: ${meta.artNotes}`)
-  }
-
-  return parts.length ? parts.join(', ') : ''
+  return parts.filter(Boolean).join(', ')
 }
 
-// ─── Main build function ──────────────────────────────────────────────────────
-// styleId is the ID of a GraphicStyle from GRAPHIC_STYLES (e.g. 'cartoon_3d').
-// meta is the optional rich Theme-panel context from ProjectMeta.
-// Final prompt = CORE_QUALITY + TYPE_BLOCK + META_CONTEXT + READABILITY + CONSISTENCY + TEMPLATE + VARIANT + STYLE_MODIFIER
+// ─── Resolve symbol name for a given type ────────────────────────────────────
 
-export function buildPrompt(type: AssetType, userTheme: string, styleId?: string, meta?: ProjectMeta): BuiltPrompt {
+function resolveSymbolName(type: AssetType, meta?: ProjectMeta): string {
+  if (!meta) return ''
+
+  const highIdx    = HIGH_TYPE_KEYS.indexOf(type as typeof HIGH_TYPE_KEYS[number])
+  const lowIdx     = LOW_TYPE_KEYS.indexOf(type as typeof LOW_TYPE_KEYS[number])
+  const specialIdx = SPECIAL_TYPE_KEYS.indexOf(type as typeof SPECIAL_TYPE_KEYS[number])
+
+  if (highIdx >= 0) {
+    const name = (meta.symbolHighNames as string[] | undefined)?.[highIdx]
+    return name ? name.trim() : ''
+  }
+  if (lowIdx >= 0) {
+    const name = (meta.symbolLowNames as string[] | undefined)?.[lowIdx]
+    return name ? name.trim() : ''
+  }
+  if (specialIdx >= 2) {
+    // index 2+ are special_3..6
+    const name = (meta.symbolSpecialNames as string[] | undefined)?.[specialIdx - 2 + 2]
+    return name ? name.trim() : ''
+  }
+  return ''
+}
+
+const HIGH_TYPE_KEYS = [
+  'symbol_high_1','symbol_high_2','symbol_high_3','symbol_high_4',
+  'symbol_high_5','symbol_high_6','symbol_high_7','symbol_high_8',
+] as const
+const LOW_TYPE_KEYS = [
+  'symbol_low_1','symbol_low_2','symbol_low_3','symbol_low_4',
+  'symbol_low_5','symbol_low_6','symbol_low_7','symbol_low_8',
+] as const
+const SPECIAL_TYPE_KEYS = [
+  'symbol_wild','symbol_scatter',
+  'symbol_special_3','symbol_special_4','symbol_special_5','symbol_special_6',
+] as const
+
+// ─── Main build function ──────────────────────────────────────────────────────
+//
+// V3 prompt structure:
+//   [1] IDENTITY ANCHOR  — style + game + theme (most important — goes first)
+//   [2] ASSET TEMPLATE   — category-specific base description
+//   [3] ASSET CONTEXT    — per-asset world/mood/colour from project meta
+//   [4] DIFFERENTIATOR   — tier/suit/variant that separates this asset from siblings
+//   [5] QUALITY BLOCKS   — readability + consistency (applied universally)
+//   [6] CORE QUALITY     — production quality signal
+
+export function buildPrompt(
+  type:      AssetType,
+  userTheme: string,
+  styleId?:  string,
+  meta?:     ProjectMeta,
+): BuiltPrompt {
   const category = TYPE_TO_CATEGORY[type]
   const theme    = userTheme.trim().toLowerCase() || 'slot game'
 
-  let specificPrompt = TEMPLATES[category](theme)
+  // ── [1] Identity anchor ────────────────────────────────────────────────────
+  const identityAnchor = buildIdentityAnchor(theme, meta, styleId)
 
-  // Inject per-asset differentiators
+  // ── [2] Asset template ─────────────────────────────────────────────────────
+  let assetBlock = TEMPLATES[category]()
+
+  // ── [3] Asset context (world/mood/colour/art direction) ────────────────────
+  const assetContext = buildAssetContext(type, category, meta)
+
+  // ── [4] Differentiator ─────────────────────────────────────────────────────
+  const differentiators: string[] = []
+
   if (type === 'background_bonus') {
-    specificPrompt += `, ${BONUS_MODIFIER}`
+    differentiators.push(BONUS_MODIFIER)
   }
 
-  const highIdx = ['symbol_high_1','symbol_high_2','symbol_high_3','symbol_high_4','symbol_high_5'].indexOf(type)
+  const highIdx = HIGH_TYPE_KEYS.indexOf(type as typeof HIGH_TYPE_KEYS[number])
   if (highIdx >= 0) {
-    specificPrompt += `, ${HIGH_SYM_VARIANTS[highIdx]}`
+    differentiators.push(HIGH_SYM_TIER[highIdx] ?? HIGH_SYM_TIER[4])
+    const symName = resolveSymbolName(type, meta)
+    if (symName) differentiators.push(`depicted as: ${symName}`)
   }
 
-  const lowIdx = ['symbol_low_1','symbol_low_2','symbol_low_3','symbol_low_4','symbol_low_5'].indexOf(type)
+  const lowIdx = LOW_TYPE_KEYS.indexOf(type as typeof LOW_TYPE_KEYS[number])
   if (lowIdx >= 0) {
-    specificPrompt += `, ${LOW_SYM_VARIANTS[lowIdx]}`
+    differentiators.push(LOW_SYM_SUIT[lowIdx] ?? LOW_SYM_SUIT[4])
+    const symName = resolveSymbolName(type, meta)
+    if (symName) differentiators.push(`depicted as: ${symName}`)
   }
 
-  // Inject rich project meta (mood, colours, setting, art direction…)
-  const metaContext = buildMetaContext(type, category, meta)
-  if (metaContext) {
-    specificPrompt += `, ${metaContext}`
+  const specialIdx = SPECIAL_TYPE_KEYS.indexOf(type as typeof SPECIAL_TYPE_KEYS[number])
+  if (specialIdx >= 2) {
+    const symName = resolveSymbolName(type, meta)
+    if (symName) differentiators.push(`bonus symbol depicted as: ${symName}`)
   }
 
-  // Inject graphic style modifier (server-side only — not shown to clients unfiltered)
+  // ── Assemble prompt ────────────────────────────────────────────────────────
+  const segments = [
+    identityAnchor,
+    assetBlock,
+    assetContext,
+    ...differentiators,
+    READABILITY,
+    CONSISTENCY,
+    CORE_QUALITY,
+  ].filter(Boolean)
+
+  const prompt = segments.join(', ')
+
+  // ── Assemble negative prompt ───────────────────────────────────────────────
   const style = styleId ? getStyleById(styleId) : undefined
-  if (style) {
-    specificPrompt += `. ${style.promptModifier}`
-  }
-
-  // Final prompt = V2 quality blocks + specific details
-  const prompt = [
-    CORE_QUALITY_PROMPT,
-    specificPrompt,
-    READABILITY_PROMPT,
-    CONSISTENCY_PROMPT,
-  ].join(', ')
-
-  // Combine negative prompts (base + isolated/environment + style-specific)
   const isEnvironment = category === 'background'
-  const negativeExtra  = isEnvironment ? NEGATIVE_ENVIRONMENT : NEGATIVE_ISOLATED
-  const negativePrompt = style?.negativeModifier
-    ? `${NEGATIVE_BASE}, ${negativeExtra}, ${style.negativeModifier}`
-    : `${NEGATIVE_BASE}, ${negativeExtra}`
+  const negParts = [
+    NEG_UNIVERSAL,
+    isEnvironment ? NEG_ENVIRONMENT : NEG_ISOLATED,
+    !isEnvironment ? NEG_SYMBOLS : '',
+    style?.negativeModifier ?? '',
+  ].filter(Boolean)
+  const negativePrompt = negParts.join(', ')
 
-  return {
-    category,
-    assetType: type,
-    prompt,
-    negativePrompt,
-  }
+  return { category, assetType: type, prompt, negativePrompt }
 }
 
 // ─── Build all prompts for a theme at once ───────────────────────────────────
 
-export function buildAllPrompts(theme: string, meta?: ProjectMeta): Record<AssetType, BuiltPrompt> {
+export function buildAllPrompts(
+  theme: string,
+  meta?: ProjectMeta,
+): Record<AssetType, BuiltPrompt> {
   const types: AssetType[] = [
     'background_base', 'background_bonus',
     'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
-    'symbol_low_1', 'symbol_low_2', 'symbol_low_3', 'symbol_low_4', 'symbol_low_5',
+    'symbol_low_1',  'symbol_low_2',  'symbol_low_3',  'symbol_low_4',  'symbol_low_5',
     'symbol_wild', 'symbol_scatter', 'logo',
   ]
 

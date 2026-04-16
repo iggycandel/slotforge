@@ -9801,7 +9801,7 @@ window._sfBridge = (function(){
         if(op==='select'&&k) { selectEl(k); }
         else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas();renderLayers();markDirty(); }
         else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers();markDirty(); }
-        else if(op==='delete'&&k){ deleteCustomLayer(k); }
+        else if(op==='delete'&&k){ deleteAnyLayer(k); }
         else if(op==='duplicate'&&k){ duplicateLayer(k); }
         else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas();markDirty(); }
         else if(op==='addLayer'){ document.getElementById('add-layer-btn')?.click(); }

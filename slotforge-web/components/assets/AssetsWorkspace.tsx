@@ -207,6 +207,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const [regenTarget, setRegenTarget] = useState<AssetType | null>(null)
   const [customPrompt, setCustomPrompt] = useState('')
 
+  // Asset panel view tab
+  const [assetTab, setAssetTab] = useState<'generated' | 'uploads'>('generated')
+
   const addLog = useCallback((msg: string) => {
     setBatchLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 99)])
   }, [])
@@ -438,6 +441,23 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const totalGenerated = Object.keys(assets).length
   const selectedAsset  = selected ? assets[selected] : null
 
+  // Filter assets by tab
+  const generatedAssets = useMemo(() =>
+    Object.fromEntries(
+      Object.entries(assets).filter(([, a]) => a.provider !== 'upload')
+    ) as Partial<Record<AssetType, GeneratedAsset>>,
+    [assets]
+  )
+  const uploadedAssets = useMemo(() =>
+    Object.fromEntries(
+      Object.entries(assets).filter(([, a]) => a.provider === 'upload')
+    ) as Partial<Record<AssetType, GeneratedAsset>>,
+    [assets]
+  )
+  const visibleAssets = assetTab === 'uploads' ? uploadedAssets : generatedAssets
+  const uploadCount   = Object.keys(uploadedAssets).length
+  const genCount      = Object.keys(generatedAssets).length
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -634,13 +654,66 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             />
           )}
 
+          {/* ── View Tabs: Generated / Uploads ─────────────────────────── */}
+          <div style={{
+            display:      'flex',
+            alignItems:   'center',
+            gap:          2,
+            padding:      '6px 16px',
+            borderBottom: `1px solid ${C.border}`,
+            background:   C.surface,
+            flexShrink:   0,
+          }}>
+            {(['generated', 'uploads'] as const).map(tab => {
+              const isActive = assetTab === tab
+              const count    = tab === 'generated' ? genCount : uploadCount
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setAssetTab(tab)}
+                  style={{
+                    display:      'flex',
+                    alignItems:   'center',
+                    gap:          5,
+                    padding:      '4px 12px',
+                    fontSize:     11,
+                    fontWeight:   isActive ? 700 : 500,
+                    color:        isActive ? C.gold : C.txMuted,
+                    background:   isActive ? C.goldBg : 'transparent',
+                    border:       `1px solid ${isActive ? C.gold + '50' : 'transparent'}`,
+                    borderRadius: 6,
+                    cursor:       'pointer',
+                    fontFamily:   C.font,
+                    transition:   'all .15s',
+                  }}
+                >
+                  {tab === 'generated' ? <Sparkles size={10} /> : <Upload size={10} />}
+                  {tab === 'generated' ? 'Generated' : 'Uploads'}
+                  {count > 0 && (
+                    <span style={{
+                      fontSize:     9,
+                      fontWeight:   600,
+                      color:        isActive ? C.gold : C.txFaint,
+                      background:   isActive ? C.gold + '20' : C.surfHigh,
+                      borderRadius: 8,
+                      padding:      '0 5px',
+                      lineHeight:   '16px',
+                    }}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
           {/* Asset Grid (scrollable) */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 40px' }}>
             {assetGroups.map(group => (
               <AssetGroupSection
                 key={group.id}
                 group={group}
-                assets={assets}
+                assets={visibleAssets}
                 selectedType={selected}
                 regenTarget={regenTarget}
                 onSelect={type => {

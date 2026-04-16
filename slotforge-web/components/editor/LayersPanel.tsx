@@ -360,25 +360,25 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
                     <ChevronDown style={{ width: 10, height: 10 }} />
                   </button>
 
-                  {/* Custom layer actions (duplicate + delete) */}
+                  {/* Duplicate — custom layers only */}
                   {layer.type === 'custom' && (
-                    <>
-                      <button
-                        onClick={e => { e.stopPropagation(); sendOp('duplicate', layer.key) }}
-                        title="Duplicate layer"
-                        style={iconBtnStyle}
-                      >
-                        <Copy style={{ width: 11, height: 11 }} />
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); sendOp('delete', layer.key) }}
-                        title="Delete layer"
-                        style={{ ...iconBtnStyle, color: T.red }}
-                      >
-                        <Trash2 style={{ width: 11, height: 11 }} />
-                      </button>
-                    </>
+                    <button
+                      onClick={e => { e.stopPropagation(); sendOp('duplicate', layer.key) }}
+                      title="Duplicate layer"
+                      style={iconBtnStyle}
+                    >
+                      <Copy style={{ width: 11, height: 11 }} />
+                    </button>
                   )}
+
+                  {/* Delete — all layers */}
+                  <button
+                    onClick={e => { e.stopPropagation(); sendOp('delete', layer.key) }}
+                    title={layer.type === 'custom' ? 'Delete layer' : 'Remove from this screen'}
+                    style={{ ...iconBtnStyle, color: T.red }}
+                  >
+                    <Trash2 style={{ width: 11, height: 11 }} />
+                  </button>
 
                   {/* Blend mode dropdown */}
                   {blendOpen === layer.key && (

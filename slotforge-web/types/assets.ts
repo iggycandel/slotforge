@@ -28,6 +28,14 @@ export interface ProjectMeta {
   colorBg?:        string
   /** Colour palette accent */
   colorAccent?:    string
+  /** Symbol counts */
+  symbolHighCount?:    number
+  symbolLowCount?:     number
+  symbolSpecialCount?: number
+  /** Per-symbol names (from the Symbols panel) */
+  symbolHighNames?:    string[]
+  symbolLowNames?:     string[]
+  symbolSpecialNames?: string[]
 }
 
 export type AssetType =
