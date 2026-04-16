@@ -1694,6 +1694,23 @@ document.getElementById('canvas-wrap').addEventListener('click', e=>{
   // If hitCel: element's own click handler already fired (and called selectEl or canvasAutoSelect)
 });
 
+// Right-click on empty canvas area → open background context panel.
+// The bg layer has pointer-events:none so right-clicks pass through it to canvas-wrap.
+// We catch them here when no .cel with pointer-events was under the cursor.
+document.getElementById('canvas-wrap').addEventListener('contextmenu', e=>{
+  // If a .cel already handled the contextmenu (stopped propagation) this handler won't fire.
+  // We arrive here only when the right-click hit empty canvas = visually over the background.
+  const hitCel = e.target.closest ? e.target.closest('.cel') : null;
+  if(!hitCel){
+    e.preventDefault();
+    e.stopPropagation();
+    if(typeof openCtxPanel === 'function' && PSD && PSD['bg']){
+      openCtxPanel('bg', e.clientX, e.clientY);
+      selectEl('bg');
+    }
+  }
+});
+
 // Keyboard
 document.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.shiftKey&&e.key==='z'){e.preventDefault();redo();return;}

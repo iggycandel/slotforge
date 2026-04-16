@@ -70,13 +70,14 @@ const iconBtn: React.CSSProperties = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
-  projectId:     string
-  orgSlug:       string
-  onAddToCanvas: (assetType: AssetType, url: string) => void
-  width?:        number   // panel width in px (default 320)
+  projectId:        string
+  orgSlug:          string
+  onAddToCanvas:    (assetType: AssetType, url: string) => void
+  width?:           number   // panel width in px (default 320)
+  assetRefreshTick?: number  // increments to trigger asset list re-fetch
 }
 
-export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320 }: Props) {
+export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, assetRefreshTick }: Props) {
   const [activeTab, setActiveTab] = useState<PanelTab>('layers')
   const [layers,    setLayers]    = useState<LayerInfo[]>([])
   const [screen,    setScreen]    = useState('')
@@ -421,6 +422,7 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320 }: P
             orgSlug={orgSlug}
             onAddToCanvas={onAddToCanvas}
             embedded={true}
+            assetRefreshTick={assetRefreshTick}
           />
         </div>
       )}

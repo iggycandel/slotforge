@@ -1322,6 +1322,18 @@ function AssetTile({
             transition: 'opacity .15s',
           }}
         >
+              {/* Hidden file input — used for both Replace and Upload */}
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) { onUpload(f); e.target.value = '' }
+            }}
+          />
+
           {asset ? (
             <>
               <button
@@ -1343,25 +1355,48 @@ function AssetTile({
                 <Eye size={10} />
                 Inspect
               </button>
-              <button
-                onClick={e => { e.stopPropagation(); onRegen() }}
-                style={{
-                  display:    'flex',
-                  alignItems: 'center',
-                  gap:        4,
-                  padding:    '5px 8px',
-                  background: C.goldBg,
-                  border:     `1px solid ${C.gold}40`,
-                  borderRadius: 6,
-                  color:      C.gold,
-                  fontSize:   10,
-                  fontWeight: 600,
-                  cursor:     'pointer',
-                }}
-              >
-                <RefreshCw size={10} />
-                Regen
-              </button>
+              {/* Uploaded assets get Replace; generated assets get Regen */}
+              {asset.provider === 'upload' ? (
+                <button
+                  onClick={e => { e.stopPropagation(); uploadInputRef.current?.click() }}
+                  style={{
+                    display:    'flex',
+                    alignItems: 'center',
+                    gap:        4,
+                    padding:    '5px 8px',
+                    background: 'rgba(96,165,250,.12)',
+                    border:     '1px solid rgba(96,165,250,.3)',
+                    borderRadius: 6,
+                    color:      '#60a5fa',
+                    fontSize:   10,
+                    fontWeight: 600,
+                    cursor:     'pointer',
+                  }}
+                >
+                  <Upload size={10} />
+                  Replace
+                </button>
+              ) : (
+                <button
+                  onClick={e => { e.stopPropagation(); onRegen() }}
+                  style={{
+                    display:    'flex',
+                    alignItems: 'center',
+                    gap:        4,
+                    padding:    '5px 8px',
+                    background: C.goldBg,
+                    border:     `1px solid ${C.gold}40`,
+                    borderRadius: 6,
+                    color:      C.gold,
+                    fontSize:   10,
+                    fontWeight: 600,
+                    cursor:     'pointer',
+                  }}
+                >
+                  <RefreshCw size={10} />
+                  Regen
+                </button>
+              )}
             </>
           ) : (
             /* Empty tile: Generate (opens prompt panel) + Upload */
@@ -1406,16 +1441,6 @@ function AssetTile({
                 <Upload size={13} />
                 Upload
               </button>
-              <input
-                ref={uploadInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                style={{ display: 'none' }}
-                onChange={e => {
-                  const f = e.target.files?.[0]
-                  if (f) { onUpload(f); e.target.value = '' }
-                }}
-              />
             </>
           )}
         </div>

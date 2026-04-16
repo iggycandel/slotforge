@@ -13,7 +13,7 @@ const TOOLBAR_H  = 44
 const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v51'
+const EDITOR_VERSION = 'v52'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -81,6 +81,8 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [liveProjectName, setLiveProjectName] = useState(projectName)
   const [editorWorkspace, setEditorWorkspace] = useState<string>('canvas')
   const [editorMeta, setEditorMeta] = useState<Record<string, unknown> | null>(null)
+  // Bumped whenever an asset upload completes — propagated to RightPanel → AssetsPanel for auto-refresh
+  const [assetRefreshTick, setAssetRefreshTick] = useState(0)
 
   async function loadSnapshots() {
     const { data } = await getSnapshots(projectId)
@@ -164,6 +166,8 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
               const assets = ((payloadRef.current.assets as Record<string, unknown>) ?? {})
               payloadRef.current = { ...payloadRef.current, assets: { ...assets, [msg.assetKey as string]: url } }
               doSave(payloadRef.current, false)
+              // Trigger right-panel asset list refresh
+              setAssetRefreshTick(t => t + 1)
             }
           })
           .catch(err => {
@@ -454,6 +458,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             orgSlug={orgSlug}
             onAddToCanvas={handleAddToCanvas}
             width={PANEL_W}
+            assetRefreshTick={assetRefreshTick}
           />
         )}
 

@@ -183,9 +183,6 @@
   <!-- Project workspace topbar -->
   <div id="topbar-project">
     <span class="tb-ws-label">Project</span>
-    <button class="tb-ws-action" onclick="document.getElementById('proj-fs')?.classList.add('show')">⚙ Edit Settings</button>
-    <button class="tb-ws-action" onclick="openGDDModal()">📋 GDD</button>
-    <button class="tb-ws-action" onclick="switchWorkspace('flow')" style="margin-left:auto">🔀 Open Flow →</button>
   </div>
   <!-- Features workspace topbar -->
   <div id="topbar-features">
@@ -692,13 +689,13 @@
   <div id="proj-hdr">
     <div style="display:flex;align-items:center;gap:16px;flex:1">
       <div><div class="ph-title">Project Settings</div><div class="ph-sub">All screens update live as you configure</div></div>
-      <button id="proj-close-btn" title="Close Settings" style="margin-left:auto;padding:5px 14px;border-radius:6px;border:1px solid #3a3a52;background:#22222e;color:#c0c0d0;font-size:11px;font-family:Space Grotesk,sans-serif;cursor:pointer">✕ Close</button>
     </div>
     <div class="ph-chip" id="ph-chip"></div>
-    <div id="proj-save-wrap">
-      <div id="save-status" style="font-size:10px;color:#9898b8">Unsaved changes</div>
-      <button id="save-btn" style="padding:6px 14px;border-radius:6px;border:none;background:#c9a84c;color:#1a1200;font-size:11px;font-weight:600;cursor:pointer">Save Project</button>
-    </div>
+    <!-- proj-close-btn kept hidden so code references (Save & Close buttons) still work -->
+    <button id="proj-close-btn" style="display:none"></button>
+    <!-- save-btn kept hidden so saveProject() feedback still works -->
+    <button id="save-btn" style="display:none"></button>
+    <div id="save-status" style="display:none"></div>
   </div>
   <div id="proj-body">
     <!-- Tab bar -->

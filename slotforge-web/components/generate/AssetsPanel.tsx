@@ -81,11 +81,12 @@ const PANEL_W = 280
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  projectId:      string
-  orgSlug:        string
-  onAddToCanvas:  (assetType: AssetType, url: string) => void
-  toolbarHeight?: number
-  embedded?:      boolean
+  projectId:        string
+  orgSlug:          string
+  onAddToCanvas:    (assetType: AssetType, url: string) => void
+  toolbarHeight?:   number
+  embedded?:        boolean
+  assetRefreshTick?: number  // increments externally to trigger re-fetch
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ interface Props {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AssetsPanel({
-  projectId, orgSlug, onAddToCanvas, toolbarHeight = 44, embedded = false,
+  projectId, orgSlug, onAddToCanvas, toolbarHeight = 44, embedded = false, assetRefreshTick,
 }: Props) {
   const [minimized, setMinimized] = useState(false)
   const [snap,      setSnap]      = useState<SnapEdge>('right')
@@ -165,6 +166,7 @@ export function AssetsPanel({
       projectId={projectId}
       orgSlug={orgSlug}
       onAddToCanvas={onAddToCanvas}
+      assetRefreshTick={assetRefreshTick}
     />
   )
 
@@ -257,8 +259,8 @@ function snapBtnStyle(active: boolean): React.CSSProperties {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetLibraryContent({
-  projectId, orgSlug, onAddToCanvas,
-}: { projectId: string; orgSlug: string; onAddToCanvas: (type: AssetType, url: string) => void }) {
+  projectId, orgSlug, onAddToCanvas, assetRefreshTick,
+}: { projectId: string; orgSlug: string; onAddToCanvas: (type: AssetType, url: string) => void; assetRefreshTick?: number }) {
   const [assets,  setAssets]  = useState<Partial<Record<AssetType, GeneratedAsset>>>({})
   const [loading, setLoading] = useState(true)
 
@@ -281,6 +283,11 @@ function AssetLibraryContent({
   }, [projectId])
 
   useEffect(() => { loadAssets() }, [loadAssets])
+
+  // Re-fetch whenever the parent signals an asset was changed (e.g. reel upload in editor)
+  useEffect(() => {
+    if (assetRefreshTick && assetRefreshTick > 0) loadAssets()
+  }, [assetRefreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Upload handler — called from LibraryRow ──────────────────────────────
   const uploadAsset = useCallback(async (file: File, assetType: AssetType) => {
@@ -477,10 +484,12 @@ function LibraryRow({
     if (img) e.dataTransfer.setDragImage(img, 20, 20)
   }
 
-  // Trigger file picker
+  // Trigger file picker — defer one tick so the synthetic event finishes first
   function handleUploadClick(e: React.MouseEvent) {
+    e.preventDefault()
     e.stopPropagation()
-    fileInput.current?.click()
+    const inp = fileInput.current
+    if (inp) setTimeout(() => inp.click(), 0)
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
