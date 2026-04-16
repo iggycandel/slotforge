@@ -74,9 +74,11 @@ async function extractText(file: File): Promise<string> {
   }
 
   // PDF — pdf-parse v1 (pdfjs-dist v2, no workers, works in Node.js/serverless)
+  // Require the lib directly to avoid pdf-parse's index.js running its own test suite on load
+  // (which tries to open ./test/data/05-versions-space.pdf and throws ENOENT in serverless)
   if (type.includes('pdf') || file.name.endsWith('.pdf')) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
+    const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buf: Buffer) => Promise<{ text: string }>
     const data = await pdfParse(buf)
     return data.text.slice(0, 40000)
   }
