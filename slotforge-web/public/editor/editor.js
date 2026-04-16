@@ -8456,6 +8456,11 @@ function openProjectSettings(){
 // ─── Workspace tab clicks ───────────────────────────────
 document.querySelectorAll('.ws-tab').forEach(btn => {
   btn.addEventListener('click', () => {
+    // Assets tab navigates the parent shell to the /assets route (separate page)
+    if(btn.dataset.ws === 'assets'){
+      window.parent.postMessage({ type: 'SF_NAVIGATE_ASSETS' }, '*');
+      return;
+    }
     switchWorkspace(btn.dataset.ws);
   });
 });

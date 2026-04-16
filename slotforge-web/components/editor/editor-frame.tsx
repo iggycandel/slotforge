@@ -135,6 +135,11 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         setEditorWorkspace(msg.workspace as string)
       }
 
+      // Assets tab in editor.js clicked → navigate React shell to /assets page
+      if (msg.type === 'SF_NAVIGATE_ASSETS') {
+        window.location.href = `/${orgSlug}/projects/${projectId}/assets`
+      }
+
       if (msg.type === 'SF_DIRTY') {
         setSaveState(s => s.status !== 'saving' ? { ...s, status: 'dirty' } : s)
         if (msg.snapshot && payloadRef.current) {

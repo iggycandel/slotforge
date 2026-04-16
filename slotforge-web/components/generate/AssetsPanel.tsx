@@ -1,9 +1,9 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Canvas Asset Library Panel (floating overlay)
+// SlotForge — Canvas Asset List Panel (floating overlay or embedded)
 //
 // Read-only view of assets generated in the ASSETS workspace.
-// Users drag any asset onto the canvas with the "Add" button.
+// Users can drag any asset onto the canvas or use the Add/Replace buttons.
 // Generation is NOT done here — it lives at /assets workspace.
 //
 // Behaviour: draggable floating panel, snaps to left / right edge.
@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  ImageIcon, Loader2, CheckCircle2, Plus,
+  ImageIcon, CheckCircle2, Plus,
   Minus, GripVertical, ChevronDown, ExternalLink, RefreshCw,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
@@ -160,7 +160,7 @@ export function AssetsPanel({
 
   if (embedded) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, fontFamily: T.font }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', background: T.bg, fontFamily: T.font }}>
         {content}
         <style>{`@keyframes sf-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -190,7 +190,7 @@ export function AssetsPanel({
             fontSize: 11, fontWeight: 700, color: T.textMuted,
             textTransform: 'uppercase', letterSpacing: '.08em', flex: 1,
           }}>
-            Asset Library
+            Asset List
           </span>
 
           {/* Snap buttons */}
@@ -403,29 +403,80 @@ function AssetLibraryContent({
   )
 }
 
+// Canvas slot options for the "Place in…" dropdown
+const CANVAS_SLOT_OPTIONS: { label: string; assetType: AssetType }[] = [
+  { label: 'BG Base',    assetType: 'background_base' },
+  { label: 'BG Bonus',   assetType: 'background_bonus' },
+  { label: 'High 1',     assetType: 'symbol_high_1' },
+  { label: 'High 2',     assetType: 'symbol_high_2' },
+  { label: 'High 3',     assetType: 'symbol_high_3' },
+  { label: 'High 4',     assetType: 'symbol_high_4' },
+  { label: 'High 5',     assetType: 'symbol_high_5' },
+  { label: 'Low 1',      assetType: 'symbol_low_1' },
+  { label: 'Low 2',      assetType: 'symbol_low_2' },
+  { label: 'Low 3',      assetType: 'symbol_low_3' },
+  { label: 'Low 4',      assetType: 'symbol_low_4' },
+  { label: 'Low 5',      assetType: 'symbol_low_5' },
+  { label: 'Wild',       assetType: 'symbol_wild' },
+  { label: 'Scatter',    assetType: 'symbol_scatter' },
+  { label: 'Logo',       assetType: 'logo' },
+  { label: 'Character',  assetType: 'character' },
+  { label: 'Reel Frame', assetType: 'reel_frame' },
+  { label: 'Spin Btn',   assetType: 'spin_button' },
+  { label: 'Jackpot',    assetType: 'jackpot_label' },
+]
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Library Row — compact single-asset list row
+// Library Row — compact single-asset list row with drag + replace dropdown
 // ─────────────────────────────────────────────────────────────────────────────
 
 function LibraryRow({
   assetType, asset, onAddToCanvas,
 }: { assetType: AssetType; asset: GeneratedAsset; onAddToCanvas: (t: AssetType, url: string) => void }) {
-  const [adding, setAdding] = useState(false)
+  const [adding,      setAdding]      = useState(false)
+  const [ddOpen,      setDdOpen]      = useState(false)
+  const ddRef = useRef<HTMLDivElement>(null)
 
-  function handleAdd() {
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!ddOpen) return
+    function close(e: MouseEvent) {
+      if (!ddRef.current?.contains(e.target as Node)) setDdOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [ddOpen])
+
+  function handleAdd(targetType: AssetType = assetType) {
     setAdding(true)
-    onAddToCanvas(assetType, asset.url)
+    setDdOpen(false)
+    onAddToCanvas(targetType, asset.url)
     setTimeout(() => setAdding(false), 1200)
   }
 
+  // Drag-and-drop: encode assetType + url in dataTransfer
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
+    e.dataTransfer.effectAllowed = 'copy'
+    e.dataTransfer.setData('text/plain', JSON.stringify({ assetType, url: asset.url }))
+    // Use the thumbnail as the drag image
+    const img = e.currentTarget.querySelector('img') as HTMLImageElement | null
+    if (img) e.dataTransfer.setDragImage(img, 20, 20)
+  }
+
   return (
-    <div style={{
-      display:     'flex',
-      alignItems:  'center',
-      gap:         10,
-      padding:     '5px 12px',
-      borderBottom:`1px solid ${T.border}`,
-    }}>
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      title="Drag onto the canvas to place, or use the + button"
+      style={{
+        display:     'flex',
+        alignItems:  'center',
+        gap:         10,
+        padding:     '5px 12px',
+        borderBottom:`1px solid ${T.border}`,
+        cursor:      'grab',
+      }}
+    >
       {/* Thumbnail */}
       <div style={{
         width:       40,
@@ -460,29 +511,107 @@ function LibraryRow({
         </div>
       </div>
 
-      {/* Add to Canvas button */}
-      <button
-        onClick={handleAdd}
-        title="Add to canvas"
-        style={{
-          width:      26,
-          height:     26,
-          borderRadius:6,
-          display:    'flex',
-          alignItems: 'center',
-          justifyContent:'center',
-          background: adding ? 'rgba(52,211,153,.12)' : T.goldBg,
-          border:     `1px solid ${adding ? 'rgba(52,211,153,.3)' : 'rgba(201,168,76,.2)'}`,
-          cursor:     'pointer',
-          flexShrink: 0,
-          color:      adding ? T.green : T.gold,
-        }}
-      >
-        {adding
-          ? <CheckCircle2 size={12} />
-          : <Plus         size={12} />
-        }
-      </button>
+      {/* Split button: Add + dropdown for placing in any slot */}
+      <div ref={ddRef} style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+        {/* Main add button */}
+        <button
+          onClick={() => handleAdd()}
+          title="Place in default canvas slot"
+          style={{
+            width:      26,
+            height:     26,
+            borderRadius:'6px 0 0 6px',
+            display:    'flex',
+            alignItems: 'center',
+            justifyContent:'center',
+            background: adding ? 'rgba(52,211,153,.12)' : T.goldBg,
+            border:     `1px solid ${adding ? 'rgba(52,211,153,.3)' : 'rgba(201,168,76,.2)'}`,
+            borderRight:'none',
+            cursor:     'pointer',
+            color:      adding ? T.green : T.gold,
+          }}
+        >
+          {adding
+            ? <CheckCircle2 size={12} />
+            : <Plus         size={12} />
+          }
+        </button>
+
+        {/* Dropdown toggle */}
+        <button
+          onClick={() => setDdOpen(v => !v)}
+          title="Place in a specific canvas slot…"
+          style={{
+            width:      18,
+            height:     26,
+            borderRadius:'0 6px 6px 0',
+            display:    'flex',
+            alignItems: 'center',
+            justifyContent:'center',
+            background: ddOpen ? T.goldBg : 'rgba(201,168,76,.04)',
+            border:     `1px solid rgba(201,168,76,.2)`,
+            cursor:     'pointer',
+            color:      T.gold,
+            padding:    0,
+          }}
+        >
+          <ChevronDown size={10} />
+        </button>
+
+        {/* Dropdown menu */}
+        {ddOpen && (
+          <div style={{
+            position:   'absolute',
+            right:      0,
+            top:        '100%',
+            marginTop:  3,
+            background: T.surfaceHigh,
+            border:     `1px solid ${T.border}`,
+            borderRadius: 8,
+            zIndex:     600,
+            minWidth:   160,
+            boxShadow:  '0 6px 24px rgba(0,0,0,.6)',
+            overflow:   'hidden',
+          }}>
+            <div style={{
+              padding:   '6px 10px 4px',
+              fontSize:  9,
+              color:     T.textFaint,
+              fontWeight:700,
+              letterSpacing:'.06em',
+              textTransform:'uppercase',
+              borderBottom: `1px solid ${T.border}`,
+            }}>
+              Place in canvas slot…
+            </div>
+            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+              {CANVAS_SLOT_OPTIONS.map(opt => (
+                <button
+                  key={opt.assetType}
+                  onClick={() => handleAdd(opt.assetType)}
+                  style={{
+                    display:    'block',
+                    width:      '100%',
+                    padding:    '6px 10px',
+                    textAlign:  'left',
+                    background: opt.assetType === assetType ? T.goldBg : 'transparent',
+                    border:     'none',
+                    color:      opt.assetType === assetType ? T.gold : T.textMuted,
+                    fontSize:   11,
+                    cursor:     'pointer',
+                    fontFamily: T.font,
+                  }}
+                >
+                  {opt.label}
+                  {opt.assetType === assetType && (
+                    <span style={{ float: 'right', color: T.gold, fontSize: 9 }}>default</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

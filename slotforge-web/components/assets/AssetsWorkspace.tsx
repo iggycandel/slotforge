@@ -598,7 +598,7 @@ function LeftSidebar({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <LayoutGrid size={14} style={{ color: C.gold }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: C.tx, letterSpacing: '.04em' }}>
-            ASSET LIBRARY
+            ASSET LIST
           </span>
         </div>
         {/* Overall progress pill */}
@@ -1112,7 +1112,7 @@ function AssetTile({
           style={{
             position:   'absolute',
             inset:      0,
-            background: 'rgba(6,6,10,.7)',
+            background: asset ? 'rgba(6,6,10,.7)' : 'rgba(6,6,10,.55)',
             display:    'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1121,44 +1121,68 @@ function AssetTile({
             transition: 'opacity .15s',
           }}
         >
-          <button
-            onClick={e => { e.stopPropagation(); onSelect() }}
-            style={{
-              display:    'flex',
-              alignItems: 'center',
-              gap:        4,
-              padding:    '5px 8px',
-              background: 'rgba(255,255,255,.1)',
-              border:     '1px solid rgba(255,255,255,.15)',
-              borderRadius: 6,
-              color:      C.tx,
-              fontSize:   10,
-              fontWeight: 600,
-              cursor:     'pointer',
-            }}
-          >
-            <Eye size={10} />
-            Inspect
-          </button>
-          {asset && (
+          {asset ? (
+            <>
+              <button
+                onClick={e => { e.stopPropagation(); onSelect() }}
+                style={{
+                  display:    'flex',
+                  alignItems: 'center',
+                  gap:        4,
+                  padding:    '5px 8px',
+                  background: 'rgba(255,255,255,.1)',
+                  border:     '1px solid rgba(255,255,255,.15)',
+                  borderRadius: 6,
+                  color:      C.tx,
+                  fontSize:   10,
+                  fontWeight: 600,
+                  cursor:     'pointer',
+                }}
+              >
+                <Eye size={10} />
+                Inspect
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); onRegen() }}
+                style={{
+                  display:    'flex',
+                  alignItems: 'center',
+                  gap:        4,
+                  padding:    '5px 8px',
+                  background: C.goldBg,
+                  border:     `1px solid ${C.gold}40`,
+                  borderRadius: 6,
+                  color:      C.gold,
+                  fontSize:   10,
+                  fontWeight: 600,
+                  cursor:     'pointer',
+                }}
+              >
+                <RefreshCw size={10} />
+                Regen
+              </button>
+            </>
+          ) : (
+            /* Empty tile: show clear "Generate" CTA */
             <button
               onClick={e => { e.stopPropagation(); onRegen() }}
               style={{
                 display:    'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap:        4,
-                padding:    '5px 8px',
-                background: C.goldBg,
-                border:     `1px solid ${C.gold}40`,
-                borderRadius: 6,
-                color:      C.gold,
-                fontSize:   10,
-                fontWeight: 600,
+                gap:        5,
+                padding:    '8px 12px',
+                background: C.gold,
+                border:     'none',
+                borderRadius: 8,
+                color:      '#06060a',
+                fontSize:   11,
+                fontWeight: 700,
                 cursor:     'pointer',
               }}
             >
-              <RefreshCw size={10} />
-              Regen
+              <Sparkles size={13} />
+              Generate
             </button>
           )}
         </div>
@@ -1213,14 +1237,18 @@ function EmptyTilePlaceholder({ label, isRegenerating }: { label: string; isRege
       justifyContent: 'center',
       gap:            6,
       color:          C.txFaint,
+      background:     'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(255,255,255,.013) 6px, rgba(255,255,255,.013) 12px)',
     }}>
       {isRegenerating
         ? <Loader2 size={18} style={{ color: C.gold, animation: 'spin 1s linear infinite' }} />
-        : <Wand2 size={16} style={{ opacity: .4 }} />
+        : <Sparkles size={14} style={{ opacity: .3, color: C.gold }} />
       }
-      <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textAlign: 'center', padding: '0 4px' }}>
+      <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textAlign: 'center', padding: '0 4px', color: C.txMuted }}>
         {label}
       </span>
+      {!isRegenerating && (
+        <span style={{ fontSize: 8, color: C.txFaint, letterSpacing: '.04em' }}>Hover to generate</span>
+      )}
     </div>
   )
 }

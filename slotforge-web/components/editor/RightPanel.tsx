@@ -415,7 +415,7 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320 }: P
 
       {/* ── Assets tab ── */}
       {activeTab === 'assets' && (
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <AssetsPanel
             projectId={projectId}
             orgSlug={orgSlug}
