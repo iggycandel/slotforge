@@ -76,7 +76,7 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 );
@@ -94,7 +94,7 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 );
@@ -136,7 +136,7 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 );
@@ -175,7 +175,7 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 );
@@ -192,14 +192,14 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 )
 WITH CHECK (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 );
@@ -227,7 +227,7 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 );
@@ -244,14 +244,14 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 )
 WITH CHECK (
   project_id IN (
     SELECT id FROM projects WHERE workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()::text
     )
   )
 );
