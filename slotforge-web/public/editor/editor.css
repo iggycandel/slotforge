@@ -630,8 +630,7 @@ option{background:#1e1e2e;color:#d8d6d1}
 .ws-tab.ws-active::after{content:"";position:absolute;bottom:-2px;left:10px;right:10px;height:2px;background:var(--accent-gold);border-radius:2px;box-shadow:0 -1px 6px var(--accent-gold)}
 .ws-sep{width:1px;height:14px;background:#2e2e40;margin:0 4px;flex-shrink:0}
 /* Assets tab — styled as a gold navigation link rather than an in-editor workspace */
-.ws-tab--assets{color:#c9a84c !important;border:1px solid rgba(201,168,76,.25) !important;border-radius:6px !important;background:rgba(201,168,76,.06) !important}
-.ws-tab--assets:hover{background:rgba(201,168,76,.14) !important;border-color:rgba(201,168,76,.45) !important}
+/* .ws-tab--assets intentionally unstyled — uses default .ws-tab + .ws-active like all other tabs */
 
 /* ── Canvas workspace: existing layout unchanged ── */
 #ws-canvas-tools{display:flex;flex:1;overflow:hidden}

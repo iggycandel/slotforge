@@ -13,7 +13,7 @@ import {
   Sparkles, ChevronLeft, LayoutGrid, Layers, Box,
   RefreshCw, Download, Loader2, CheckCircle2,
   XCircle, Wand2, ZapIcon, AlignLeft, MessageSquare,
-  ChevronDown, ChevronUp, Eye,
+  ChevronDown, ChevronUp, Eye, Upload,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import { GRAPHIC_STYLES } from '@/lib/ai/styles'
@@ -354,6 +354,38 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     }
   }, [theme, projectId, provider, styleId, addLog])
 
+  // ─── User upload ─────────────────────────────────────────────────────────────
+
+  const handleUpload = useCallback(async (assetType: AssetType, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('projectId', projectId)
+    fd.append('assetKey', assetType)
+    fd.append('theme', theme || 'custom')
+    addLog(`Uploading ${assetType}…`)
+    try {
+      const res  = await fetch('/api/assets/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok || json.error) { addLog(`Upload error: ${json.error ?? 'Failed'}`); return }
+      const newAsset: GeneratedAsset = json.asset ?? {
+        id:         crypto.randomUUID(),
+        project_id: projectId,
+        type:       assetType,
+        url:        json.url,
+        prompt:     'User uploaded image',
+        theme:      theme || 'custom',
+        provider:   'upload' as const,
+        created_at: new Date().toISOString(),
+      }
+      setAssets(prev => ({ ...prev, [assetType]: newAsset }))
+      setSelected(assetType)
+      setRightTab('inspector')
+      addLog(`✓ Uploaded ${assetType}`)
+    } catch (err) {
+      addLog(`Upload error: ${err instanceof Error ? err.message : 'Failed'}`)
+    }
+  }, [projectId, theme, addLog])
+
   // ─── Computed values ────────────────────────────────────────────────────────
 
   const totalGenerated = Object.keys(assets).length
@@ -567,12 +599,17 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 onSelect={type => {
                   setSelected(type)
                   setRightTab('inspector')
-                  // Pre-fill custom prompt with existing prompt
                   const existing = assets[type]
                   if (existing) setCustomPrompt(existing.prompt)
                   else setCustomPrompt('')
                 }}
                 onRegen={type => handleRegen(type)}
+                onOpenPromptTab={type => {
+                  setSelected(type)
+                  setRightTab('prompt')
+                  setCustomPrompt('')
+                }}
+                onUpload={(type, file) => handleUpload(type, file)}
                 isActive={activeGroup === group.id}
               />
             ))}
@@ -998,17 +1035,19 @@ function BatchProgressBar({ completed, total }: { completed: number; total: numb
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AssetGroupSectionProps {
-  group:       AssetGroup
-  assets:      Partial<Record<AssetType, GeneratedAsset>>
-  selectedType:AssetType | null
-  regenTarget: AssetType | null
-  onSelect:    (type: AssetType) => void
-  onRegen:     (type: AssetType) => void
-  isActive:    boolean
+  group:           AssetGroup
+  assets:          Partial<Record<AssetType, GeneratedAsset>>
+  selectedType:    AssetType | null
+  regenTarget:     AssetType | null
+  onSelect:        (type: AssetType) => void
+  onRegen:         (type: AssetType) => void
+  onOpenPromptTab: (type: AssetType) => void
+  onUpload:        (type: AssetType, file: File) => void
+  isActive:        boolean
 }
 
 function AssetGroupSection({
-  group, assets, selectedType, regenTarget, onSelect, onRegen, isActive,
+  group, assets, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, isActive,
 }: AssetGroupSectionProps) {
   const filledCount = group.types.filter(t => !!assets[t]).length
 
@@ -1062,6 +1101,8 @@ function AssetGroupSection({
             aspectRatio={group.aspectRatio}
             onSelect={() => onSelect(type)}
             onRegen={() => onRegen(type)}
+            onOpenPromptTab={() => onOpenPromptTab(type)}
+            onUpload={(file) => onUpload(type, file)}
           />
         ))}
       </div>
@@ -1074,18 +1115,21 @@ function AssetGroupSection({
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AssetTileProps {
-  assetType:     AssetType
-  asset?:        GeneratedAsset
-  isSelected:    boolean
-  isRegenerating:boolean
-  aspectRatio:   '16/9' | '1/1'
-  onSelect:      () => void
-  onRegen:       () => void
+  assetType:       AssetType
+  asset?:          GeneratedAsset
+  isSelected:      boolean
+  isRegenerating:  boolean
+  aspectRatio:     '16/9' | '1/1'
+  onSelect:        () => void
+  onRegen:         () => void
+  onOpenPromptTab: () => void
+  onUpload:        (file: File) => void
 }
 
 function AssetTile({
-  assetType, asset, isSelected, isRegenerating, aspectRatio, onSelect, onRegen,
+  assetType, asset, isSelected, isRegenerating, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload,
 }: AssetTileProps) {
+  const uploadInputRef = useRef<HTMLInputElement>(null)
   const label = ASSET_SHORT_LABELS[assetType] ?? assetType
 
   return (
@@ -1195,27 +1239,59 @@ function AssetTile({
               </button>
             </>
           ) : (
-            /* Empty tile: show clear "Generate" CTA */
-            <button
-              onClick={e => { e.stopPropagation(); onRegen() }}
-              style={{
-                display:    'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap:        5,
-                padding:    '8px 12px',
-                background: C.gold,
-                border:     'none',
-                borderRadius: 8,
-                color:      '#06060a',
-                fontSize:   11,
-                fontWeight: 700,
-                cursor:     'pointer',
-              }}
-            >
-              <Sparkles size={13} />
-              Generate
-            </button>
+            /* Empty tile: Generate (opens prompt panel) + Upload */
+            <>
+              <button
+                onClick={e => { e.stopPropagation(); onOpenPromptTab() }}
+                style={{
+                  display:       'flex',
+                  flexDirection: 'column',
+                  alignItems:    'center',
+                  gap:           5,
+                  padding:       '8px 12px',
+                  background:    C.gold,
+                  border:        'none',
+                  borderRadius:  8,
+                  color:         '#06060a',
+                  fontSize:      11,
+                  fontWeight:    700,
+                  cursor:        'pointer',
+                }}
+              >
+                <Sparkles size={13} />
+                Generate
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); uploadInputRef.current?.click() }}
+                style={{
+                  display:       'flex',
+                  flexDirection: 'column',
+                  alignItems:    'center',
+                  gap:           5,
+                  padding:       '8px 12px',
+                  background:    'rgba(255,255,255,.08)',
+                  border:        '1px solid rgba(255,255,255,.15)',
+                  borderRadius:  8,
+                  color:         '#ccc',
+                  fontSize:      11,
+                  fontWeight:    600,
+                  cursor:        'pointer',
+                }}
+              >
+                <Upload size={13} />
+                Upload
+              </button>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) { onUpload(f); e.target.value = '' }
+                }}
+              />
+            </>
           )}
         </div>
       )}
@@ -1487,7 +1563,7 @@ function InspectorTab({
         >
           {isRegen
             ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</>
-            : <><RefreshCw size={13} /> Regenerate</>
+            : <><RefreshCw size={13} /> Generate</>
           }
         </button>
 
@@ -1519,7 +1595,7 @@ function InspectorTab({
 
         {!theme.trim() && (
           <p style={{ fontSize: 11, color: C.txMuted, textAlign: 'center', margin: '4px 0 0' }}>
-            Enter a theme above to regenerate
+            Enter a theme above to generate
           </p>
         )}
       </div>
@@ -1585,7 +1661,7 @@ function PromptTab({
       <div style={{ marginBottom: 10 }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: C.tx }}>{label}</h3>
         <p style={{ margin: 0, fontSize: 11, color: C.txMuted }}>
-          Edit the prompt below, then regenerate this single asset.
+          Edit the prompt below, then generate this asset.
         </p>
       </div>
 
@@ -1661,7 +1737,7 @@ function PromptTab({
       >
         {isRegen
           ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</>
-          : <><Wand2 size={13} /> {customPrompt ? 'Regenerate with custom prompt' : 'Regenerate'}</>
+          : <><Wand2 size={13} /> {customPrompt ? 'Generate with custom prompt' : 'Generate'}</>
         }
       </button>
     </div>

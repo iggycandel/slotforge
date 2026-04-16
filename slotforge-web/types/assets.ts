@@ -76,7 +76,7 @@ export interface GeneratedAsset {
   url:        string
   prompt:     string
   theme:      string
-  provider:   'runway' | 'openai' | 'mock'
+  provider:   'runway' | 'openai' | 'mock' | 'upload'
   created_at: string
 }
 

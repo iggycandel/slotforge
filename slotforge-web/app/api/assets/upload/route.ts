@@ -8,6 +8,8 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+
 // ── GET /api/assets/upload?project_id=... ─────────────────────────────────────
 // List all user-uploaded assets for a project from Supabase Storage
 export async function GET(req: NextRequest) {
@@ -23,7 +25,6 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const files = (data ?? [])
     .filter(f => f.name !== '.emptyFolderPlaceholder')
     .map(f => ({
@@ -76,7 +77,32 @@ export async function POST(req: NextRequest) {
     .from('project-assets')
     .getPublicUrl(storagePath)
 
-  return NextResponse.json({ url: publicUrl })
+  // Save asset record to generated_assets so it shows up in the asset grid
+  const theme = (formData.get('theme') as string | null) || 'custom'
+  const assetRecord = {
+    id:         crypto.randomUUID(),
+    project_id: projectId,
+    type:       safeName,  // the asset type key (e.g. symbol_high_1)
+    url:        publicUrl,
+    prompt:     'User uploaded image',
+    theme,
+    provider:   'upload',
+    created_at: new Date().toISOString(),
+  }
+  // Save to DB — non-fatal if it fails
+  try {
+    const { error: upsertErr } = await supabaseAdmin
+      .from('generated_assets')
+      .upsert(assetRecord, { onConflict: 'project_id,type' })
+    if (upsertErr) {
+      // Fallback: plain insert
+      await supabaseAdmin.from('generated_assets').insert(assetRecord)
+    }
+  } catch (e) {
+    console.warn('[upload] DB save failed (non-fatal):', e)
+  }
+
+  return NextResponse.json({ url: publicUrl, asset: assetRecord })
 }
 
 // ── DELETE /api/assets/upload ─────────────────────────────────────────────────

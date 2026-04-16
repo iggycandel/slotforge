@@ -417,7 +417,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         {/* ── Editor iframe — always mounted; shrinks to menubar strip when assets active ── */}
         <div style={
           editorWorkspace === 'assets'
-            ? { height: 36, flexShrink: 0, position: 'relative', overflow: 'hidden', width: '100%' }
+            ? { height: 36, flexShrink: 0, position: 'relative', overflow: 'hidden', width: '100%', boxShadow: '0 2px 10px rgba(0,0,0,0.35)' }
             : { flex: 1, position: 'relative', overflow: 'hidden' }
         }>
           <iframe
