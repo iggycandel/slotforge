@@ -57,7 +57,9 @@ export async function generateSlotAssets(
   const provider = (req.provider ?? opts.provider ?? 'auto') as AIProvider
   const { onProgress, onAssetComplete } = opts
 
-  const total    = ALL_TYPES.length
+  // Honour caller-specified subset (for "fill gaps" mode) or fall back to all types
+  const typesToGenerate = req.asset_types?.length ? req.asset_types : ALL_TYPES
+  const total    = typesToGenerate.length
   let completed  = 0
 
   const generationErrors: Map<AssetType, string> = new Map()
@@ -69,8 +71,8 @@ export async function generateSlotAssets(
   // This lets the SSE stream deliver assets one-by-one instead of all-at-once,
   // avoiding Vercel's 60 s function timeout on large generations.
 
-  for (let i = 0; i < ALL_TYPES.length; i += GENERATION_CONCURRENCY) {
-    const batch = ALL_TYPES.slice(i, i + GENERATION_CONCURRENCY)
+  for (let i = 0; i < typesToGenerate.length; i += GENERATION_CONCURRENCY) {
+    const batch = typesToGenerate.slice(i, i + GENERATION_CONCURRENCY)
 
     const results = await Promise.allSettled(
       batch.map(async type => {

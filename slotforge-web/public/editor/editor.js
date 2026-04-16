@@ -1711,6 +1711,88 @@ document.getElementById('canvas-wrap').addEventListener('contextmenu', e=>{
   }
 });
 
+// ─── Drag-and-drop from shell asset panel onto canvas ────────────────────────
+// When the user drags an asset row from the React shell's AssetsPanel and drops
+// it onto the canvas iframe, the browser fires dragover / drop inside the iframe.
+// We intercept here, resolve the target slot, and apply the image immediately.
+(function(){
+  var SF_ASSET_KEY_MAP = {
+    background_base:  'bg',
+    background_bonus: 'bg_bonus',
+    symbol_high_1:    'sym_H1',  symbol_high_2: 'sym_H2',  symbol_high_3: 'sym_H3',
+    symbol_high_4:    'sym_H4',  symbol_high_5: 'sym_H5',  symbol_high_6: 'sym_H6',
+    symbol_high_7:    'sym_H7',  symbol_high_8: 'sym_H8',
+    symbol_low_1:     'sym_L1',  symbol_low_2:  'sym_L2',  symbol_low_3:  'sym_L3',
+    symbol_low_4:     'sym_L4',  symbol_low_5:  'sym_L5',  symbol_low_6:  'sym_L6',
+    symbol_low_7:     'sym_L7',  symbol_low_8:  'sym_L8',
+    symbol_wild:      'sym_Wild',
+    symbol_scatter:   'sym_Scatter',
+    symbol_special_3: 'sym_Special3',
+    symbol_special_4: 'sym_Special4',
+    symbol_special_5: 'sym_Special5',
+    symbol_special_6: 'sym_Special6',
+    logo:             'logo',
+    character:        'char',
+    reel_frame:       'reel_frame',
+    spin_button:      'spin_button',
+    jackpot_label:    'jackpot_label',
+  };
+
+  var canvasWrap = document.getElementById('canvas-wrap');
+  if(!canvasWrap) return;
+
+  // Allow drops on the canvas
+  canvasWrap.addEventListener('dragover', function(e){
+    try {
+      // Only accept drops that carry our asset JSON payload
+      var types = e.dataTransfer ? e.dataTransfer.types : [];
+      var hasText = Array.prototype.indexOf.call(types, 'text/plain') !== -1
+                 || Array.prototype.indexOf.call(types, 'Text') !== -1;
+      if(hasText){ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+    } catch(err){}
+  });
+
+  canvasWrap.addEventListener('drop', function(e){
+    try {
+      e.preventDefault();
+      var raw = e.dataTransfer && e.dataTransfer.getData('text/plain');
+      if(!raw) return;
+      var payload;
+      try { payload = JSON.parse(raw); } catch(pe){ return; }
+      if(!payload || !payload.url) return;
+
+      var elKey;
+
+      // If dropped onto a specific symbol cell, use that cell's sym key
+      var hitCel = e.target && e.target.closest ? e.target.closest('[data-sym-id]') : null;
+      if(hitCel && hitCel.dataset.symId){
+        elKey = 'sym_' + hitCel.dataset.symId;
+      } else if(payload.assetType){
+        elKey = SF_ASSET_KEY_MAP[payload.assetType] || payload.assetType;
+      }
+
+      if(!elKey) return;
+
+      // Apply the URL directly (already a CDN URL from the panel)
+      EL_ASSETS[elKey] = payload.url;
+      if(typeof buildCanvas  === 'function') buildCanvas();
+      if(typeof renderLayers === 'function') renderLayers();
+      if(typeof markDirty    === 'function') markDirty();
+
+      // Show a brief drop-success flash on the target cell or canvas
+      var flashEl = hitCel || canvasWrap;
+      if(flashEl){
+        var origOutline = flashEl.style.outline;
+        flashEl.style.outline = '2px solid #34d399';
+        setTimeout(function(){ flashEl.style.outline = origOutline; }, 800);
+      }
+
+      // Notify the shell that a canvas asset changed (triggers assetRefreshTick)
+      window.parent.postMessage({ type: 'SF_ASSET_CDN_URL', assetKey: elKey, url: payload.url }, '*');
+    } catch(err){ console.warn('[SF] drag-drop failed:', err); }
+  });
+})();
+
 // Keyboard
 document.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.shiftKey&&e.key==='z'){e.preventDefault();redo();return;}
@@ -9778,25 +9860,18 @@ window._sfBridge = (function(){
     // Inject a generated/external image URL into a canvas layer asset slot
     if(msg.type === 'SF_INJECT_IMAGE_LAYER' && msg.assetType && msg.url){
       var ASSET_KEY_MAP = {
-        background_base:  'bg',
-        background_bonus: 'bg_bonus',
-        symbol_high_1:    'sym_H1',
-        symbol_high_2:    'sym_H2',
-        symbol_high_3:    'sym_H3',
-        symbol_high_4:    'sym_H4',
-        symbol_high_5:    'sym_H5',
-        symbol_low_1:     'sym_L1',
-        symbol_low_2:     'sym_L2',
-        symbol_low_3:     'sym_L3',
-        symbol_low_4:     'sym_L4',
-        symbol_low_5:     'sym_L5',
-        symbol_wild:      'sym_Wild',
-        symbol_scatter:   'sym_Scatter',
-        logo:             'logo',
-        character:        'char',
-        reel_frame:       'reel_frame',
-        spin_button:      'spin_button',
-        jackpot_label:    'jackpot_label',
+        background_base:  'bg',   background_bonus: 'bg_bonus',
+        symbol_high_1: 'sym_H1', symbol_high_2: 'sym_H2', symbol_high_3: 'sym_H3',
+        symbol_high_4: 'sym_H4', symbol_high_5: 'sym_H5', symbol_high_6: 'sym_H6',
+        symbol_high_7: 'sym_H7', symbol_high_8: 'sym_H8',
+        symbol_low_1:  'sym_L1', symbol_low_2:  'sym_L2', symbol_low_3:  'sym_L3',
+        symbol_low_4:  'sym_L4', symbol_low_5:  'sym_L5', symbol_low_6:  'sym_L6',
+        symbol_low_7:  'sym_L7', symbol_low_8:  'sym_L8',
+        symbol_wild:      'sym_Wild',    symbol_scatter:   'sym_Scatter',
+        symbol_special_3: 'sym_Special3', symbol_special_4: 'sym_Special4',
+        symbol_special_5: 'sym_Special5', symbol_special_6: 'sym_Special6',
+        logo: 'logo', character: 'char', reel_frame: 'reel_frame',
+        spin_button: 'spin_button', jackpot_label: 'jackpot_label',
       };
       var elKey = ASSET_KEY_MAP[msg.assetType] || msg.assetType;
       try {

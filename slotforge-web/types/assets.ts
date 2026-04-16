@@ -157,6 +157,8 @@ export interface GenerateRequest {
   provider?:    'runway' | 'openai' | 'auto'
   style_id?:    string      // graphic style ID from GRAPHIC_STYLES (e.g. 'cartoon_3d')
   project_meta?: ProjectMeta
+  /** When set, only generate these specific types (used for "fill gaps" mode). */
+  asset_types?: AssetType[]
 }
 
 export interface GenerateResponse {

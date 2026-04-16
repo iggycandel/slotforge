@@ -151,6 +151,19 @@ function buildAssetMap(
   return map
 }
 
+/** Build per-type history list (newest-first, ALL versions) for version history UI. */
+function buildAssetHistory(
+  list: GeneratedAsset[]
+): Partial<Record<AssetType, GeneratedAsset[]>> {
+  const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  const hist: Partial<Record<AssetType, GeneratedAsset[]>> = {}
+  for (const asset of sorted) {
+    if (!hist[asset.type]) hist[asset.type] = []
+    hist[asset.type]!.push(asset)
+  }
+  return hist
+}
+
 function timeAgo(isoStr: string): string {
   const diff = Date.now() - new Date(isoStr).getTime()
   const mins = Math.floor(diff / 60_000)
@@ -184,6 +197,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // Asset state
   const [assets, setAssets] = useState<Partial<Record<AssetType, GeneratedAsset>>>(
     () => buildAssetMap(initialAssets)
+  )
+  const [assetHistory, setAssetHistory] = useState<Partial<Record<AssetType, GeneratedAsset[]>>>(
+    () => buildAssetHistory(initialAssets)
   )
 
   // Selection & navigation
@@ -258,7 +274,10 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => {
         const list: GeneratedAsset[] = Array.isArray(d.assets) ? d.assets : []
-        if (list.length > 0) setAssets(buildAssetMap(list))
+        if (list.length > 0) {
+          setAssets(buildAssetMap(list))
+          setAssetHistory(buildAssetHistory(list))
+        }
       })
       .catch(() => {/* non-fatal */})
   }, [projectId, inlineMode])
@@ -273,17 +292,32 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
   // ─── Batch generation via SSE ───────────────────────────────────────────────
 
-  const handleGenerate = useCallback(async () => {
-    // Allow generation even with empty theme — the API falls back to 'slot game'
+  /** Runs the generate pipeline. When `fillGaps` is true, only generates types
+   *  that have no existing asset in the current `assets` map. */
+  const runBatchGenerate = useCallback(async (fillGaps = false) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
-    abortRef.current  = ctrl
+    abortRef.current = ctrl
+
+    // Compute which types to generate
+    const allTypes  = assetGroups.flatMap(g => g.types)
+    const targetTypes = fillGaps
+      ? allTypes.filter(t => !assets[t])
+      : allTypes
+
+    if (targetTypes.length === 0) {
+      addLog('All assets already generated — nothing to do.')
+      return
+    }
 
     setBatchRunning(true)
-    setBatchProgress({ completed: 0, total: 19 })
+    setBatchProgress({ completed: 0, total: targetTypes.length })
     setBatchLogs([])
     saveContext(theme, styleId, provider)
-    addLog(`Starting generation for theme: "${theme || '(from project settings)'}"`)
+    addLog(fillGaps
+      ? `Filling ${targetTypes.length} missing asset(s) for theme: "${theme || '(from project settings)'}"`
+      : `Starting generation for theme: "${theme || '(from project settings)'}"`
+    )
 
     try {
       const res = await fetch('/api/generate', {
@@ -295,6 +329,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           provider,
           style_id:     styleId || undefined,
           project_meta: projectMeta ?? undefined,
+          asset_types:  fillGaps ? targetTypes : undefined,
         }),
         signal: ctrl.signal,
       })
@@ -341,6 +376,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
               // Single asset streamed in — update tile immediately
               const a = data as GeneratedAsset
               setAssets(prev => ({ ...prev, [a.type]: a }))
+              setAssetHistory(prev => ({ ...prev, [a.type]: [a, ...(prev[a.type] ?? [])] }))
               break
             }
 
@@ -364,7 +400,10 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     } finally {
       setBatchRunning(false)
     }
-  }, [theme, projectId, provider, styleId, addLog, saveContext])
+  }, [theme, projectId, provider, styleId, addLog, saveContext, assetGroups, assets])
+
+  const handleGenerate      = useCallback(() => runBatchGenerate(false), [runBatchGenerate])
+  const handleGenerateMissing = useCallback(() => runBatchGenerate(true),  [runBatchGenerate])
 
   // ─── Single-asset regeneration ──────────────────────────────────────────────
 
@@ -395,6 +434,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
       const newAsset = json.asset as GeneratedAsset
       setAssets(prev => ({ ...prev, [assetType]: newAsset }))
+      setAssetHistory(prev => ({ ...prev, [assetType]: [newAsset, ...(prev[assetType] ?? [])] }))
       setRightTab('inspector')
       addLog(`✓ Regenerated ${assetType}`)
     } catch (err) {
@@ -428,6 +468,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         created_at: new Date().toISOString(),
       }
       setAssets(prev => ({ ...prev, [assetType]: newAsset }))
+      setAssetHistory(prev => ({ ...prev, [assetType]: [newAsset, ...(prev[assetType] ?? [])] }))
       setSelected(assetType)
       setRightTab('inspector')
       addLog(`✓ Uploaded ${assetType}`)
@@ -435,6 +476,13 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       addLog(`Upload error: ${err instanceof Error ? err.message : 'Failed'}`)
     }
   }, [projectId, theme, addLog])
+
+  // ─── Version revert ─────────────────────────────────────────────────────────
+  /** Swap the active version for a type to a historical one (client-side only). */
+  const handleRevert = useCallback((assetType: AssetType, historicalAsset: GeneratedAsset) => {
+    setAssets(prev => ({ ...prev, [assetType]: historicalAsset }))
+    addLog(`↩ Reverted ${assetType} to version from ${timeAgo(historicalAsset.created_at)}`)
+  }, [addLog])
 
   // ─── Computed values ────────────────────────────────────────────────────────
 
@@ -622,6 +670,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           onSelectGroup={setActiveGroup}
           batchRunning={batchRunning}
           onGenerateAll={handleGenerate}
+          onGenerateMissing={handleGenerateMissing}
+          missingCount={assetGroups.flatMap(g => g.types).filter(t => !assets[t]).length}
         />
 
         {/* ── MAIN AREA ───────────────────────────────────────────────────── */}
@@ -643,6 +693,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             onProviderChange={setProvider}
             generating={batchRunning}
             onGenerate={handleGenerate}
+            onGenerateMissing={handleGenerateMissing}
+            missingCount={assetGroups.flatMap(g => g.types).filter(t => !assets[t]).length}
             showAdvanced={showAdvanced}
             onToggleAdvanced={() => setShowAdvanced(v => !v)}
           />
@@ -731,6 +783,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                   setCustomPrompt('')
                 }}
                 onUpload={(type, file) => handleUpload(type, file)}
+                onRevert={(type, asset) => handleRevert(type, asset)}
+                assetHistory={assetHistory}
                 isActive={activeGroup === group.id}
                 shortLabels={shortLabels}
               />
@@ -762,16 +816,18 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LeftSidebarProps {
-  groups:        AssetGroup[]
-  assets:        Partial<Record<AssetType, GeneratedAsset>>
-  activeGroup:   string | null
-  onSelectGroup: (id: string | null) => void
-  batchRunning:  boolean
-  onGenerateAll: () => void
+  groups:               AssetGroup[]
+  assets:               Partial<Record<AssetType, GeneratedAsset>>
+  activeGroup:          string | null
+  onSelectGroup:        (id: string | null) => void
+  batchRunning:         boolean
+  onGenerateAll:        () => void
+  onGenerateMissing:    () => void
+  missingCount:         number
 }
 
 function LeftSidebar({
-  groups, assets, activeGroup, onSelectGroup, batchRunning, onGenerateAll,
+  groups, assets, activeGroup, onSelectGroup, batchRunning, onGenerateAll, onGenerateMissing, missingCount,
 }: LeftSidebarProps) {
   const totalGenerated = Object.keys(assets).length
   const totalTypes     = groups.reduce((acc, g) => acc + g.types.length, 0)
@@ -866,7 +922,33 @@ function LeftSidebar({
       </nav>
 
       {/* Footer Actions */}
-      <div style={{ padding: '12px 12px', borderTop: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ padding: '12px 12px', borderTop: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* Fill gaps button — shown only when there are missing assets */}
+        {missingCount > 0 && (
+          <button
+            onClick={onGenerateMissing}
+            disabled={batchRunning}
+            className="sf-btn"
+            style={{
+              display:     'flex',
+              alignItems:  'center',
+              justifyContent: 'center',
+              gap:         6,
+              padding:     '7px 0',
+              background:  batchRunning ? C.surfHigh : 'rgba(52,211,153,.1)',
+              color:       batchRunning ? C.txMuted : C.green,
+              border:      `1px solid ${batchRunning ? 'transparent' : 'rgba(52,211,153,.25)'}`,
+              borderRadius: 8,
+              fontSize:    11,
+              fontWeight:  700,
+              cursor:      batchRunning ? 'not-allowed' : 'pointer',
+              transition:  'all .15s',
+            }}
+          >
+            <ZapIcon size={12} />
+            Fill gaps ({missingCount})
+          </button>
+        )}
         <button
           onClick={onGenerateAll}
           disabled={batchRunning}
@@ -925,6 +1007,8 @@ interface GenBarProps {
   onProviderChange:  (v: 'openai' | 'mock') => void
   generating:        boolean
   onGenerate:        () => void
+  onGenerateMissing: () => void
+  missingCount:      number
   showAdvanced:      boolean
   onToggleAdvanced:  () => void
 }
@@ -932,7 +1016,7 @@ interface GenBarProps {
 function GenerationControlBar({
   theme, onThemeChange, styleId, onStyleChange,
   provider, onProviderChange,
-  generating, onGenerate,
+  generating, onGenerate, onGenerateMissing, missingCount,
   showAdvanced, onToggleAdvanced,
 }: GenBarProps) {
   return (
@@ -1014,7 +1098,35 @@ function GenerationControlBar({
           Style
         </button>
 
-        {/* Generate button */}
+        {/* Fill gaps button */}
+        {missingCount > 0 && (
+          <button
+            onClick={onGenerateMissing}
+            disabled={generating}
+            className="sf-btn"
+            title={`Generate only the ${missingCount} missing asset(s)`}
+            style={{
+              display:    'flex',
+              alignItems: 'center',
+              gap:        5,
+              padding:    '8px 12px',
+              background: generating ? C.surfHigh : 'rgba(52,211,153,.1)',
+              color:      generating ? C.txMuted : C.green,
+              border:     `1px solid ${generating ? 'transparent' : 'rgba(52,211,153,.25)'}`,
+              borderRadius: 8,
+              fontSize:   12,
+              fontWeight: 700,
+              cursor:     generating ? 'not-allowed' : 'pointer',
+              transition: 'all .15s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <ZapIcon size={12} />
+            Fill {missingCount}
+          </button>
+        )}
+
+        {/* Generate All button */}
         <button
           onClick={onGenerate}
           disabled={generating}
@@ -1160,18 +1272,20 @@ function BatchProgressBar({ completed, total }: { completed: number; total: numb
 interface AssetGroupSectionProps {
   group:           AssetGroup
   assets:          Partial<Record<AssetType, GeneratedAsset>>
+  assetHistory:    Partial<Record<AssetType, GeneratedAsset[]>>
   selectedType:    AssetType | null
   regenTarget:     AssetType | null
   onSelect:        (type: AssetType) => void
   onRegen:         (type: AssetType) => void
   onOpenPromptTab: (type: AssetType) => void
   onUpload:        (type: AssetType, file: File) => void
+  onRevert:        (type: AssetType, asset: GeneratedAsset) => void
   isActive:        boolean
   shortLabels:     Partial<Record<AssetType, string>>
 }
 
 function AssetGroupSection({
-  group, assets, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, isActive, shortLabels,
+  group, assets, assetHistory, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, isActive, shortLabels,
 }: AssetGroupSectionProps) {
   const filledCount = group.types.filter(t => !!assets[t]).length
 
@@ -1220,6 +1334,7 @@ function AssetGroupSection({
             key={type}
             assetType={type}
             asset={assets[type]}
+            history={assetHistory[type]}
             isSelected={selectedType === type}
             isRegenerating={regenTarget === type}
             aspectRatio={group.aspectRatio}
@@ -1227,6 +1342,7 @@ function AssetGroupSection({
             onRegen={() => onRegen(type)}
             onOpenPromptTab={() => onOpenPromptTab(type)}
             onUpload={(file) => onUpload(type, file)}
+            onRevert={(a) => onRevert(type, a)}
             label={shortLabels[type]}
           />
         ))}
@@ -1242,6 +1358,7 @@ function AssetGroupSection({
 interface AssetTileProps {
   assetType:       AssetType
   asset?:          GeneratedAsset
+  history?:        GeneratedAsset[]
   isSelected:      boolean
   isRegenerating:  boolean
   aspectRatio:     '16/9' | '1/1'
@@ -1249,14 +1366,18 @@ interface AssetTileProps {
   onRegen:         () => void
   onOpenPromptTab: () => void
   onUpload:        (file: File) => void
+  onRevert:        (asset: GeneratedAsset) => void
   label?:          string
 }
 
 function AssetTile({
-  assetType, asset, isSelected, isRegenerating, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload, label: labelProp,
+  assetType, asset, history, isSelected, isRegenerating, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, label: labelProp,
 }: AssetTileProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const label = labelProp ?? ASSET_LABELS[assetType] ?? assetType
+  // Previous versions = history minus the current active asset
+  const prevVersions = history?.filter(h => h.id !== asset?.id) ?? []
 
   return (
     <div
@@ -1479,6 +1600,87 @@ function AssetTile({
           justifyContent: 'center',
         }}>
           <CheckCircle2 size={9} style={{ color: '#000' }} />
+        </div>
+      )}
+
+      {/* History badge — shown when multiple versions exist */}
+      {prevVersions.length > 0 && !isRegenerating && (
+        <button
+          title={`${prevVersions.length} previous version${prevVersions.length > 1 ? 's' : ''}`}
+          onClick={e => { e.stopPropagation(); setShowHistory(v => !v) }}
+          style={{
+            position:   'absolute',
+            top:        5,
+            left:       5,
+            padding:    '1px 5px',
+            background: showHistory ? 'rgba(201,168,76,.3)' : 'rgba(0,0,0,.55)',
+            border:     `1px solid ${showHistory ? C.gold : 'rgba(255,255,255,.15)'}`,
+            borderRadius: 4,
+            color:      showHistory ? C.gold : C.txMuted,
+            fontSize:   8,
+            fontWeight: 700,
+            cursor:     'pointer',
+            lineHeight: '14px',
+            letterSpacing: '.04em',
+          }}
+        >
+          v{prevVersions.length + 1}
+        </button>
+      )}
+
+      {/* History overlay panel */}
+      {showHistory && prevVersions.length > 0 && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position:   'absolute',
+            inset:      0,
+            background: 'rgba(6,6,10,.92)',
+            display:    'flex',
+            flexDirection: 'column',
+            padding:    8,
+            zIndex:     10,
+          }}
+        >
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: C.gold, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+              History
+            </span>
+            <button
+              onClick={e => { e.stopPropagation(); setShowHistory(false) }}
+              style={{ background: 'none', border: 'none', color: C.txMuted, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}
+            >×</button>
+          </div>
+          {/* Version thumbnails */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, overflowY: 'auto' }}>
+            {/* Current version first */}
+            {asset && (
+              <div style={{ position: 'relative', width: 38, height: 38 }}>
+                <img
+                  src={asset.url}
+                  alt="current"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: `1px solid ${C.green}`, opacity: 1 }}
+                />
+                <div style={{ position: 'absolute', bottom: 1, left: 1, right: 1, fontSize: 6, color: C.green, textAlign: 'center', fontWeight: 700 }}>
+                  current
+                </div>
+              </div>
+            )}
+            {prevVersions.slice(0, 8).map(v => (
+              <button
+                key={v.id}
+                title={`Restore version from ${timeAgo(v.created_at)}`}
+                onClick={e => { e.stopPropagation(); onRevert(v); setShowHistory(false) }}
+                style={{ padding: 0, border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden', width: 38, height: 38, cursor: 'pointer', background: 'none', flexShrink: 0 }}
+              >
+                <img src={v.url} alt={timeAgo(v.created_at)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 8, color: C.txFaint, textAlign: 'center' }}>
+            Click any thumbnail to restore
+          </div>
         </div>
       )}
     </div>

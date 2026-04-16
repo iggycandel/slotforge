@@ -24,6 +24,8 @@ const RequestSchema = z.object({
   provider:     z.enum(['runway', 'openai', 'auto']).optional().default('auto'),
   style_id:     z.string().optional(),
   project_meta: z.record(z.unknown()).optional(),
+  /** Subset of asset types to generate (fill-gaps mode). All types when omitted. */
+  asset_types:  z.array(z.string()).optional(),
 })
 
 // ─── SSE helper ─────────────────────────────────────────────────────────────
@@ -51,8 +53,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { theme, project_id, provider, style_id, project_meta } = parsed.data
-  const TOTAL = ALL_TYPES.length // derived from pipeline — stays correct as types are added/removed
+  const { theme, project_id, provider, style_id, project_meta, asset_types } = parsed.data
+  const activeTypes = asset_types?.length
+    ? asset_types.filter(t => (ALL_TYPES as string[]).includes(t)) as AssetType[]
+    : ALL_TYPES
+  const TOTAL = activeTypes.length
 
   // ── SSE stream ─────────────────────────────────────────────────────────────
   const stream = new ReadableStream({
@@ -68,10 +73,10 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        emit('start', { total: TOTAL, theme })
+        emit('start', { total: TOTAL, theme, fillGaps: !!asset_types?.length })
 
         const pipelineResult = await generateSlotAssets(
-          { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined },
+          { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined, asset_types: activeTypes },
           {
             onProgress: (completed, total, lastType) => {
               emit('progress', { completed, total, lastType })
