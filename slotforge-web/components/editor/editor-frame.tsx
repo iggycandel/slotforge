@@ -13,7 +13,7 @@ const TOOLBAR_H  = 44
 const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v52'
+const EDITOR_VERSION = 'v53'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -80,7 +80,21 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [historyOpen,     setHistoryOpen]     = useState(false)
   const [liveProjectName, setLiveProjectName] = useState(projectName)
   const [editorWorkspace, setEditorWorkspace] = useState<string>('canvas')
-  const [editorMeta, setEditorMeta] = useState<Record<string, unknown> | null>(null)
+  // Initialise editorMeta from the saved payload so symbol counts are correct on first load
+  const [editorMeta, setEditorMeta] = useState<Record<string, unknown> | null>(() => {
+    if (!initialPayload) return null
+    const p = initialPayload
+    return {
+      gameName:          p.gameName,
+      themeKey:          p.theme,
+      symbolHighCount:   p.symbolHighCount,
+      symbolLowCount:    p.symbolLowCount,
+      symbolSpecialCount:p.symbolSpecialCount,
+      symbolHighNames:   p.symbolHighNames,
+      symbolLowNames:    p.symbolLowNames,
+      symbolSpecialNames:p.symbolSpecialNames,
+    }
+  })
   // Bumped whenever an asset upload completes — propagated to RightPanel → AssetsPanel for auto-refresh
   const [assetRefreshTick, setAssetRefreshTick] = useState(0)
 
@@ -186,8 +200,21 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
       if (msg.type === 'SF_AUTOSAVE' && msg.payload) {
         payloadRef.current = msg.payload
-        const gn = (msg.payload as Record<string, unknown>).gameName as string | undefined
+        const pl = msg.payload as Record<string, unknown>
+        const gn = pl.gameName as string | undefined
         if (gn?.trim()) setLiveProjectName(gn.trim())
+        // Keep editorMeta in sync so RightPanel symbol counts stay accurate
+        setEditorMeta(prev => ({
+          ...prev,
+          gameName:          pl.gameName,
+          themeKey:          pl.theme,
+          symbolHighCount:   pl.symbolHighCount,
+          symbolLowCount:    pl.symbolLowCount,
+          symbolSpecialCount:pl.symbolSpecialCount,
+          symbolHighNames:   pl.symbolHighNames,
+          symbolLowNames:    pl.symbolLowNames,
+          symbolSpecialNames:pl.symbolSpecialNames,
+        } as Record<string, unknown>))
         const isManual = manualSaveFlag.current
         manualSaveFlag.current = false
         doSave(msg.payload, isManual)
@@ -459,6 +486,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             onAddToCanvas={handleAddToCanvas}
             width={PANEL_W}
             assetRefreshTick={assetRefreshTick}
+            projectMeta={editorMeta ?? undefined}
           />
         )}
 

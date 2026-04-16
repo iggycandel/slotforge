@@ -73,11 +73,12 @@ interface Props {
   projectId:        string
   orgSlug:          string
   onAddToCanvas:    (assetType: AssetType, url: string) => void
-  width?:           number   // panel width in px (default 320)
-  assetRefreshTick?: number  // increments to trigger asset list re-fetch
+  width?:           number
+  assetRefreshTick?: number
+  projectMeta?:     Record<string, unknown>
 }
 
-export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, assetRefreshTick }: Props) {
+export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, assetRefreshTick, projectMeta }: Props) {
   const [activeTab, setActiveTab] = useState<PanelTab>('layers')
   const [layers,    setLayers]    = useState<LayerInfo[]>([])
   const [screen,    setScreen]    = useState('')
@@ -423,6 +424,7 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
             onAddToCanvas={onAddToCanvas}
             embedded={true}
             assetRefreshTick={assetRefreshTick}
+            projectMeta={projectMeta}
           />
         </div>
       )}

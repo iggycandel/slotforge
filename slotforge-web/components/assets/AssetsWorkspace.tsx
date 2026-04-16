@@ -439,6 +439,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // ─── Computed values ────────────────────────────────────────────────────────
 
   const totalGenerated = Object.keys(assets).length
+  const totalTypes     = assetGroups.reduce((acc, g) => acc + g.types.length, 0)
   const selectedAsset  = selected ? assets[selected] : null
 
   // Filter assets by tab
@@ -546,7 +547,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
           {totalGenerated > 0 && (
             <span style={{ fontSize: 11, color: C.gold, background: C.goldBg, border: `1px solid ${C.gold}30`, borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              {totalGenerated} / 19
+              {totalGenerated} / {totalTypes}
             </span>
           )}
 
@@ -600,7 +601,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
           {totalGenerated > 0 && (
             <span style={{ fontSize: 10, color: C.gold, background: C.goldBg, border: `1px solid ${C.gold}30`, borderRadius: 10, padding: '1px 7px', fontWeight: 600 }}>
-              {totalGenerated} / 19
+              {totalGenerated} / {totalTypes}
             </span>
           )}
         </div>

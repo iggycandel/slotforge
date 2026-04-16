@@ -7,7 +7,7 @@
 // Generation lives at /assets workspace; this panel is the quick-access view.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ImageIcon, CheckCircle2, Plus,
@@ -65,14 +65,24 @@ const ASSET_LABELS: Partial<Record<AssetType, string>> = {
   jackpot_label:    'Jackpot',
 }
 
-// Group asset types for cleaner list display
-const DISPLAY_GROUPS: { label: string; types: AssetType[] }[] = [
-  { label: 'Backgrounds',     types: ['background_base', 'background_bonus'] },
-  { label: 'High Symbols',    types: ['symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5', 'symbol_high_6', 'symbol_high_7', 'symbol_high_8'] },
-  { label: 'Low Symbols',     types: ['symbol_low_1', 'symbol_low_2', 'symbol_low_3', 'symbol_low_4', 'symbol_low_5', 'symbol_low_6', 'symbol_low_7', 'symbol_low_8'] },
-  { label: 'Special Symbols', types: ['symbol_wild', 'symbol_scatter', 'symbol_special_3', 'symbol_special_4', 'symbol_special_5', 'symbol_special_6'] },
-  { label: 'UI & Chrome',     types: ['logo', 'character', 'reel_frame', 'spin_button', 'jackpot_label'] },
-]
+// Ordered AssetType key arrays for dynamic group building
+const HIGH_TYPE_KEYS: AssetType[]    = ['symbol_high_1','symbol_high_2','symbol_high_3','symbol_high_4','symbol_high_5','symbol_high_6','symbol_high_7','symbol_high_8']
+const LOW_TYPE_KEYS: AssetType[]     = ['symbol_low_1','symbol_low_2','symbol_low_3','symbol_low_4','symbol_low_5','symbol_low_6','symbol_low_7','symbol_low_8']
+const SPECIAL_TYPE_KEYS: AssetType[] = ['symbol_wild','symbol_scatter','symbol_special_3','symbol_special_4','symbol_special_5','symbol_special_6']
+
+/** Build display groups from projectMeta symbol counts (matches AssetsWorkspace logic). */
+function buildDisplayGroups(meta?: Record<string, unknown>): { label: string; types: AssetType[] }[] {
+  const highCount    = Math.min(8, Math.max(1, Number(meta?.symbolHighCount    ?? 5)))
+  const lowCount     = Math.min(8, Math.max(1, Number(meta?.symbolLowCount     ?? 5)))
+  const specialCount = Math.min(6, Math.max(2, Number(meta?.symbolSpecialCount ?? 2)))
+  return [
+    { label: 'Backgrounds',                         types: ['background_base', 'background_bonus'] },
+    { label: `High Symbols (${highCount})`,          types: HIGH_TYPE_KEYS.slice(0, highCount) },
+    { label: `Low Symbols (${lowCount})`,            types: LOW_TYPE_KEYS.slice(0, lowCount) },
+    { label: `Special Symbols (${specialCount})`,    types: SPECIAL_TYPE_KEYS.slice(0, specialCount) },
+    { label: 'UI & Chrome',                          types: ['logo', 'character', 'reel_frame', 'spin_button', 'jackpot_label'] },
+  ]
+}
 
 type SnapEdge = 'right' | 'left' | 'free'
 
@@ -81,12 +91,13 @@ const PANEL_W = 280
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  projectId:        string
-  orgSlug:          string
-  onAddToCanvas:    (assetType: AssetType, url: string) => void
-  toolbarHeight?:   number
-  embedded?:        boolean
+  projectId:         string
+  orgSlug:           string
+  onAddToCanvas:     (assetType: AssetType, url: string) => void
+  toolbarHeight?:    number
+  embedded?:         boolean
   assetRefreshTick?: number  // increments externally to trigger re-fetch
+  projectMeta?:      Record<string, unknown>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,7 +105,7 @@ interface Props {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AssetsPanel({
-  projectId, orgSlug, onAddToCanvas, toolbarHeight = 44, embedded = false, assetRefreshTick,
+  projectId, orgSlug, onAddToCanvas, toolbarHeight = 44, embedded = false, assetRefreshTick, projectMeta,
 }: Props) {
   const [minimized, setMinimized] = useState(false)
   const [snap,      setSnap]      = useState<SnapEdge>('right')
@@ -167,6 +178,7 @@ export function AssetsPanel({
       orgSlug={orgSlug}
       onAddToCanvas={onAddToCanvas}
       assetRefreshTick={assetRefreshTick}
+      projectMeta={projectMeta}
     />
   )
 
@@ -259,8 +271,8 @@ function snapBtnStyle(active: boolean): React.CSSProperties {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AssetLibraryContent({
-  projectId, orgSlug, onAddToCanvas, assetRefreshTick,
-}: { projectId: string; orgSlug: string; onAddToCanvas: (type: AssetType, url: string) => void; assetRefreshTick?: number }) {
+  projectId, orgSlug, onAddToCanvas, assetRefreshTick, projectMeta,
+}: { projectId: string; orgSlug: string; onAddToCanvas: (type: AssetType, url: string) => void; assetRefreshTick?: number; projectMeta?: Record<string, unknown> }) {
   const [assets,  setAssets]  = useState<Partial<Record<AssetType, GeneratedAsset>>>({})
   const [loading, setLoading] = useState(true)
 
@@ -305,8 +317,11 @@ function AssetLibraryContent({
     }
   }, [projectId, loadAssets])
 
+  // Build display groups dynamically from project symbol counts
+  const displayGroups = useMemo(() => buildDisplayGroups(projectMeta), [projectMeta])
+
   const totalFilled = Object.keys(assets).length
-  const totalTypes  = DISPLAY_GROUPS.reduce((n, g) => n + g.types.length, 0)
+  const totalTypes  = displayGroups.reduce((n, g) => n + g.types.length, 0)
 
   return (
     <div style={{ padding: '0 0 24px' }}>
@@ -375,7 +390,7 @@ function AssetLibraryContent({
       )}
 
       {/* ── Asset groups ─────────────────────────────────────────────────── */}
-      {!loading && DISPLAY_GROUPS.map(group => {
+      {!loading && displayGroups.map(group => {
         const groupAssets = group.types.map(t => ({ type: t, asset: assets[t] }))
         const filledCount = groupAssets.filter(a => !!a.asset).length
 
