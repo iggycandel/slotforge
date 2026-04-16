@@ -183,6 +183,85 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         manualSaveFlag.current = false
         doSave(msg.payload, isManual)
       }
+
+      // ── AI single-asset generation triggered from right-click context menu ──
+      // editor.js sends SF_AI_GENERATE when the user clicks "Generate with AI".
+      // We handle it here because only the parent shell has auth + project context.
+      if (msg.type === 'SF_AI_GENERATE' && msg.ctxKey) {
+        const ctxKey = msg.ctxKey as string
+        const theme  = (msg.theme as string | undefined) || 'slot game'
+
+        // Map editor EL_ASSETS key → AssetType for /api/ai-single
+        const EL_TO_ASSET_TYPE: Record<string, string> = {
+          bg:            'background_base',
+          bg_bonus:      'background_bonus',
+          sym_H1:        'symbol_high_1',
+          sym_H2:        'symbol_high_2',
+          sym_H3:        'symbol_high_3',
+          sym_H4:        'symbol_high_4',
+          sym_H5:        'symbol_high_5',
+          sym_L1:        'symbol_low_1',
+          sym_L2:        'symbol_low_2',
+          sym_L3:        'symbol_low_3',
+          sym_L4:        'symbol_low_4',
+          sym_L5:        'symbol_low_5',
+          sym_Wild:      'symbol_wild',
+          sym_Scatter:   'symbol_scatter',
+          logo:          'logo',
+          char:          'character',
+          reel_frame:    'reel_frame',
+          spin_button:   'spin_button',
+          jackpot_label: 'jackpot_label',
+        }
+        const assetType = EL_TO_ASSET_TYPE[ctxKey]
+        if (!assetType) {
+          iframeRef.current?.contentWindow?.postMessage({
+            type: 'SF_AI_GENERATE_RESULT', ctxKey, error: `No asset type mapped for layer "${ctxKey}"`,
+          }, '*')
+          return
+        }
+
+        // Call /api/ai-single (authenticated via cookie — same origin)
+        fetch('/api/ai-single', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            asset_type:    assetType,
+            theme:         theme,
+            project_id:    projectId,
+            custom_prompt: (msg.userNotes as string | undefined) || undefined,
+          }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.error) {
+              iframeRef.current?.contentWindow?.postMessage({
+                type: 'SF_AI_GENERATE_RESULT', ctxKey, error: data.error,
+              }, '*')
+              return
+            }
+            const url = data.asset?.url as string
+            // Inject the image into the canvas layer
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'SF_INJECT_IMAGE_LAYER', assetType, url,
+            }, '*')
+            // Also notify the popup so it can show success and close
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'SF_AI_GENERATE_RESULT', ctxKey, url,
+            }, '*')
+            // Update saved payload with the new asset URL
+            if (payloadRef.current) {
+              const assets = ((payloadRef.current.assets as Record<string, unknown>) ?? {})
+              payloadRef.current = { ...payloadRef.current, assets: { ...assets, [ctxKey]: url } }
+              doSave(payloadRef.current, false)
+            }
+          })
+          .catch(err => {
+            iframeRef.current?.contentWindow?.postMessage({
+              type: 'SF_AI_GENERATE_RESULT', ctxKey, error: String(err),
+            }, '*')
+          })
+      }
     }
 
     window.addEventListener('message', onMessage)

@@ -3844,28 +3844,51 @@ document.querySelectorAll('.agb-chip').forEach(chip=>{
 });
 
 document.getElementById('agb-generate').addEventListener('click', async ()=>{
-  const prompt = document.getElementById('agb-prompt').value.trim();
-  const style = document.querySelector('.agb-chip.on')?.dataset.style||'Game Art';
-  const lname = document.getElementById('agb-layer-sub').textContent.replace('Generating for: ','');
-  const tn = document.getElementById('theme-sel')?.options[document.getElementById('theme-sel')?.selectedIndex]?.text||P.theme;
-  const sys = `You are a senior iGaming Art Director. Game: "${P.gameName}", Theme: ${tn}, Palette: Primary ${P.colors.c1} Secondary ${P.colors.c2} Accent ${P.colors.c3}. Write a concise image generation prompt (under 80 words) for the layer: "${lname}". Style: ${style}. User notes: ${prompt||'none'}. Output only the prompt text, no preamble.`;
+  if(!CTX_KEY){ alert('No layer selected.'); return; }
+  const userNotes = document.getElementById('agb-prompt').value.trim();
+  const theme     = P.gameName || P.theme || 'slot game';
+  const btn       = document.getElementById('agb-generate');
+  const res       = document.getElementById('agb-result');
 
-  const btn = document.getElementById('agb-generate');
   btn.textContent = '⏳ Generating…'; btn.disabled = true;
-  const res = document.getElementById('agb-result');
-  res.style.display='block'; res.textContent='Calling AI…';
+  res.style.display = 'block'; res.textContent = '✦ Generating image…';
 
-  try{
-    const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,system:sys,messages:[{role:'user',content:'Generate the image prompt.'}]})});
-    const d = await r.json();
-    const txt = d?.content?.[0]?.text||'Could not generate prompt.';
-    res.textContent = '📋 ' + txt;
-    // Copy to clipboard
-    try{ navigator.clipboard.writeText(txt); res.textContent += '\n\n✓ Copied to clipboard'; } catch(e){}
-  }catch(e){
-    res.textContent = 'Connection error. Try again.';
+  // Ask the parent shell to run the AI generation (has auth + project context)
+  window.parent.postMessage({
+    type:      'SF_AI_GENERATE',
+    ctxKey:    CTX_KEY,
+    theme:     theme,
+    userNotes: userNotes,
+  }, '*');
+
+  // The result will arrive as SF_AI_GENERATE_RESULT — handled in the message listener below
+  window._agbPendingBtn = btn;
+  window._agbPendingRes = res;
+});
+
+// Listen for SF_AI_GENERATE_RESULT (response from parent shell after /api/ai-single call)
+window.addEventListener('message', function(e){
+  if(!e.data || e.data.type !== 'SF_AI_GENERATE_RESULT') return;
+  const btn = window._agbPendingBtn;
+  const res = window._agbPendingRes;
+  if(btn) { btn.textContent='✦ Generate Image'; btn.disabled=false; window._agbPendingBtn=null; }
+  if(e.data.error){
+    if(res){ res.textContent='⚠ ' + e.data.error; }
+    return;
   }
-  btn.textContent='✦ Generate Brief'; btn.disabled=false;
+  if(e.data.url && e.data.ctxKey){
+    if(res){ res.textContent='✓ Asset generated & applied to canvas!'; }
+    // Inject into canvas (same logic as SF_INJECT_IMAGE_LAYER but using ctxKey directly)
+    EL_ASSETS[e.data.ctxKey] = e.data.url;
+    try{
+      if(typeof buildCanvas  === 'function') buildCanvas();
+      if(typeof renderLayers === 'function') renderLayers();
+      if(typeof markDirty    === 'function') markDirty();
+    }catch(err){ console.warn('[SF] agb apply failed:', err); }
+    // Auto-close popup after 1.5 s
+    setTimeout(function(){ document.getElementById('ai-gen-popup').classList.remove('show'); if(res) res.textContent=''; }, 1500);
+  }
+  if(window._agbPendingRes) window._agbPendingRes = null;
 });
 
 // ═══ WIRE CONTEXT PANEL TO ELEMENT CLICKS ═══
@@ -9516,6 +9539,9 @@ window._sfBridge = (function(){
         symbol_scatter:   'sym_Scatter',
         logo:             'logo',
         character:        'char',
+        reel_frame:       'reel_frame',
+        spin_button:      'spin_button',
+        jackpot_label:    'jackpot_label',
       };
       var elKey = ASSET_KEY_MAP[msg.assetType] || msg.assetType;
       try {

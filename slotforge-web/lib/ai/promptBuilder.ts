@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AssetType, BuiltPrompt, PromptCategory } from '@/types/assets'
+import { getStyleById } from '@/lib/ai/styles'
 
 // ─── Hidden master prompt ────────────────────────────────────────────────────
 // Appended to every single generation. Never sent to the browser.
@@ -128,8 +129,11 @@ const LOW_SYM_VARIANTS = [
 ]
 
 // ─── Main build function ──────────────────────────────────────────────────────
+// styleId is the ID of a GraphicStyle from GRAPHIC_STYLES (e.g. 'cartoon_3d').
+// If provided, its promptModifier is injected before MASTER_PROMPT and its
+// negativeModifier is appended to the negative prompt.
 
-export function buildPrompt(type: AssetType, userTheme: string): BuiltPrompt {
+export function buildPrompt(type: AssetType, userTheme: string, styleId?: string): BuiltPrompt {
   const category = TYPE_TO_CATEGORY[type]
   const theme    = userTheme.trim().toLowerCase()
 
@@ -150,14 +154,25 @@ export function buildPrompt(type: AssetType, userTheme: string): BuiltPrompt {
     specificPrompt += `, ${LOW_SYM_VARIANTS[lowIdx]}`
   }
 
+  // Inject graphic style modifier (server-side only — not shown to clients unfiltered)
+  const style = styleId ? getStyleById(styleId) : undefined
+  if (style) {
+    specificPrompt += `. ${style.promptModifier}`
+  }
+
   // Final prompt = specific details + master quality requirements
   const prompt = `${specificPrompt}. ${MASTER_PROMPT}`
+
+  // Combine base negative prompt with style-specific negative modifier
+  const negativePrompt = style?.negativeModifier
+    ? `${NEGATIVE_PROMPT}, ${style.negativeModifier}`
+    : NEGATIVE_PROMPT
 
   return {
     category,
     assetType: type,
     prompt,
-    negativePrompt: NEGATIVE_PROMPT,
+    negativePrompt,
   }
 }
 

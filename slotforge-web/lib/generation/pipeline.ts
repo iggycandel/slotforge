@@ -73,7 +73,7 @@ export async function generateSlotAssets(
 
     const results = await Promise.allSettled(
       batch.map(async type => {
-        const built = buildPrompt(type, theme)
+        const built = buildPrompt(type, theme, req.style_id)
         const result = await generateImage(type, built, provider)
         return { type, ...result, prompt: built.prompt }
       })

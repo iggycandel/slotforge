@@ -22,6 +22,7 @@ const RequestSchema = z.object({
   theme:      z.string().min(2).max(200).trim(),
   project_id: z.string().uuid(),
   provider:   z.enum(['runway', 'openai', 'auto']).optional().default('auto'),
+  style_id:   z.string().optional(),
 })
 
 // ─── SSE helper ─────────────────────────────────────────────────────────────
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { theme, project_id, provider } = parsed.data
+  const { theme, project_id, provider, style_id } = parsed.data
   const TOTAL = ALL_TYPES.length // derived from pipeline — stays correct as types are added/removed
 
   // ── SSE stream ─────────────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
         emit('start', { total: TOTAL, theme })
 
         const pipelineResult = await generateSlotAssets(
-          { theme, project_id, provider },
+          { theme, project_id, provider, style_id },
           {
             onProgress: (completed, total, lastType) => {
               emit('progress', { completed, total, lastType })

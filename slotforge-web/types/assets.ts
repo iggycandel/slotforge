@@ -102,6 +102,7 @@ export interface GenerateRequest {
   theme:      string      // user's raw prompt e.g. "ancient egypt"
   project_id: string
   provider?:  'runway' | 'openai' | 'auto'
+  style_id?:  string      // graphic style ID from GRAPHIC_STYLES (e.g. 'cartoon_3d')
 }
 
 export interface GenerateResponse {
