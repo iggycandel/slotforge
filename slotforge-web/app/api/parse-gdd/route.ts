@@ -74,7 +74,28 @@ async function extractText(file: File): Promise<string> {
   }
 
   // PDF — use pdf-parse v2 class API
+  // pdfjs-dist v3+ calls `new DOMMatrix()` internally; polyfill it for Node.js envs that lack it
   if (type.includes('pdf') || file.name.endsWith('.pdf')) {
+    if (typeof (globalThis as Record<string, unknown>).DOMMatrix === 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(globalThis as any).DOMMatrix = class DOMMatrix {
+        a=1; b=0; c=0; d=1; e=0; f=0
+        m11=1; m12=0; m13=0; m14=0
+        m21=0; m22=1; m23=0; m24=0
+        m31=0; m32=0; m33=1; m34=0
+        m41=0; m42=0; m43=0; m44=1
+        is2D=true; isIdentity=true
+        multiply() { return this }
+        translate() { return this }
+        scale()     { return this }
+        rotate()    { return this }
+        inverse()   { return this }
+        transformPoint(p: {x:number;y:number}) { return {x:p.x,y:p.y,z:0,w:1} }
+        toFloat32Array() { return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]) }
+        toFloat64Array() { return new Float64Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]) }
+        toString() { return 'matrix(1, 0, 0, 1, 0, 0)' }
+      }
+    }
     const { PDFParse } = await import('pdf-parse')
     const parser = new PDFParse({ data: buf })
     const result = await parser.getText()
