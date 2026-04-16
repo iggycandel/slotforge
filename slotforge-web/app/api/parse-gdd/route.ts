@@ -73,33 +73,12 @@ async function extractText(file: File): Promise<string> {
     return result.value.slice(0, 40000)
   }
 
-  // PDF
+  // PDF — use pdf-parse v2 class API
   if (type.includes('pdf') || file.name.endsWith('.pdf')) {
-    // pdfjs-dist v3+ requires DOMMatrix — polyfill for Node.js environments that lack it
-    if (typeof (globalThis as Record<string, unknown>).DOMMatrix === 'undefined') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(globalThis as any).DOMMatrix = class DOMMatrix {
-        a=1; b=0; c=0; d=1; e=0; f=0
-        m11=1; m12=0; m13=0; m14=0
-        m21=0; m22=1; m23=0; m24=0
-        m31=0; m32=0; m33=1; m34=0
-        m41=0; m42=0; m43=0; m44=1
-        is2D=true; isIdentity=true
-        multiply() { return this }
-        translate() { return this }
-        scale()     { return this }
-        rotate()    { return this }
-        inverse()   { return this }
-        transformPoint(p: {x:number;y:number}) { return {x:p.x,y:p.y,z:0,w:1} }
-        toFloat32Array() { return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]) }
-        toFloat64Array() { return new Float64Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]) }
-        toString() { return 'matrix(1, 0, 0, 1, 0, 0)' }
-      }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
-    const data     = await pdfParse(buf)
-    return data.text.slice(0, 40000)
+    const { PDFParse } = await import('pdf-parse')
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    return (result.text as string).slice(0, 40000)
   }
 
   throw new Error(`Unsupported file type: ${type || file.name}`)
