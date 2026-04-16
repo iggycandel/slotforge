@@ -215,7 +215,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
   // Batch generation
   const [batchRunning, setBatchRunning] = useState(false)
-  const [batchProgress, setBatchProgress] = useState({ completed: 0, total: 19 })
+  const [batchProgress, setBatchProgress] = useState({ completed: 0, total: 0 })
   const [batchLogs, setBatchLogs] = useState<string[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
@@ -223,8 +223,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const [regenTarget, setRegenTarget] = useState<AssetType | null>(null)
   const [customPrompt, setCustomPrompt] = useState('')
 
-  // Asset panel view tab
-  const [assetTab, setAssetTab] = useState<'generated' | 'uploads'>('generated')
+  // (asset tab removed — all assets shown in one unified grid)
 
   const addLog = useCallback((msg: string) => {
     setBatchLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 99)])
@@ -490,22 +489,6 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const totalTypes     = assetGroups.reduce((acc, g) => acc + g.types.length, 0)
   const selectedAsset  = selected ? assets[selected] : null
 
-  // Filter assets by tab
-  const generatedAssets = useMemo(() =>
-    Object.fromEntries(
-      Object.entries(assets).filter(([, a]) => a.provider !== 'upload')
-    ) as Partial<Record<AssetType, GeneratedAsset>>,
-    [assets]
-  )
-  const uploadedAssets = useMemo(() =>
-    Object.fromEntries(
-      Object.entries(assets).filter(([, a]) => a.provider === 'upload')
-    ) as Partial<Record<AssetType, GeneratedAsset>>,
-    [assets]
-  )
-  const visibleAssets = assetTab === 'uploads' ? uploadedAssets : generatedAssets
-  const uploadCount   = Object.keys(uploadedAssets).length
-  const genCount      = Object.keys(generatedAssets).length
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -707,66 +690,13 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             />
           )}
 
-          {/* ── View Tabs: Generated / Uploads ─────────────────────────── */}
-          <div style={{
-            display:      'flex',
-            alignItems:   'center',
-            gap:          2,
-            padding:      '6px 16px',
-            borderBottom: `1px solid ${C.border}`,
-            background:   C.surface,
-            flexShrink:   0,
-          }}>
-            {(['generated', 'uploads'] as const).map(tab => {
-              const isActive = assetTab === tab
-              const count    = tab === 'generated' ? genCount : uploadCount
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setAssetTab(tab)}
-                  style={{
-                    display:      'flex',
-                    alignItems:   'center',
-                    gap:          5,
-                    padding:      '4px 12px',
-                    fontSize:     11,
-                    fontWeight:   isActive ? 700 : 500,
-                    color:        isActive ? C.gold : C.txMuted,
-                    background:   isActive ? C.goldBg : 'transparent',
-                    border:       `1px solid ${isActive ? C.gold + '50' : 'transparent'}`,
-                    borderRadius: 6,
-                    cursor:       'pointer',
-                    fontFamily:   C.font,
-                    transition:   'all .15s',
-                  }}
-                >
-                  {tab === 'generated' ? <Sparkles size={10} /> : <Upload size={10} />}
-                  {tab === 'generated' ? 'Generated' : 'Uploads'}
-                  {count > 0 && (
-                    <span style={{
-                      fontSize:     9,
-                      fontWeight:   600,
-                      color:        isActive ? C.gold : C.txFaint,
-                      background:   isActive ? C.gold + '20' : C.surfHigh,
-                      borderRadius: 8,
-                      padding:      '0 5px',
-                      lineHeight:   '16px',
-                    }}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-
           {/* Asset Grid (scrollable) */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 40px' }}>
             {assetGroups.map(group => (
               <AssetGroupSection
                 key={group.id}
                 group={group}
-                assets={visibleAssets}
+                assets={assets}
                 selectedType={selected}
                 regenTarget={regenTarget}
                 onSelect={type => {
@@ -1576,13 +1506,29 @@ function AssetTile({
         right:      0,
         padding:    '4px 6px',
         background: 'linear-gradient(transparent, rgba(6,6,10,.9))',
-        fontSize:   9,
-        fontWeight: 600,
-        color:      asset ? C.tx : C.txMuted,
-        letterSpacing: '.04em',
-        lineHeight: 1.5,
+        display:    'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap:        4,
       }}>
-        {label}
+        <span style={{ fontSize: 9, fontWeight: 600, color: asset ? C.tx : C.txMuted, letterSpacing: '.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {label}
+        </span>
+        {asset && (
+          <span style={{
+            fontSize:     8,
+            fontWeight:   600,
+            color:        asset.provider === 'upload' ? '#60a5fa' : C.txFaint,
+            background:   asset.provider === 'upload' ? 'rgba(96,165,250,.15)' : 'transparent',
+            border:       asset.provider === 'upload' ? '1px solid rgba(96,165,250,.25)' : 'none',
+            borderRadius: 3,
+            padding:      asset.provider === 'upload' ? '0 3px' : 0,
+            lineHeight:   '14px',
+            flexShrink:   0,
+          }}>
+            {asset.provider === 'upload' ? '↑' : '✦'}
+          </span>
+        )}
       </div>
 
       {/* Generated checkmark */}
@@ -1890,7 +1836,7 @@ function InspectorTab({
             <MetaRow label="Type"     value={selectedType} />
             <MetaRow label="Provider" value={selectedAsset.provider} accent />
             <MetaRow label="Theme"    value={selectedAsset.theme} />
-            <MetaRow label="Generated" value={timeAgo(selectedAsset.created_at)} />
+            <MetaRow label={selectedAsset.provider === 'upload' ? 'Uploaded' : 'Generated'} value={timeAgo(selectedAsset.created_at)} />
           </div>
         ) : (
           <p style={{ fontSize: 12, color: C.txMuted, margin: 0 }}>Not yet generated</p>
