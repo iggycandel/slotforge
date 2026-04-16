@@ -7,7 +7,7 @@
 // Right panel   (320 px) — Inspector / Prompt Editor / Feedback tabs
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Sparkles, ChevronLeft, LayoutGrid, Layers, Box,
@@ -16,6 +16,7 @@ import {
   ChevronDown, ChevronUp, Eye, Upload,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
+import { ASSET_LABELS } from '@/types/assets'
 import { GRAPHIC_STYLES } from '@/lib/ai/styles'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -52,64 +53,88 @@ interface AssetGroup {
   cols:       number
 }
 
-const ASSET_GROUPS: AssetGroup[] = [
-  {
-    id:    'backgrounds',
-    label: 'Backgrounds',
-    types: ['background_base', 'background_bonus'],
-    aspectRatio: '16/9',
-    cols: 2,
-  },
-  {
-    id:    'high_symbols',
-    label: 'High Symbols',
-    types: ['symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5'],
-    aspectRatio: '1/1',
-    cols: 5,
-  },
-  {
-    id:    'low_symbols',
-    label: 'Low Symbols',
-    types: ['symbol_low_1', 'symbol_low_2', 'symbol_low_3', 'symbol_low_4', 'symbol_low_5'],
-    aspectRatio: '1/1',
-    cols: 5,
-  },
-  {
-    id:    'specials',
-    label: 'Special Symbols',
-    types: ['symbol_wild', 'symbol_scatter'],
-    aspectRatio: '1/1',
-    cols: 5,
-  },
-  {
-    id:    'ui_chrome',
-    label: 'UI & Chrome',
-    types: ['logo', 'character', 'reel_frame', 'spin_button', 'jackpot_label'],
-    aspectRatio: '1/1',
-    cols: 5,
-  },
+// ─── Special-symbol AssetType index mapping ───────────────────────────────────
+const SPECIAL_TYPE_KEYS: AssetType[] = [
+  'symbol_wild', 'symbol_scatter',
+  'symbol_special_3', 'symbol_special_4', 'symbol_special_5', 'symbol_special_6',
+]
+const HIGH_TYPE_KEYS: AssetType[] = [
+  'symbol_high_1','symbol_high_2','symbol_high_3','symbol_high_4',
+  'symbol_high_5','symbol_high_6','symbol_high_7','symbol_high_8',
+]
+const LOW_TYPE_KEYS: AssetType[] = [
+  'symbol_low_1','symbol_low_2','symbol_low_3','symbol_low_4',
+  'symbol_low_5','symbol_low_6','symbol_low_7','symbol_low_8',
 ]
 
-const ASSET_SHORT_LABELS: Partial<Record<AssetType, string>> = {
-  background_base:  'Base Game BG',
-  background_bonus: 'Bonus BG',
-  symbol_high_1:    'High 1',
-  symbol_high_2:    'High 2',
-  symbol_high_3:    'High 3',
-  symbol_high_4:    'High 4',
-  symbol_high_5:    'High 5',
-  symbol_low_1:     'Low 1',
-  symbol_low_2:     'Low 2',
-  symbol_low_3:     'Low 3',
-  symbol_low_4:     'Low 4',
-  symbol_low_5:     'Low 5',
-  symbol_wild:      'Wild',
-  symbol_scatter:   'Scatter',
-  logo:             'Logo',
-  character:        'Character',
-  reel_frame:       'Reel Frame',
-  spin_button:      'Spin Button',
-  jackpot_label:    'Jackpot',
+/** Build asset groups dynamically from projectMeta symbol configuration.
+ *  Falls back to sensible defaults (5 high, 5 low, wild + scatter) when no meta is provided.
+ */
+function buildDynamicGroups(meta?: Record<string, unknown>): AssetGroup[] {
+  const highCount    = Math.min(8, Math.max(1, Number(meta?.symbolHighCount    ?? 5)))
+  const lowCount     = Math.min(8, Math.max(1, Number(meta?.symbolLowCount     ?? 5)))
+  const specialCount = Math.min(6, Math.max(2, Number(meta?.symbolSpecialCount ?? 2)))
+  const highNames    = (meta?.symbolHighNames    as string[] | undefined) ?? []
+  const lowNames     = (meta?.symbolLowNames     as string[] | undefined) ?? []
+  const specialNames = (meta?.symbolSpecialNames as string[] | undefined) ?? []
+
+  return [
+    {
+      id: 'backgrounds', label: 'Backgrounds',
+      types: ['background_base', 'background_bonus'],
+      aspectRatio: '16/9', cols: 2,
+    },
+    {
+      id: 'high_symbols',
+      label: `High Symbols ${highCount > 0 ? `(${highCount})` : ''}`,
+      types: HIGH_TYPE_KEYS.slice(0, highCount),
+      aspectRatio: '1/1', cols: Math.min(highCount, 5),
+      // Attach symbol names so tiles can show custom labels
+      _names: highNames,
+    } as AssetGroup & { _names: string[] },
+    {
+      id: 'low_symbols',
+      label: `Low Symbols ${lowCount > 0 ? `(${lowCount})` : ''}`,
+      types: LOW_TYPE_KEYS.slice(0, lowCount),
+      aspectRatio: '1/1', cols: Math.min(lowCount, 5),
+      _names: lowNames,
+    } as AssetGroup & { _names: string[] },
+    {
+      id: 'specials',
+      label: `Special Symbols ${specialCount > 0 ? `(${specialCount})` : ''}`,
+      types: SPECIAL_TYPE_KEYS.slice(0, specialCount),
+      aspectRatio: '1/1', cols: Math.min(specialCount, 5),
+      _names: specialNames,
+    } as AssetGroup & { _names: string[] },
+    {
+      id: 'ui_chrome', label: 'UI & Chrome',
+      types: ['logo', 'character', 'reel_frame', 'spin_button', 'jackpot_label'],
+      aspectRatio: '1/1', cols: 5,
+    },
+  ]
+}
+
+// Default static groups used before any projectMeta arrives
+const DEFAULT_ASSET_GROUPS = buildDynamicGroups()
+
+/** Build a flattened per-type label map from groups (includes custom symbol names). */
+function buildShortLabels(groups: (AssetGroup & { _names?: string[] })[]): Partial<Record<AssetType, string>> {
+  const out: Partial<Record<AssetType, string>> = {
+    background_base:  'Base BG',
+    background_bonus: 'Bonus BG',
+    logo:             'Logo',
+    character:        'Character',
+    reel_frame:       'Reel Frame',
+    spin_button:      'Spin Button',
+    jackpot_label:    'Jackpot',
+  }
+  for (const g of groups) {
+    const names = (g as AssetGroup & { _names?: string[] })._names ?? []
+    g.types.forEach((t, i) => {
+      out[t] = names[i] ?? ASSET_LABELS[t]
+    })
+  }
+  return out
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -216,6 +241,11 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       return derived || prev
     })
   }, [projectMeta])
+
+  // ─── Dynamic asset groups from symbol configuration ──────────────────────────
+  // Recomputed whenever the editor sends updated symbol counts / names.
+  const assetGroups = useMemo(() => buildDynamicGroups(projectMeta), [projectMeta])
+  const shortLabels = useMemo(() => buildShortLabels(assetGroups as (AssetGroup & { _names?: string[] })[]), [assetGroups])
 
   // ─── In inline mode, pre-load existing assets from API (no server-side fetch) ─
 
@@ -565,7 +595,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
         {/* ── LEFT SIDEBAR ────────────────────────────────────────────────── */}
         <LeftSidebar
-          groups={ASSET_GROUPS}
+          groups={assetGroups}
           assets={assets}
           activeGroup={activeGroup}
           onSelectGroup={setActiveGroup}
@@ -606,7 +636,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
           {/* Asset Grid (scrollable) */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 40px' }}>
-            {ASSET_GROUPS.map(group => (
+            {assetGroups.map(group => (
               <AssetGroupSection
                 key={group.id}
                 group={group}
@@ -628,6 +658,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 }}
                 onUpload={(type, file) => handleUpload(type, file)}
                 isActive={activeGroup === group.id}
+                shortLabels={shortLabels}
               />
             ))}
           </div>
@@ -645,6 +676,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           theme={theme}
           onRegen={handleRegen}
           logs={batchLogs}
+          shortLabels={shortLabels}
         />
       </div>
     </div>
@@ -1061,10 +1093,11 @@ interface AssetGroupSectionProps {
   onOpenPromptTab: (type: AssetType) => void
   onUpload:        (type: AssetType, file: File) => void
   isActive:        boolean
+  shortLabels:     Partial<Record<AssetType, string>>
 }
 
 function AssetGroupSection({
-  group, assets, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, isActive,
+  group, assets, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, isActive, shortLabels,
 }: AssetGroupSectionProps) {
   const filledCount = group.types.filter(t => !!assets[t]).length
 
@@ -1120,6 +1153,7 @@ function AssetGroupSection({
             onRegen={() => onRegen(type)}
             onOpenPromptTab={() => onOpenPromptTab(type)}
             onUpload={(file) => onUpload(type, file)}
+            label={shortLabels[type]}
           />
         ))}
       </div>
@@ -1141,13 +1175,14 @@ interface AssetTileProps {
   onRegen:         () => void
   onOpenPromptTab: () => void
   onUpload:        (file: File) => void
+  label?:          string
 }
 
 function AssetTile({
-  assetType, asset, isSelected, isRegenerating, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload,
+  assetType, asset, isSelected, isRegenerating, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload, label: labelProp,
 }: AssetTileProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null)
-  const label = ASSET_SHORT_LABELS[assetType] ?? assetType
+  const label = labelProp ?? ASSET_LABELS[assetType] ?? assetType
 
   return (
     <div
@@ -1395,12 +1430,13 @@ interface RightPanelProps {
   theme:          string
   onRegen:        (type: AssetType, prompt?: string) => void
   logs:           string[]
+  shortLabels:    Partial<Record<AssetType, string>>
 }
 
 function RightInspectorPanel({
   selectedType, selectedAsset, rightTab, onTabChange,
   customPrompt, onPromptChange,
-  regenTarget, theme, onRegen, logs,
+  regenTarget, theme, onRegen, logs, shortLabels,
 }: RightPanelProps) {
   const TABS: { id: RightTab; label: string; icon: React.ReactNode }[] = [
     { id: 'inspector', label: 'Inspector', icon: <Eye size={12} /> },
@@ -1464,6 +1500,7 @@ function RightInspectorPanel({
             regenTarget={regenTarget}
             theme={theme}
             onRegen={onRegen}
+            shortLabels={shortLabels}
           />
         )}
 
@@ -1477,6 +1514,7 @@ function RightInspectorPanel({
             regenTarget={regenTarget}
             theme={theme}
             onRegen={onRegen}
+            shortLabels={shortLabels}
           />
         )}
 
@@ -1492,13 +1530,14 @@ function RightInspectorPanel({
 // ─── Inspector Tab ────────────────────────────────────────────────────────────
 
 function InspectorTab({
-  selectedType, selectedAsset, regenTarget, theme, onRegen,
+  selectedType, selectedAsset, regenTarget, theme, onRegen, shortLabels,
 }: {
   selectedType:  AssetType | null
   selectedAsset?: GeneratedAsset
   regenTarget:   AssetType | null
   theme:         string
   onRegen:       (type: AssetType) => void
+  shortLabels:   Partial<Record<AssetType, string>>
 }) {
   if (!selectedType) {
     return (
@@ -1516,7 +1555,7 @@ function InspectorTab({
     )
   }
 
-  const label = ASSET_SHORT_LABELS[selectedType] ?? selectedType
+  const label = shortLabels[selectedType] ?? ASSET_LABELS[selectedType] ?? selectedType
   const isRegen = regenTarget === selectedType
 
   return (
@@ -1641,7 +1680,7 @@ function MetaRow({ label, value, accent }: { label: string; value: string; accen
 
 function PromptTab({
   selectedType, selectedAsset, customPrompt, onPromptChange,
-  regenTarget, theme, onRegen,
+  regenTarget, theme, onRegen, shortLabels,
 }: {
   selectedType:  AssetType | null
   selectedAsset?: GeneratedAsset
@@ -1650,6 +1689,7 @@ function PromptTab({
   regenTarget:   AssetType | null
   theme:         string
   onRegen:       (type: AssetType, prompt?: string) => void
+  shortLabels:   Partial<Record<AssetType, string>>
 }) {
   if (!selectedType) {
     return (
@@ -1665,7 +1705,7 @@ function PromptTab({
   }
 
   const isRegen = regenTarget === selectedType
-  const label   = ASSET_SHORT_LABELS[selectedType] ?? selectedType
+  const label   = shortLabels[selectedType] ?? ASSET_LABELS[selectedType] ?? selectedType
 
   return (
     <div style={{ padding: 16 }}>

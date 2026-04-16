@@ -1719,11 +1719,11 @@ document.addEventListener('keydown',e=>{
   if(!SEL_KEY||P.screen==='project')return;
   const step=e.shiftKey?10:1;
   if(e.key==='Escape'){deselect();return;}
-  // Delete selected custom layer
-  if((e.key==='Delete'||e.key==='Backspace')&&SEL_KEY&&SEL_KEY.startsWith('custom_')){
+  // Delete selected layer (Del / Backspace)
+  if((e.key==='Delete'||e.key==='Backspace')&&SEL_KEY){
     if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
     e.preventDefault();
-    deleteCustomLayer(SEL_KEY);
+    deleteAnyLayer(SEL_KEY);
     return;
   }
   let p={...getPos(SEL_KEY)};
@@ -2038,10 +2038,8 @@ function openLayerCtxMenu(key, cx, cy){
   // Duplicate
   menu.appendChild(item('⧉ Duplicate Layer', function(){ duplicateLayer(key); }));
 
-  // Delete (only custom layers)
-  if(isCustom){
-    menu.appendChild(item('✕ Delete Layer', function(){ deleteCustomLayer(key); }, true));
-  }
+  // Delete — works for any layer
+  menu.appendChild(item('✕ Delete Layer', function(){ deleteAnyLayer(key); }, true));
 
   menu.appendChild(sep());
 
@@ -2725,8 +2723,169 @@ function buildFeatures(){
   addWrap.querySelector('#cf-desc-inp').addEventListener('keydown',e=>{ if(e.key==='Enter') addWrap.querySelector('#cf-add-btn').click(); });
   list.appendChild(addWrap);
 }
-document.getElementById('file-in').addEventListener('change',e=>{Array.from(e.target.files).forEach(f=>{P.importedFiles.push({name:f.name,type:/gdd|design/i.test(f.name)?'GDD':/art|guide/i.test(f.name)?'Art Guide':'Document'});renderFiles();const t=f.name.toLowerCase();if(/hold|spin/i.test(t)){P.features.holdnspin=true;document.getElementById('ft-holdnspin')?.classList.add('on');document.getElementById('hns-tab').style.display='flex';}refresh();markDirty();});});
-function renderFiles(){const list=document.getElementById('ifl-list');list.innerHTML=P.importedFiles.map((f,i)=>`<div class="ifl"><span style="font-size:13px">📄</span><span class="ifl-n">${f.name}</span><span class="ifl-b">${f.type}</span><span class="ifl-r" data-i="${i}">✕</span></div>`).join('');list.querySelectorAll('.ifl-r').forEach(b=>b.addEventListener('click',()=>{P.importedFiles.splice(+b.dataset.i,1);renderFiles();}));}
+// Track the most recently selected import file so the parse button can use it
+var _lastImportFile = null;
+
+document.getElementById('file-in').addEventListener('change',e=>{
+  Array.from(e.target.files).forEach(f=>{
+    P.importedFiles.push({name:f.name,type:/gdd|design/i.test(f.name)?'GDD':/art|guide/i.test(f.name)?'Art Guide':'Document'});
+    renderFiles();
+    const t=f.name.toLowerCase();
+    if(/hold|spin/i.test(t)){P.features.holdnspin=true;document.getElementById('ft-holdnspin')?.classList.add('on');document.getElementById('hns-tab').style.display='flex';}
+    refresh(); markDirty();
+  });
+  // Store the first file for the AI parse button
+  if(e.target.files[0]){
+    _lastImportFile = e.target.files[0];
+    const btn = document.getElementById('parse-gdd-btn');
+    if(btn){ btn.style.display='flex'; }
+    const st = document.getElementById('parse-gdd-status');
+    if(st){ st.style.display='none'; }
+  }
+});
+
+function renderFiles(){
+  const list=document.getElementById('ifl-list');
+  list.innerHTML=P.importedFiles.map((f,i)=>`<div class="ifl"><span style="font-size:13px">📄</span><span class="ifl-n">${f.name}</span><span class="ifl-b">${f.type}</span><span class="ifl-r" data-i="${i}">✕</span></div>`).join('');
+  list.querySelectorAll('.ifl-r').forEach(b=>b.addEventListener('click',()=>{P.importedFiles.splice(+b.dataset.i,1);renderFiles();}));
+}
+
+// ─── AI GDD Parser ─────────────────────────────────────────────────────────────
+// Sends the last imported file to /api/parse-gdd and populates all form fields.
+
+document.getElementById('parse-gdd-btn')?.addEventListener('click', async function(){
+  if(!_lastImportFile){ showToast('No file selected'); return; }
+  const btn = document.getElementById('parse-gdd-btn');
+  const st  = document.getElementById('parse-gdd-status');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Parsing…';
+  st.style.display='none';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', _lastImportFile);
+    const res = await fetch('/api/parse-gdd', { method:'POST', body:fd });
+    const json = await res.json();
+    if(!res.ok || json.error){
+      throw new Error(json.error || 'Parse failed');
+    }
+    applyGDDFields(json.fields);
+    st.style.cssText = 'display:block;margin-top:8px;font-size:10px;text-align:center;border-radius:6px;padding:6px 10px;background:#c9a84c18;color:#c9a84c;border:1px solid #c9a84c33';
+    st.textContent = '✓ Settings filled from document — review and adjust below';
+    showToast('Project settings filled from GDD');
+  } catch(err) {
+    st.style.cssText = 'display:block;margin-top:8px;font-size:10px;text-align:center;border-radius:6px;padding:6px 10px;background:#ef7a7a18;color:#ef7a7a;border:1px solid #ef7a7a33';
+    st.textContent = '✕ ' + (err.message || 'Parse failed — check the file and try again');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+});
+
+// Apply a GDDFields object returned by /api/parse-gdd to the editor's form fields.
+function applyGDDFields(f){
+  if(!f) return;
+  const setVal = (id, val) => {
+    if(val == null || val === '') return;
+    const el = document.getElementById(id);
+    if(el){ el.value = val; el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); }
+  };
+
+  // ── Game Identity ──
+  if(f.gameName){ P.gameName = f.gameName; setVal('game-name', f.gameName); }
+
+  // ── Theme ──
+  if(f.theme){
+    setVal('theme-sel', f.theme);
+    P.theme = f.theme;
+  }
+
+  // ── Theme / Art Direction text fields ──
+  setVal('game-setting',        f.setting);
+  setVal('game-story',          f.story);
+  setVal('game-mood',           f.mood);
+  setVal('game-bonus-narrative',f.bonusNarrative);
+  setVal('game-art-style',      f.artStyle);
+  setVal('game-art-ref',        f.artRef);
+  setVal('game-art-notes',      f.artNotes);
+
+  // ── Reels ──
+  if(f.reelset){
+    P.reelset = f.reelset;
+    const rSel = document.getElementById('reel-sel');
+    if(rSel){ rSel.value = f.reelset; rSel.dispatchEvent(new Event('change', {bubbles:true})); }
+  }
+  if(f.rtp){
+    const rtpInps = document.getElementById('ptab-reels')?.querySelectorAll('input[type=number]');
+    if(rtpInps && rtpInps[3]) { rtpInps[3].value = f.rtp; rtpInps[3].dispatchEvent(new Event('input')); }
+  }
+  if(f.volatility){
+    const volSels = document.getElementById('ptab-reels')?.querySelectorAll('select');
+    if(volSels){ volSels.forEach(s=>{ if(s.querySelector('option[value="Medium"]')){ s.value=f.volatility; s.dispatchEvent(new Event('change')); } }); }
+  }
+  if(f.paylines){
+    const plInps = document.getElementById('ptab-reels')?.querySelectorAll('input[type=number]');
+    if(plInps && plInps[0]) { plInps[0].value = f.paylines; plInps[0].dispatchEvent(new Event('input')); }
+  }
+
+  // ── Jackpots ──
+  const jpMap = { jackpotMini:'mini', jackpotMinor:'minor', jackpotMajor:'major', jackpotGrand:'grand' };
+  Object.entries(jpMap).forEach(([fk, pk]) => {
+    if(f[fk] && P.jackpots[pk]){
+      P.jackpots[pk].on  = true;
+      P.jackpots[pk].val = f[fk];
+      const jpEl = document.getElementById('jp-'+pk+'-val');
+      const jpTog = document.getElementById('jp-'+pk+'-tog');
+      if(jpEl) jpEl.value = f[fk];
+      if(jpTog) jpTog.checked = true;
+    }
+  });
+
+  // ── Features ──
+  if(Array.isArray(f.features)){
+    f.features.forEach(key => {
+      if(key in P.features){
+        P.features[key] = true;
+        const ftEl = document.getElementById('ft-'+key);
+        if(ftEl) ftEl.classList.add('on');
+        // Special: show Hold & Spin tab if enabled
+        if(key==='holdnspin') document.getElementById('hns-tab')?.style && (document.getElementById('hns-tab').style.display='flex');
+      }
+    });
+  }
+
+  // ── Symbols ──
+  if(f.symbolHighCount != null)    setVal('sym-high-count',    String(f.symbolHighCount));
+  if(f.symbolLowCount != null)     setVal('sym-low-count',     String(f.symbolLowCount));
+  if(f.symbolSpecialCount != null) setVal('sym-special-count', String(f.symbolSpecialCount));
+
+  // Rebuild the symbol set with the new counts
+  const highN    = f.symbolHighCount    ?? parseInt(document.getElementById('sym-high-count')?.value)||5;
+  const lowN     = f.symbolLowCount     ?? parseInt(document.getElementById('sym-low-count')?.value)||5;
+  const specialN = f.symbolSpecialCount ?? parseInt(document.getElementById('sym-special-count')?.value)||2;
+  P.symbols = buildDefaultSymbols(highN, lowN, specialN);
+
+  // Override individual symbol names if provided
+  if(Array.isArray(f.symbolHighNames)){
+    const highs = P.symbols.filter(s=>s.type==='high');
+    f.symbolHighNames.forEach((name, i)=>{ if(highs[i]) highs[i].name = name; });
+  }
+  if(Array.isArray(f.symbolLowNames)){
+    const lows = P.symbols.filter(s=>s.type==='low');
+    f.symbolLowNames.forEach((name, i)=>{ if(lows[i]) lows[i].name = name; });
+  }
+  if(Array.isArray(f.symbolSpecialNames)){
+    const specials = P.symbols.filter(s=>s.type==='special');
+    f.symbolSpecialNames.forEach((name, i)=>{ if(specials[i]){ specials[i].name = name; specials[i].id = name; } });
+  }
+
+  renderSymbolTable();
+  renderLayers();
+  refresh();
+  markDirty();
+  showToast('✓ Settings applied from GDD');
+}
 
 // Tabs + viewport
 // screen-tab clicks wired in rebuildTabs()
@@ -2822,6 +2981,29 @@ function _setSaveStatus(cls, text){
   if(!ts) return;
   ts.className = cls;
   ts.textContent = text;
+}
+
+// ─── Delete any layer by key ────────────────────────────────────────────────
+// Custom layers are fully removed from PSD and all screens.
+// Built-in layers are removed from the *current screen* only (non-destructive).
+function deleteAnyLayer(key){
+  if(!key) return;
+  if(key.startsWith('custom_')){
+    deleteCustomLayer(key);
+    return;
+  }
+  // Built-in: confirm then remove from current screen's key list
+  const def = PSD[key];
+  const label = def?.label || key;
+  if(!confirm('Remove "' + label + '" from the current screen?\n\nThis removes it from the canvas on this screen only. It can be added back by rebuilding the canvas or switching screens.')) return;
+  const sc = SDEFS[P.screen];
+  if(sc && sc.keys){
+    const idx = sc.keys.indexOf(key);
+    if(idx !== -1) sc.keys.splice(idx, 1);
+  }
+  if(SEL_KEY === key) SEL_KEY = null;
+  buildCanvas(); renderLayers(); markDirty();
+  pushHistory('remove '+key+' from '+P.screen);
 }
 
 // ─── Delete a custom layer by key ───────────────────────────────────────────
@@ -7811,6 +7993,10 @@ var activeWorkspace = 'canvas'; // var (not let) — must be hoisted so switchSc
 // and returns them as a ProjectMeta-compatible object to be forwarded to AssetsWorkspace.
 function collectMeta(){
   const g = id => document.getElementById(id)?.value?.trim() || '';
+  // Build a symbols summary for AssetsWorkspace to render dynamic tiles
+  const highSymbols    = (P.symbols||[]).filter(s=>s.type==='high');
+  const lowSymbols     = (P.symbols||[]).filter(s=>s.type==='low');
+  const specialSymbols = (P.symbols||[]).filter(s=>s.type==='special');
   return {
     gameName:        g('game-name')       || P.gameName || '',
     themeKey:        g('theme-sel')       || P.theme    || '',
@@ -7824,6 +8010,14 @@ function collectMeta(){
     colorPrimary:    P.colors?.c1 || '',
     colorBg:         P.colors?.c2 || '',
     colorAccent:     P.colors?.c3 || '',
+    // Symbol configuration — drives the asset tile grid in AssetsWorkspace
+    symbolHighCount:    highSymbols.length,
+    symbolLowCount:     lowSymbols.length,
+    symbolSpecialCount: specialSymbols.length,
+    // Per-symbol names for tile labels (indexed: high_0..N-1, low_0..N-1, special_0..N-1)
+    symbolHighNames:    highSymbols.map(s=>s.name),
+    symbolLowNames:     lowSymbols.map(s=>s.name),
+    symbolSpecialNames: specialSymbols.map(s=>s.name),
   };
 }
 
@@ -8649,7 +8843,7 @@ function buildAssetChecklist(){
     'm-undo':       () => { if(HIDX>0){HIDX--;restoreSnap(HIST[HIDX]);buildCanvas();renderLayers();renderLibrary();} },
     'm-redo':       () => { if(HIDX<HIST.length-1){HIDX++;restoreSnap(HIST[HIDX]);buildCanvas();renderLayers();renderLibrary();} },
     'm-duplicate':  () => showToast('Duplicate layer — coming soon'),
-    'm-delete':     () => showToast('Delete layer — coming soon'),
+    'm-delete':     () => { if(SEL_KEY) deleteAnyLayer(SEL_KEY); else showToast('Select a layer first'); },
     'm-reset-el':   () => { if(SEL_KEY){ if(!EL_VP.portrait) EL_VP.portrait={}; if(!EL_VP.landscape) EL_VP.landscape={}; delete EL_VP.portrait[SEL_KEY]; delete EL_VP.landscape[SEL_KEY]; buildCanvas(); } else showToast('Select a layer first'); },
     'm-reset-all':  () => { if(confirm('Reset all layer positions to defaults?')){ Object.keys(EL_VP.portrait||{}).forEach(k=>delete EL_VP.portrait[k]); Object.keys(EL_VP.landscape||{}).forEach(k=>delete EL_VP.landscape[k]); buildCanvas(); } },
     'm-lock-sel':   () => { if(SEL_KEY){ if(USER_LOCKS.has(SEL_KEY)) USER_LOCKS.delete(SEL_KEY); else USER_LOCKS.add(SEL_KEY); renderLayers(); buildCanvas(); } else showToast('Select a layer first'); },

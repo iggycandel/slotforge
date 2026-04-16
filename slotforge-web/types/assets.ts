@@ -33,18 +33,31 @@ export interface ProjectMeta {
 export type AssetType =
   | 'background_base'
   | 'background_bonus'
+  // High symbols — up to 8
   | 'symbol_high_1'
   | 'symbol_high_2'
   | 'symbol_high_3'
   | 'symbol_high_4'
   | 'symbol_high_5'
+  | 'symbol_high_6'
+  | 'symbol_high_7'
+  | 'symbol_high_8'
+  // Low symbols — up to 8
   | 'symbol_low_1'
   | 'symbol_low_2'
   | 'symbol_low_3'
   | 'symbol_low_4'
   | 'symbol_low_5'
+  | 'symbol_low_6'
+  | 'symbol_low_7'
+  | 'symbol_low_8'
+  // Special symbols — named first two + up to 6 additional
   | 'symbol_wild'
   | 'symbol_scatter'
+  | 'symbol_special_3'
+  | 'symbol_special_4'
+  | 'symbol_special_5'
+  | 'symbol_special_6'
   | 'logo'
   | 'character'
   | 'reel_frame'
@@ -54,18 +67,12 @@ export type AssetType =
 export const ASSET_TYPES: AssetType[] = [
   'background_base',
   'background_bonus',
-  'symbol_high_1',
-  'symbol_high_2',
-  'symbol_high_3',
-  'symbol_high_4',
-  'symbol_high_5',
-  'symbol_low_1',
-  'symbol_low_2',
-  'symbol_low_3',
-  'symbol_low_4',
-  'symbol_low_5',
-  'symbol_wild',
-  'symbol_scatter',
+  'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4',
+  'symbol_high_5', 'symbol_high_6', 'symbol_high_7', 'symbol_high_8',
+  'symbol_low_1',  'symbol_low_2',  'symbol_low_3',  'symbol_low_4',
+  'symbol_low_5',  'symbol_low_6',  'symbol_low_7',  'symbol_low_8',
+  'symbol_wild', 'symbol_scatter',
+  'symbol_special_3', 'symbol_special_4', 'symbol_special_5', 'symbol_special_6',
   'logo',
   'character',
   'reel_frame',
@@ -76,18 +83,28 @@ export const ASSET_TYPES: AssetType[] = [
 export const ASSET_LABELS: Record<AssetType, string> = {
   background_base:   'Background — Base Game',
   background_bonus:  'Background — Bonus/Free Spins',
-  symbol_high_1:     'High Symbol 1',
-  symbol_high_2:     'High Symbol 2',
-  symbol_high_3:     'High Symbol 3',
-  symbol_high_4:     'High Symbol 4',
-  symbol_high_5:     'High Symbol 5',
-  symbol_low_1:      'Low Symbol 1',
-  symbol_low_2:      'Low Symbol 2',
-  symbol_low_3:      'Low Symbol 3',
-  symbol_low_4:      'Low Symbol 4',
-  symbol_low_5:      'Low Symbol 5',
-  symbol_wild:       'Wild Symbol',
-  symbol_scatter:    'Scatter Symbol',
+  symbol_high_1:     'High 1',
+  symbol_high_2:     'High 2',
+  symbol_high_3:     'High 3',
+  symbol_high_4:     'High 4',
+  symbol_high_5:     'High 5',
+  symbol_high_6:     'High 6',
+  symbol_high_7:     'High 7',
+  symbol_high_8:     'High 8',
+  symbol_low_1:      'Low 1',
+  symbol_low_2:      'Low 2',
+  symbol_low_3:      'Low 3',
+  symbol_low_4:      'Low 4',
+  symbol_low_5:      'Low 5',
+  symbol_low_6:      'Low 6',
+  symbol_low_7:      'Low 7',
+  symbol_low_8:      'Low 8',
+  symbol_wild:       'Wild',
+  symbol_scatter:    'Scatter',
+  symbol_special_3:  'Special 3',
+  symbol_special_4:  'Special 4',
+  symbol_special_5:  'Special 5',
+  symbol_special_6:  'Special 6',
   logo:              'Game Logo',
   character:         'Character',
   reel_frame:        'Reel Frame',

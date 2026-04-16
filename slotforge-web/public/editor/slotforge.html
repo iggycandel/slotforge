@@ -721,6 +721,11 @@
             <div>
               <div style="font-size:9px;color:#778;line-height:1.7;margin-bottom:10px">Import your GDD, Art Direction Guidelines, or spec sheets. The AI will read these documents and auto-detect game name, theme, reel config, features (Hold &amp; Spin, Buy Feature, Jackpots, etc.) and pre-fill all settings below.</div>
               <div class="imp-zone"><input type="file" id="file-in" multiple accept=".pdf,.doc,.docx,.txt,.md"><div class="iz-ico">⬆</div><div class="iz-t">Drop files or click to browse</div><div class="iz-s">PDF · DOCX · TXT · MD</div></div>
+              <!-- AI Parse button — shown after a file is selected -->
+              <button id="parse-gdd-btn" style="display:none;margin-top:10px;width:100%;padding:9px 14px;background:#c9a84c;color:#06060a;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;gap:6px;align-items:center;justify-content:center">
+                ✦ Parse &amp; Auto-fill with AI
+              </button>
+              <div id="parse-gdd-status" style="display:none;margin-top:8px;font-size:10px;text-align:center;border-radius:6px;padding:6px 10px"></div>
             </div>
             <div id="ifl-list" style="display:flex;flex-direction:column;gap:6px;padding-top:2px"></div>
           </div>
