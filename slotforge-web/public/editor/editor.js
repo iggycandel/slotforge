@@ -9514,6 +9514,11 @@ window._sfBridge = (function(){
     }
     if(msg.type === 'SF_REQUEST_SAVE'){ triggerSave(); }
 
+    // Parent shell switching workspace back (e.g. returning from React Assets workspace)
+    if(msg.type === 'SF_SET_WORKSPACE' && msg.workspace){
+      switchWorkspace(msg.workspace);
+    }
+
     // Inject arbitrary CSS from the parent shell (used to hide duplicate panels)
     if(msg.type === 'SF_INJECT_CSS' && msg.css){
       var styleEl = document.getElementById('_sf_injected_css');

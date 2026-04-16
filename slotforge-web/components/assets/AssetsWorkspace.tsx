@@ -143,13 +143,17 @@ interface Props {
   orgSlug:       string
   projectName:   string
   initialAssets: GeneratedAsset[]
+  /** When true: no standalone toolbar, fill parent height, fetch existing assets from API on mount */
+  inlineMode?:   boolean
+  /** Called when user wants to return to the canvas (only used in inlineMode) */
+  onBackToCanvas?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets }: Props) {
+export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas }: Props) {
   // Asset state
   const [assets, setAssets] = useState<Partial<Record<AssetType, GeneratedAsset>>>(
     () => buildAssetMap(initialAssets)
@@ -194,6 +198,19 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       })
       .catch(() => {/* non-fatal */})
   }, [projectId])
+
+  // ─── In inline mode, pre-load existing assets from API (no server-side fetch) ─
+
+  useEffect(() => {
+    if (!inlineMode) return
+    fetch(`/api/generate?project_id=${projectId}`)
+      .then(r => r.ok ? r.json() : { assets: [] })
+      .then(d => {
+        const list: GeneratedAsset[] = Array.isArray(d.assets) ? d.assets : []
+        if (list.length > 0) setAssets(buildAssetMap(list))
+      })
+      .catch(() => {/* non-fatal */})
+  }, [projectId, inlineMode])
 
   const saveContext = useCallback((t: string, s: string, p: 'openai' | 'mock') => {
     fetch('/api/project-context', {
@@ -348,12 +365,13 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     <div style={{
       display:    'flex',
       flexDirection: 'column',
-      width:      '100vw',
-      height:     '100vh',
+      width:      inlineMode ? '100%' : '100vw',
+      height:     inlineMode ? '100%' : '100vh',
       background: C.bg,
       color:      C.tx,
       fontFamily: C.font,
       overflow:   'hidden',
+      flex:       inlineMode ? 1 : undefined,
     }}>
 
       {/* ── Global CSS ─────────────────────────────────────────────────────── */}
@@ -377,103 +395,117 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         textarea:focus { outline: none; border-color: #c9a84c !important; }
       `}</style>
 
-      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
-      <div style={{
-        height:      TOOLBAR_H,
-        minHeight:   TOOLBAR_H,
-        display:     'flex',
-        alignItems:  'center',
-        padding:     '0 16px',
-        gap:         12,
-        borderBottom: `1px solid ${C.border}`,
-        background:  C.surface,
-        position:    'relative',
-        zIndex:      10,
-      }}>
-        {/* Back to Canvas */}
-        <Link href={`/${orgSlug}/projects/${projectId}`} style={{
-          display:    'flex',
-          alignItems: 'center',
-          gap:        5,
-          color:      C.txMuted,
-          textDecoration: 'none',
-          fontSize:   12,
-          fontWeight: 500,
-          padding:    '4px 8px',
-          borderRadius: 6,
-          border:     `1px solid ${C.border}`,
-          transition: 'all .15s',
-        }}
-          className="sf-btn"
-        >
-          <ChevronLeft size={13} />
-          Canvas
-        </Link>
-
-        <div style={{ width: 1, height: 20, background: C.border }} />
-
-        {/* Logo */}
-        <span style={{ fontSize: 13, fontWeight: 700, color: C.gold, letterSpacing: '.5px' }}>
-          SLOTFORGE
-        </span>
-
-        <span style={{ fontSize: 12, color: C.txFaint }}>·</span>
-
-        {/* Workspace label */}
-        <span style={{
-          fontSize:   11,
-          fontWeight: 600,
-          color:      C.txMuted,
-          letterSpacing: '.08em',
-          textTransform: 'uppercase',
+      {/* ── Standalone toolbar — shown only when NOT embedded in the editor ── */}
+      {!inlineMode && (
+        <div style={{
+          height:      TOOLBAR_H,
+          minHeight:   TOOLBAR_H,
+          display:     'flex',
+          alignItems:  'center',
+          padding:     '0 16px',
+          gap:         12,
+          borderBottom: `1px solid ${C.border}`,
+          background:  C.surface,
+          position:    'relative',
+          zIndex:      10,
         }}>
-          Assets
-        </span>
-
-        <div style={{ flex: 1 }} />
-
-        {/* Project name */}
-        <span style={{ fontSize: 12, color: C.txMuted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {projectName}
-        </span>
-
-        {/* Asset count badge */}
-        {totalGenerated > 0 && (
-          <span style={{
-            fontSize: 11,
-            color:    C.gold,
-            background: C.goldBg,
-            border:   `1px solid ${C.gold}30`,
-            borderRadius: 10,
-            padding:  '2px 8px',
-            fontWeight: 600,
-          }}>
-            {totalGenerated} / 19
-          </span>
-        )}
-
-        {/* Export (placeholder) */}
-        <button
-          onClick={() => {}}
-          style={{
+          {/* Back to Canvas */}
+          <Link href={`/${orgSlug}/projects/${projectId}`} style={{
             display:    'flex',
             alignItems: 'center',
             gap:        5,
+            color:      C.txMuted,
+            textDecoration: 'none',
             fontSize:   12,
             fontWeight: 500,
-            color:      C.txMuted,
-            background: 'none',
-            border:     `1px solid ${C.border}`,
+            padding:    '4px 8px',
             borderRadius: 6,
-            padding:    '4px 10px',
-            cursor:     'pointer',
+            border:     `1px solid ${C.border}`,
+            transition: 'all .15s',
           }}
-          className="sf-btn"
-        >
-          <Download size={12} />
-          Export
-        </button>
-      </div>
+            className="sf-btn"
+          >
+            <ChevronLeft size={13} />
+            Canvas
+          </Link>
+
+          <div style={{ width: 1, height: 20, background: C.border }} />
+
+          <span style={{ fontSize: 13, fontWeight: 700, color: C.gold, letterSpacing: '.5px' }}>
+            SLOTFORGE
+          </span>
+          <span style={{ fontSize: 12, color: C.txFaint }}>·</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: C.txMuted, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+            Assets
+          </span>
+
+          <div style={{ flex: 1 }} />
+
+          <span style={{ fontSize: 12, color: C.txMuted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {projectName}
+          </span>
+
+          {totalGenerated > 0 && (
+            <span style={{ fontSize: 11, color: C.gold, background: C.goldBg, border: `1px solid ${C.gold}30`, borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              {totalGenerated} / 19
+            </span>
+          )}
+
+          <button onClick={() => {}} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 500, color: C.txMuted, background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }} className="sf-btn">
+            <Download size={12} />
+            Export
+          </button>
+        </div>
+      )}
+
+      {/* ── Inline mode: compact back bar (no full toolbar) ───────────────── */}
+      {inlineMode && (
+        <div style={{
+          height:      36,
+          minHeight:   36,
+          display:     'flex',
+          alignItems:  'center',
+          gap:         10,
+          padding:     '0 14px',
+          background:  C.surface,
+          borderBottom: `1px solid ${C.border}`,
+          flexShrink:  0,
+        }}>
+          <button
+            onClick={onBackToCanvas}
+            style={{
+              display:    'flex',
+              alignItems: 'center',
+              gap:        5,
+              fontSize:   11,
+              fontWeight: 600,
+              color:      C.txMuted,
+              background: 'none',
+              border:     `1px solid ${C.border}`,
+              borderRadius: 6,
+              padding:    '3px 8px',
+              cursor:     'pointer',
+            }}
+            className="sf-btn"
+          >
+            <ChevronLeft size={11} />
+            Canvas
+          </button>
+
+          <span style={{ fontSize: 11, color: C.txFaint }}>·</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.gold, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+            Assets Workspace
+          </span>
+
+          <div style={{ flex: 1 }} />
+
+          {totalGenerated > 0 && (
+            <span style={{ fontSize: 10, color: C.gold, background: C.goldBg, border: `1px solid ${C.gold}30`, borderRadius: 10, padding: '1px 7px', fontWeight: 600 }}>
+              {totalGenerated} / 19
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Three-panel body ───────────────────────────────────────────────── */}
       <div style={{
