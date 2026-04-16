@@ -98,3 +98,160 @@ USING (
     )
   )
 );
+
+
+-- ── 5. Asset versions ─────────────────────────────────────────────────────────
+-- Tracks every generation iteration of an asset so users can revert.
+-- Each row = one generation attempt for a given project+type combination.
+
+CREATE TABLE IF NOT EXISTS asset_versions (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id    uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  asset_id      uuid        REFERENCES generated_assets(id) ON DELETE SET NULL,
+  type          text        NOT NULL,
+  url           text        NOT NULL,
+  prompt        text        NOT NULL DEFAULT '',
+  theme         text        NOT NULL DEFAULT '',
+  style_id      text,
+  provider      text        NOT NULL DEFAULT 'unknown',
+  version_num   integer     NOT NULL DEFAULT 1,
+  is_active     boolean     NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- Exactly one active version per (project, type) at a time
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_versions_active
+  ON asset_versions (project_id, type)
+  WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_asset_versions_project_type
+  ON asset_versions (project_id, type, created_at DESC);
+
+-- RLS
+ALTER TABLE asset_versions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own asset versions"
+ON asset_versions FOR SELECT
+TO authenticated
+USING (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+);
+
+CREATE POLICY "Service role can manage asset versions"
+ON asset_versions FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+
+-- ── 6. Canvas links ───────────────────────────────────────────────────────────
+-- Records which generated_asset is linked to each slot/layer in the Canvas editor.
+-- When the user clicks "Send to Canvas" in ASSETS workspace, a row is upserted here.
+-- The Canvas AssetsPanel reads these rows so it knows which assets are "in use".
+
+CREATE TABLE IF NOT EXISTS canvas_links (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id    uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  asset_id      uuid        NOT NULL REFERENCES generated_assets(id) ON DELETE CASCADE,
+  asset_type    text        NOT NULL,   -- e.g. 'symbol_high_1'
+  el_key        text        NOT NULL,   -- e.g. 'sym_H1' (editor.js EL_ASSETS key)
+  linked_at     timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (project_id, asset_type)       -- one active link per slot per project
+);
+
+CREATE INDEX IF NOT EXISTS idx_canvas_links_project
+  ON canvas_links (project_id);
+
+-- RLS
+ALTER TABLE canvas_links ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own canvas links"
+ON canvas_links FOR SELECT
+TO authenticated
+USING (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+);
+
+CREATE POLICY "Service role can manage canvas links"
+ON canvas_links FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Users can manage their own canvas links"
+ON canvas_links FOR ALL
+TO authenticated
+USING (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+)
+WITH CHECK (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+);
+
+
+-- ── 7. Project context ────────────────────────────────────────────────────────
+-- Stores per-project generation context: the last used theme, style_id,
+-- and provider. Allows the ASSETS workspace to pre-fill the control bar
+-- on next visit.
+
+CREATE TABLE IF NOT EXISTS project_context (
+  project_id    uuid        PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  theme         text        NOT NULL DEFAULT '',
+  style_id      text,
+  provider      text        NOT NULL DEFAULT 'openai',
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- RLS
+ALTER TABLE project_context ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own project context"
+ON project_context FOR SELECT
+TO authenticated
+USING (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+);
+
+CREATE POLICY "Service role can manage project context"
+ON project_context FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Users can upsert their own project context"
+ON project_context FOR ALL
+TO authenticated
+USING (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+)
+WITH CHECK (
+  project_id IN (
+    SELECT id FROM projects WHERE workspace_id IN (
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+    )
+  )
+);

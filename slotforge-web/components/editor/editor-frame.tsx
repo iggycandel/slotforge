@@ -335,6 +335,47 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           {liveProjectName}
         </span>
 
+        {/* ── Workspace tab switcher: Canvas | Assets ─────────────────────── */}
+        <div style={{
+          display:     'flex',
+          background:  C.bg,
+          border:      `1px solid ${C.border}`,
+          borderRadius: 8,
+          padding:     2,
+          gap:         2,
+          marginLeft:  8,
+        }}>
+          {/* Canvas tab — active (current page) */}
+          <span style={{
+            padding:    '3px 12px',
+            borderRadius: 6,
+            fontSize:   11,
+            fontWeight: 700,
+            background: C.gold,
+            color:      '#06060a',
+            cursor:     'default',
+            letterSpacing: '.04em',
+          }}>
+            Canvas
+          </span>
+          {/* Assets tab — navigates to /assets */}
+          <Link
+            href={`/${orgSlug}/projects/${projectId}/assets`}
+            style={{
+              padding:    '3px 12px',
+              borderRadius: 6,
+              fontSize:   11,
+              fontWeight: 600,
+              background: 'transparent',
+              color:      C.txMuted,
+              textDecoration: 'none',
+              letterSpacing: '.04em',
+            }}
+          >
+            Assets
+          </Link>
+        </div>
+
         <div style={{ flex: 1 }} />
 
         {/* Save status */}
@@ -416,6 +457,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         {editorWorkspace === 'canvas' && (
           <RightPanel
             projectId={projectId}
+            orgSlug={orgSlug}
             onAddToCanvas={handleAddToCanvas}
             width={PANEL_W}
           />

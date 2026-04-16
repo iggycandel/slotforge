@@ -71,11 +71,12 @@ const iconBtn: React.CSSProperties = {
 
 interface Props {
   projectId:     string
+  orgSlug:       string
   onAddToCanvas: (assetType: AssetType, url: string) => void
   width?:        number   // panel width in px (default 320)
 }
 
-export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
+export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320 }: Props) {
   const [activeTab, setActiveTab] = useState<PanelTab>('layers')
   const [layers,    setLayers]    = useState<LayerInfo[]>([])
   const [screen,    setScreen]    = useState('')
@@ -417,6 +418,7 @@ export function RightPanel({ projectId, onAddToCanvas, width = 320 }: Props) {
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <AssetsPanel
             projectId={projectId}
+            orgSlug={orgSlug}
             onAddToCanvas={onAddToCanvas}
             embedded={true}
           />
