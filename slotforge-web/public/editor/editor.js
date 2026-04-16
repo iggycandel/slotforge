@@ -2861,9 +2861,9 @@ function applyGDDFields(f){
   if(f.symbolSpecialCount != null) setVal('sym-special-count', String(f.symbolSpecialCount));
 
   // Rebuild the symbol set with the new counts
-  const highN    = f.symbolHighCount    ?? parseInt(document.getElementById('sym-high-count')?.value)||5;
-  const lowN     = f.symbolLowCount     ?? parseInt(document.getElementById('sym-low-count')?.value)||5;
-  const specialN = f.symbolSpecialCount ?? parseInt(document.getElementById('sym-special-count')?.value)||2;
+  const highN    = f.symbolHighCount    ?? (parseInt(document.getElementById('sym-high-count')?.value)||5);
+  const lowN     = f.symbolLowCount     ?? (parseInt(document.getElementById('sym-low-count')?.value)||5);
+  const specialN = f.symbolSpecialCount ?? (parseInt(document.getElementById('sym-special-count')?.value)||2);
   P.symbols = buildDefaultSymbols(highN, lowN, specialN);
 
   // Override individual symbol names if provided

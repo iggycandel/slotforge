@@ -13,7 +13,7 @@ const TOOLBAR_H  = 44
 const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v48'
+const EDITOR_VERSION = 'v49'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
