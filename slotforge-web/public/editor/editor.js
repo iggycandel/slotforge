@@ -7813,7 +7813,7 @@ function updateWorkspaceUI(){
     btn.classList.toggle('ws-active', btn.dataset.ws === activeWorkspace);
   });
   // Show/hide non-canvas workspace panels (project handled separately via #proj-fs)
-  ['flow','marketing','features'].forEach(ws => {
+  ['flow','marketing','features','assets'].forEach(ws => {
     const el = document.getElementById('ws-' + ws);
     if(el) el.classList.toggle('ws-visible', activeWorkspace === ws);
   });
@@ -7833,7 +7833,7 @@ function updateWorkspaceUI(){
   if(cw) cw.style.display = isCanvas ? '' : 'none';
   if(rp) rp.style.display = isCanvas ? '' : 'none';
   // Contextual topbar sections
-  ['canvas','flow','project','marketing','features'].forEach(ws => {
+  ['canvas','flow','project','marketing','features','assets'].forEach(ws => {
     const tb = document.getElementById('topbar-' + ws);
     if(tb) tb.style.display = (activeWorkspace === ws) ? 'flex' : 'none';
   });
@@ -8456,11 +8456,6 @@ function openProjectSettings(){
 // ─── Workspace tab clicks ───────────────────────────────
 document.querySelectorAll('.ws-tab').forEach(btn => {
   btn.addEventListener('click', () => {
-    // Assets tab navigates the parent shell to the /assets route (separate page)
-    if(btn.dataset.ws === 'assets'){
-      window.parent.postMessage({ type: 'SF_NAVIGATE_ASSETS' }, '*');
-      return;
-    }
     switchWorkspace(btn.dataset.ws);
   });
 });

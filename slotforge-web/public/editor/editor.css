@@ -804,6 +804,8 @@ svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:non
 /* ── Features Editor ────────────────────────────────────────────────────────── */
 #ws-features{display:none;flex:1;overflow:hidden;flex-direction:row}
 #ws-features.ws-visible{display:flex}
+#ws-assets{display:none;flex:1;overflow:hidden;flex-direction:column}
+#ws-assets.ws-visible{display:flex}
 .fe-list-item{padding:9px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent;margin-bottom:3px;transition:background .12s,border-color .12s;font-family:'Inter',system-ui,sans-serif}
 .fe-list-item:hover{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.04)}
 .fe-list-item.selected{background:rgba(201,168,76,.07);border-color:rgba(201,168,76,.22)}

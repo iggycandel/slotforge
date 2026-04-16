@@ -13,7 +13,7 @@ const TOOLBAR_H  = 44
 const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v47'
+const EDITOR_VERSION = 'v48'
 const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -136,10 +136,6 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         setEditorWorkspace(msg.workspace as string)
       }
 
-      // Assets tab in editor.js clicked → swap main area to AssetsWorkspace in-place
-      if (msg.type === 'SF_NAVIGATE_ASSETS') {
-        setEditorWorkspace('assets')
-      }
 
       if (msg.type === 'SF_DIRTY') {
         setSaveState(s => s.status !== 'saving' ? { ...s, status: 'dirty' } : s)
@@ -406,9 +402,33 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       </div>
 
       {/* ── Main area ── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+      {/* When assets workspace is active, we switch to a column layout:
+          the iframe shrinks to 36px (just the editor's #menubar / workspace-tab strip stays
+          visible and clickable), and AssetsWorkspace fills the space below.
+          This keeps the workspace-tab bar always on screen so the user can switch back. */}
+      <div style={{
+        flex:          1,
+        display:       'flex',
+        flexDirection: editorWorkspace === 'assets' ? 'column' : 'row',
+        overflow:      'hidden',
+        position:      'relative',
+      }}>
 
-        {/* ── Assets workspace (inline, no own toolbar) ──────────────────── */}
+        {/* ── Editor iframe — always mounted; shrinks to menubar strip when assets active ── */}
+        <div style={
+          editorWorkspace === 'assets'
+            ? { height: 36, flexShrink: 0, position: 'relative', overflow: 'hidden', width: '100%' }
+            : { flex: 1, position: 'relative', overflow: 'hidden' }
+        }>
+          <iframe
+            ref={iframeRef}
+            src={editorSrc}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', display: 'block' }}
+            title="Spinative Editor"
+          />
+        </div>
+
+        {/* ── Assets workspace (inline, fills below the menubar strip) ── */}
         {editorWorkspace === 'assets' && (
           <AssetsWorkspace
             projectId={projectId}
@@ -417,29 +437,11 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             initialAssets={[]}
             inlineMode
             onBackToCanvas={() => {
-              setEditorWorkspace('canvas')
-              // Tell the iframe to re-activate its Canvas workspace tab
+              // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, '*')
             }}
           />
         )}
-
-        {/* ── Canvas / other editor workspaces ──────────────────────────── */}
-        {/* Keep iframe mounted at all times so state is preserved;
-            hide it visually when assets workspace is active */}
-        <div style={{
-          flex:     1,
-          position: 'relative',
-          overflow: 'hidden',
-          display:  editorWorkspace === 'assets' ? 'none' : 'block',
-        }}>
-          <iframe
-            ref={iframeRef}
-            src={editorSrc}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', display: 'block' }}
-            title="Spinative Editor"
-          />
-        </div>
 
         {/* Right panel — only visible in Canvas workspace */}
         {editorWorkspace === 'canvas' && (

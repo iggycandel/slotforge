@@ -21,7 +21,7 @@
     <div class="ws-sep"></div>
     <button class="ws-tab" data-ws="features">Features</button>
     <div class="ws-sep"></div>
-    <button class="ws-tab ws-tab--assets" data-ws="assets" title="Open ASSETS workspace">✦ Assets</button>
+    <button class="ws-tab ws-tab--assets" data-ws="assets" title="Open ASSETS workspace">Assets</button>
     <div class="ws-sep"></div>
     <button class="ws-tab ws-active" data-ws="canvas">Canvas</button>
     <div class="ws-sep"></div>
@@ -199,6 +199,10 @@
   <div id="topbar-marketing">
     <span class="tb-ws-label">Marketing Assets</span>
     <button class="tb-ws-action primary" style="margin-left:auto" id="mkt-new-btn">+ New Asset</button>
+  </div>
+  <!-- Assets workspace topbar -->
+  <div id="topbar-assets">
+    <span class="tb-ws-label">Assets</span>
   </div>
 
   <div id="topbar-right">
@@ -1818,6 +1822,11 @@
      (b) the old markDirty hook's 4-second autosave timer calling the legacy getPayload()
      which was missing keyOrders/customPsd/char/ante, silently corrupting the saved
      payload in Supabase. -->
+
+<!-- ══════════════════════════════════════════════
+     ASSETS WORKSPACE (placeholder — content rendered by React AssetsWorkspace)
+     ══════════════════════════════════════════════ -->
+<div id="ws-assets"></div>
 
 <!-- COMMAND PALETTE -->
 <div id="cmd-palette-backdrop">
