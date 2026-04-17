@@ -175,8 +175,8 @@ input.rs-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;backg
 .cel{position:absolute;user-select:none}
 .cel:not(.locked){cursor:move}
 .cel.locked{cursor:default}
-.cel.selected{outline:2px solid #c9a84c;outline-offset:2px}
-.cel:not(.locked):not(.selected):hover{outline:1px solid #c9a84c55;outline-offset:2px}
+.cel.selected{box-shadow:0 0 0 2px #c9a84c}
+.cel:not(.locked):not(.selected):hover{box-shadow:0 0 0 1px #c9a84c55}
 .rh{position:absolute;width:22px;height:22px;background:#c9a84c;border:2px solid #1a1a26;border-radius:4px;z-index:10000;pointer-events:all}
 .rh.tl{top:-11px;left:-11px;cursor:nw-resize}
 .rh.tc{top:-11px;left:calc(50% - 11px);cursor:n-resize}

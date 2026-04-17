@@ -1518,29 +1518,35 @@ function startMove(e,k){
   const sx=e.clientX,sy=e.clientY;
   const orig={...getPos(k)};
   const commit=beginAction('move '+k);
+  let rafId=null;
   function mv(ev){
-    let nx=orig.x+Math.round((ev.clientX-sx)/ZOOM);
-    let ny=orig.y+Math.round((ev.clientY-sy)/ZOOM);
-    // Snap to viewport centre lines when SNAP_ENABLED
-    if(typeof SNAP_ENABLED!=='undefined'&&SNAP_ENABLED){
-      const vp=P.viewport==='landscape'?'landscape':'portrait';
-      const b=VP[vp]||{cx:0,cy:0,cw:2000,ch:2000};
-      const snapCX=b.cx+Math.round(b.cw/2);
-      const snapCY=b.cy+Math.round(b.ch/2);
-      const elCX=nx+Math.round(orig.w/2),elCY=ny+Math.round(orig.h/2);
-      const thr=typeof SNAP_THRESHOLD!=='undefined'?SNAP_THRESHOLD:10;
-      let snX=false,snY=false;
-      if(Math.abs(elCX-snapCX)<thr){nx=snapCX-Math.round(orig.w/2);if(typeof showSnapGuide==='function')showSnapGuide('v',snapCX);snX=true;}
-      if(Math.abs(elCY-snapCY)<thr){ny=snapCY-Math.round(orig.h/2);if(typeof showSnapGuide==='function')showSnapGuide('h',snapCY);snY=true;}
-      if(!snX&&!snY&&typeof hideSnapGuides==='function')hideSnapGuides();
-    }
-    const p={...orig,x:nx,y:ny};
-    setPos(k,p);
-    const el=document.getElementById('el-'+k);
-    if(el){el.style.left=p.x+'px';el.style.top=p.y+'px';}
-    updateSelInfo();
+    const cx=ev.clientX,cy=ev.clientY;
+    if(rafId)cancelAnimationFrame(rafId);
+    rafId=requestAnimationFrame(function(){
+      rafId=null;
+      let nx=orig.x+Math.round((cx-sx)/ZOOM);
+      let ny=orig.y+Math.round((cy-sy)/ZOOM);
+      // Snap to viewport centre lines when SNAP_ENABLED
+      if(typeof SNAP_ENABLED!=='undefined'&&SNAP_ENABLED){
+        const vp=P.viewport==='landscape'?'landscape':'portrait';
+        const b=VP[vp]||{cx:0,cy:0,cw:2000,ch:2000};
+        const snapCX=b.cx+Math.round(b.cw/2);
+        const snapCY=b.cy+Math.round(b.ch/2);
+        const elCX=nx+Math.round(orig.w/2),elCY=ny+Math.round(orig.h/2);
+        const thr=typeof SNAP_THRESHOLD!=='undefined'?SNAP_THRESHOLD:10;
+        let snX=false,snY=false;
+        if(Math.abs(elCX-snapCX)<thr){nx=snapCX-Math.round(orig.w/2);if(typeof showSnapGuide==='function')showSnapGuide('v',snapCX);snX=true;}
+        if(Math.abs(elCY-snapCY)<thr){ny=snapCY-Math.round(orig.h/2);if(typeof showSnapGuide==='function')showSnapGuide('h',snapCY);snY=true;}
+        if(!snX&&!snY&&typeof hideSnapGuides==='function')hideSnapGuides();
+      }
+      const p={...orig,x:nx,y:ny};
+      setPos(k,p);
+      const el=document.getElementById('el-'+k);
+      if(el){el.style.left=p.x+'px';el.style.top=p.y+'px';}
+      updateSelInfo();
+    });
   }
-  function up(){if(typeof hideSnapGuides==='function')hideSnapGuides();commit();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
+  function up(){if(rafId)cancelAnimationFrame(rafId);if(typeof hideSnapGuides==='function')hideSnapGuides();commit();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
   document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
 }
 
@@ -1553,17 +1559,23 @@ function startJpGroupMove(e){
   const origPos={};
   JP_GROUP_KEYS.forEach(k=>{ origPos[k]={...getPos(k)}; });
   const commit=beginAction('move JP bars');
+  let rafId=null;
   function mv(ev){
-    const dx=Math.round((ev.clientX-sx)/ZOOM), dy=Math.round((ev.clientY-sy)/ZOOM);
-    JP_GROUP_KEYS.forEach(k=>{
-      const p={...origPos[k], x:origPos[k].x+dx, y:origPos[k].y+dy};
-      setPos(k,p);
-      const el=document.getElementById('el-'+k);
-      if(el){el.style.left=p.x+'px';el.style.top=p.y+'px';}
+    const cx=ev.clientX,cy=ev.clientY;
+    if(rafId)cancelAnimationFrame(rafId);
+    rafId=requestAnimationFrame(function(){
+      rafId=null;
+      const dx=Math.round((cx-sx)/ZOOM), dy=Math.round((cy-sy)/ZOOM);
+      JP_GROUP_KEYS.forEach(k=>{
+        const p={...origPos[k], x:origPos[k].x+dx, y:origPos[k].y+dy};
+        setPos(k,p);
+        const el=document.getElementById('el-'+k);
+        if(el){el.style.left=p.x+'px';el.style.top=p.y+'px';}
+      });
+      updateSelInfo();
     });
-    updateSelInfo();
   }
-  function up(){commit();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
+  function up(){if(rafId)cancelAnimationFrame(rafId);commit();document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
   document.addEventListener('mousemove',mv);
   document.addEventListener('mouseup',up);
 }
@@ -1572,35 +1584,39 @@ function startJpGroupMove(e){
 function startResize(e,k,handle){
   e.preventDefault();e.stopPropagation();
   const sx=e.clientX,sy=e.clientY,orig={...getPos(k)};
-  const aspect=orig.w/orig.h; // lock aspect ratio
+  const aspect=orig.w/orig.h; // lock aspect ratio — computed once, never from intermediate values
   const commit=beginAction('resize '+k);
+  let rafId=null;
   function mv(ev){
-    const dx=Math.round((ev.clientX-sx)/ZOOM),dy=Math.round((ev.clientY-sy)/ZOOM);
-    let{x,y,w,h}=orig;
-    // Determine primary resize axis from handle
-    const isCorner=handle.length===2; // tl, tr, bl, br
-    const isSide=handle.length===1||handle==='tc'||handle==='bc'||handle==='ml'||handle==='mr';
-    if(isCorner){
-      // Corner drag: use larger delta to drive both, maintain aspect
-      const absDx=Math.abs(dx), absDy=Math.abs(dy);
-      const driveDx=absDx>absDy; // which axis is primary
-      if(handle==='br'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); }
-      else if(handle==='bl'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; }
-      else if(handle==='tr'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); y=orig.y+orig.h-h; }
-      else if(handle==='tl'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; y=orig.y+orig.h-h; }
-    } else {
-      // Edge drag: resize on that axis, derive the other from aspect
-      if(handle==='mr'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); y=orig.y+Math.round((orig.h-h)/2); }
-      else if(handle==='ml'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; y=orig.y+Math.round((orig.h-h)/2); }
-      else if(handle==='bc'){ h=Math.max(40,orig.h+dy); w=Math.round(h*aspect); x=orig.x+Math.round((orig.w-w)/2); }
-      else if(handle==='tc'){ h=Math.max(40,orig.h-dy); w=Math.round(h*aspect); x=orig.x+Math.round((orig.w-w)/2); y=orig.y+orig.h-h; }
-    }
-    setPos(k,{x,y,w,h});
-    const el=document.getElementById('el-'+k);
-    if(el){el.style.left=x+'px';el.style.top=y+'px';el.style.width=w+'px';el.style.height=h+'px';}
-    updateSelInfo();
+    const cx=ev.clientX,cy=ev.clientY;
+    if(rafId)cancelAnimationFrame(rafId);
+    rafId=requestAnimationFrame(function(){
+      rafId=null;
+      const dx=Math.round((cx-sx)/ZOOM),dy=Math.round((cy-sy)/ZOOM);
+      let{x,y,w,h}=orig;
+      // Determine primary resize axis from handle
+      const isCorner=handle.length===2; // tl, tr, bl, br
+      if(isCorner){
+        // Corner drag: use larger delta to drive both, maintain aspect
+        if(handle==='br'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); }
+        else if(handle==='bl'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; }
+        else if(handle==='tr'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); y=orig.y+orig.h-h; }
+        else if(handle==='tl'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; y=orig.y+orig.h-h; }
+      } else {
+        // Edge drag: resize on that axis, derive the other from aspect
+        if(handle==='mr'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); y=orig.y+Math.round((orig.h-h)/2); }
+        else if(handle==='ml'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; y=orig.y+Math.round((orig.h-h)/2); }
+        else if(handle==='bc'){ h=Math.max(40,orig.h+dy); w=Math.round(h*aspect); x=orig.x+Math.round((orig.w-w)/2); }
+        else if(handle==='tc'){ h=Math.max(40,orig.h-dy); w=Math.round(h*aspect); x=orig.x+Math.round((orig.w-w)/2); y=orig.y+orig.h-h; }
+      }
+      setPos(k,{x,y,w,h});
+      const el=document.getElementById('el-'+k);
+      if(el){el.style.left=x+'px';el.style.top=y+'px';el.style.width=w+'px';el.style.height=h+'px';}
+      updateSelInfo();
+    });
   }
-  function up(){commit();buildCanvas();selectEl(k);document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
+  // up: cancel any pending frame, commit, re-attach handles via selectEl — no full buildCanvas() needed
+  function up(){if(rafId)cancelAnimationFrame(rafId);commit();selectEl(k);document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
   document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
 }
 
