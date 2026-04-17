@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { cn } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 
 interface NavItemProps {
@@ -20,14 +19,30 @@ export function NavItem({ href, icon: Icon, label, exact }: NavItemProps) {
   return (
     <Link
       href={href}
-      className={cn(
-        'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all mx-1',
-        active
-          ? 'bg-sf-gold/10 text-sf-gold border border-sf-gold/20'
-          : 'text-sf-muted hover:text-sf-text hover:bg-sf-surface/60'
-      )}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '7px 12px',
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 500,
+        textDecoration: 'none',
+        margin: '0 6px',
+        transition: 'background 0.15s, color 0.15s',
+        background: active ? 'rgba(215,168,79,0.1)' : 'transparent',
+        color: active ? '#d7a84f' : '#a5afc0',
+        border: active ? '1px solid rgba(215,168,79,0.2)' : '1px solid transparent',
+      }}
     >
-      <Icon className={cn('w-4 h-4', active ? 'text-sf-gold' : 'text-sf-subtle')} />
+      <Icon
+        style={{
+          width: 15,
+          height: 15,
+          flexShrink: 0,
+          color: active ? '#d7a84f' : 'rgba(255,255,255,0.3)',
+        }}
+      />
       {label}
     </Link>
   )

@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Settings,
   HelpCircle,
+  Sparkles,
 } from 'lucide-react'
 import { WorkspaceSwitcher } from './workspace-switcher'
 import { NavItem } from './nav-item'
@@ -15,30 +16,47 @@ import { CreditsIndicator } from '@/components/billing/CreditsIndicator'
 
 /**
  * Primary sidebar — always visible in the app shell.
- * Uses the [orgSlug] route param to build workspace-scoped hrefs.
  */
 export function Sidebar() {
   const params = useParams<{ orgSlug: string }>()
   const slug = params?.orgSlug ?? ''
 
   return (
-    <aside className="w-56 flex-shrink-0 flex flex-col h-full bg-sf-surface border-r border-sf-border">
-
+    <aside
+      className="w-[220px] flex-shrink-0 flex flex-col h-full"
+      style={{
+        background: '#080b12',
+        borderRight: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
       {/* Wordmark */}
-      <div className="h-14 flex items-center px-5 border-b border-sf-border flex-shrink-0">
-        <Link href={slug ? `/${slug}/dashboard` : '/'} className="flex items-center">
+      <div
+        className="h-14 flex items-center px-5 flex-shrink-0"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <Link href={slug ? `/${slug}/dashboard` : '/'} className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Spinative" style={{ height: 28, width: 'auto', objectFit: 'contain' }} />
+          <img
+            src="/spinative-logo.png"
+            alt="Spinative"
+            style={{ height: 26, width: 'auto', objectFit: 'contain' }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/logo.png'
+            }}
+          />
         </Link>
       </div>
 
       {/* Workspace switcher */}
-      <div className="py-3 border-b border-sf-border flex-shrink-0">
+      <div
+        className="py-3 flex-shrink-0"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+      >
         <WorkspaceSwitcher />
       </div>
 
       {/* Primary nav */}
-      <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 py-3 overflow-y-auto" style={{ gap: 2, display: 'flex', flexDirection: 'column' }}>
         {slug && (
           <>
             <NavItem
@@ -52,15 +70,18 @@ export function Sidebar() {
               label="Projects"
             />
 
-            {/* Section divider */}
-            <div className="px-4 pt-4 pb-1">
-              <span className="text-[10px] font-semibold text-sf-subtle uppercase tracking-widest">
+            {/* Section label */}
+            <div className="px-4 pt-5 pb-1">
+              <span
+                className="uppercase tracking-widest font-semibold"
+                style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}
+              >
                 Workspace
               </span>
             </div>
 
             <NavItem
-              href={`/${slug}/settings`}
+              href={`/${slug}/settings/general`}
               icon={Settings}
               label="Settings"
             />
@@ -68,22 +89,28 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* Credits indicator — only visible when on a paid plan */}
+      {/* Credits indicator */}
       {slug && <CreditsIndicator orgSlug={slug} />}
 
-      {/* Footer — user button + help */}
-      <div className="border-t border-sf-border p-3 space-y-1 flex-shrink-0">
+      {/* Footer */}
+      <div
+        className="p-3 flex-shrink-0"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 4 }}
+      >
         <NavItem href="/help" icon={HelpCircle} label="Help & docs" exact />
-        <div className="flex items-center gap-2.5 px-3 py-2">
+        <div
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+          style={{ cursor: 'default' }}
+        >
           <UserButton
             afterSignOutUrl="/"
             appearance={{
               elements: {
-                avatarBox: 'w-7 h-7',
+                avatarBox: 'w-6 h-6',
               },
             }}
           />
-          <span className="text-sm text-sf-muted">Account</span>
+          <span style={{ fontSize: 13, color: '#a5afc0', fontWeight: 500 }}>Account</span>
         </div>
       </div>
     </aside>

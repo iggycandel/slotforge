@@ -11,7 +11,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<Variant, string> = {
-  primary:   'bg-sf-gold text-[#1a1200] font-semibold hover:opacity-90',
+  primary:   'bg-gradient-to-r from-[#d7a84f] to-[#f0ca79] text-[#07080d] font-bold shadow-[0_4px_18px_rgba(215,168,79,0.25)] hover:shadow-[0_6px_24px_rgba(215,168,79,0.38)] hover:-translate-y-px',
   secondary: 'border border-sf-border bg-sf-surface text-sf-text hover:border-sf-gold/30 hover:bg-sf-overlay',
   ghost:     'text-sf-muted hover:text-sf-text hover:bg-sf-surface/60',
   danger:    'border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20',
