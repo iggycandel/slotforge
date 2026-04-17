@@ -355,14 +355,8 @@
       opacity:.45;
     }
     .placeholder-shot::after {
-      content:"Replace with: /images/canvas-shot.png";
-      position:absolute; left:18px; bottom:16px;
-      padding:10px 12px;
-      border-radius:999px;
-      background:rgba(7,9,14,.76);
-      border:1px solid rgba(255,255,255,.08);
-      color:var(--muted);
-      font-size:12px; font-weight:600;
+      content:"";
+      display:none;
     }
     .placeholder-ui {
       position:absolute; inset:18px;
@@ -613,9 +607,9 @@
       min-height:100%;
       height:100%;
     }
-    .shot-media.canvas .placeholder-shot::after { content:"Replace with: /images/canvas-shot.png"; }
-    .shot-media.features .placeholder-shot::after { content:"Replace with: /images/features-shot.png"; }
-    .shot-media.flow .placeholder-shot::after { content:"Replace with: /images/flow-shot.png"; }
+    .shot-media.canvas .placeholder-shot::after { content:""; display:none; }
+    .shot-media.features .placeholder-shot::after { content:""; display:none; }
+    .shot-media.flow .placeholder-shot::after { content:""; display:none; }
     .shot-body {
       padding:0 22px 22px;
     }
@@ -846,7 +840,7 @@
         </div>
         <div class="btn-row">
           <a class="btn btn-secondary" href="#showcase">See product</a>
-          <a class="btn btn-primary" href="https://slotforge-app.vercel.app">Start building</a>
+          <a class="btn btn-primary" href="/sign-up">Start building</a>
         </div>
       </nav>
     </div>
@@ -859,7 +853,7 @@
         <h1>Design, build and <span class="accent">launch</span> slot games faster.</h1>
         <p>Spinative reduces production time, accelerates alignment across teams, and helps companies ship better products with a workflow where humans stay in control and AI speeds up execution.</p>
         <div class="btn-row hero-actions">
-          <a class="btn btn-primary" href="https://slotforge-app.vercel.app">Start creating</a>
+          <a class="btn btn-primary" href="/sign-up">Start creating</a>
           <a class="btn btn-secondary" href="#workflow">See how it works</a>
         </div>
         <div class="hero-meta">
@@ -1023,7 +1017,7 @@
           <span class="eyebrow">Product showcase</span>
           <h2>Three core workspaces that speed up production.</h2>
         </div>
-        <p>Your screenshots point to three strong pillars: Canvas, Features, and Flow. This page should use them to show that Spinative is a real workflow, not just a visual concept.</p>
+        <p>Three dedicated workspaces — Canvas, Features, and Flow — give every studio a structured, repeatable way to build slot games faster without sacrificing quality.</p>
       </div>
 
       <div class="showcase-grid">
@@ -1196,15 +1190,14 @@
           <div>
             <span class="eyebrow">Ready to move faster?</span>
             <h2>Build better slot games with a premium, human-led AI workflow.</h2>
-            <p>This version is designed to sell the real value of Spinative: reduced production time, human-led creativity, and better product outcomes for companies that need speed and quality together.</p>
+            <p>Join studios already using Spinative to reduce production time, ship faster, and build games with stronger commercial upside.</p>
           </div>
-          <div class="panel-card">
-            <h3 style="margin:0 0 12px;font-size:28px;line-height:1.02;letter-spacing:-.05em;">Next step</h3>
-            <p style="margin:0 0 18px;color:var(--muted);line-height:1.8;">Replace the three screenshot placeholders with your real Canvas, Features, and Flow captures, then create a second page dedicated to deeper feature breakdowns.</p>
-            <div class="btn-row">
-              <a class="btn btn-primary" href="https://slotforge-app.vercel.app">Open app</a>
-              <a class="btn btn-secondary" href="#showcase">Review screenshots</a>
-            </div>
+          <div class="panel-card" style="overflow:hidden;">
+            <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
+            <stripe-pricing-table
+              pricing-table-id="prctbl_1TNITLRxNNF46RtxUm5XOJGy"
+              publishable-key="pk_live_51TNE5BRxNNF46RtxTOJczIGT1Di0vCWRHKDqerBFO6Pu3uFBRSm6yPppf1re5lkM4QEUaIG4eRvwUMVO7HMaBCwp00sLVBXkXB">
+            </stripe-pricing-table>
           </div>
         </div>
       </div>
