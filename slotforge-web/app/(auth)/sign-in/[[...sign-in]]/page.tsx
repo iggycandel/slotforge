@@ -5,86 +5,88 @@ export const metadata = { title: 'Sign in · Spinative' }
 
 export default function SignInPage() {
   return (
-    <div
-      className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
-      style={{ background: '#07080d' }}
-    >
+    <div style={{
+      minHeight: '100vh',
+      background: '#07080d',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px 16px',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
       {/* Grid texture */}
-      <div className="absolute inset-0 bg-grid pointer-events-none" />
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        backgroundImage: 'linear-gradient(rgba(255,255,255,0.013) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.013) 1px,transparent 1px)',
+        backgroundSize: '40px 40px',
+      }} />
 
       {/* Gold glow — top left */}
-      <div
-        className="absolute pointer-events-none"
-        style={{
-          top: '-10%', left: '-10%',
-          width: '55%', height: '55%',
-          background: 'radial-gradient(ellipse, rgba(215,168,79,0.13) 0%, transparent 65%)',
-        }}
-      />
+      <div style={{
+        position: 'absolute', top: '-10%', left: '-10%',
+        width: '55%', height: '55%', pointerEvents: 'none',
+        background: 'radial-gradient(ellipse,rgba(215,168,79,0.13) 0%,transparent 65%)',
+      }} />
 
       {/* Purple glow — bottom right */}
-      <div
-        className="absolute pointer-events-none"
-        style={{
-          bottom: '-10%', right: '-10%',
-          width: '55%', height: '55%',
-          background: 'radial-gradient(ellipse, rgba(123,116,255,0.10) 0%, transparent 65%)',
-        }}
-      />
+      <div style={{
+        position: 'absolute', bottom: '-10%', right: '-10%',
+        width: '55%', height: '55%', pointerEvents: 'none',
+        background: 'radial-gradient(ellipse,rgba(123,116,255,0.10) 0%,transparent 65%)',
+      }} />
 
-      {/* Content */}
-      <div className="relative z-10 w-full max-w-md px-4 flex flex-col items-center gap-8">
-
+      {/* Content column */}
+      <div style={{
+        position: 'relative', zIndex: 10,
+        width: '100%', maxWidth: 420,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', gap: 20,
+      }}>
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3 group">
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/spinative-logo.png"
             alt="Spinative"
-            style={{ height: 36, width: 'auto', objectFit: 'contain' }}
+            style={{ height: 32, width: 'auto', objectFit: 'contain' }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none'
+            }}
           />
         </Link>
 
-        {/* Tagline */}
-        <p style={{ color: '#a5afc0', fontSize: 14, textAlign: 'center', marginTop: -16 }}>
+        <p style={{ color: '#a5afc0', fontSize: 13, textAlign: 'center', margin: 0 }}>
           The AI-powered slot game studio
         </p>
 
         {/* Clerk sign-in card */}
-        <div className="w-full">
+        <div style={{ width: '100%' }}>
           <SignIn
             appearance={{
               variables: {
-                colorPrimary:       '#d7a84f',
-                colorBackground:    'transparent',
-                colorInputBackground:'rgba(255,255,255,0.04)',
-                colorInputText:     '#f4efe4',
-                colorText:          '#f4efe4',
-                colorTextSecondary: '#a5afc0',
-                borderRadius:       '12px',
-                fontFamily:         'Inter, system-ui, sans-serif',
+                colorPrimary:        '#d7a84f',
+                colorBackground:     '#0f1118',
+                colorInputBackground: 'rgba(255,255,255,0.04)',
+                colorInputText:      '#f4efe4',
+                colorText:           '#f4efe4',
+                colorTextSecondary:  '#a5afc0',
+                borderRadius:        '12px',
+                fontFamily:          'Inter, system-ui, sans-serif',
               },
               elements: {
-                rootBox:           'w-full',
-                card:              'bg-[#0f1118]/90 border border-white/[0.07] rounded-2xl shadow-2xl backdrop-blur-xl',
-                headerTitle:       'text-[#f4efe4] font-bold',
-                headerSubtitle:    'text-[#a5afc0]',
-                formFieldLabel:    'text-[#a5afc0] text-xs font-medium',
-                formFieldInput:    'bg-white/[0.04] border-white/10 text-[#f4efe4] rounded-xl focus:border-[#d7a84f]/40',
-                formButtonPrimary: 'bg-gradient-to-r from-[#d7a84f] to-[#f0ca79] text-[#07080d] font-bold rounded-xl shadow-lg hover:shadow-[#d7a84f]/30',
-                footerActionLink:  'text-[#d7a84f] hover:text-[#f0ca79]',
-                dividerLine:       'bg-white/[0.07]',
-                dividerText:       'text-[#7d8799]',
-                socialButtonsBlockButton: 'bg-white/[0.04] border-white/10 text-[#f4efe4] rounded-xl hover:bg-white/[0.07]',
-                identityPreviewText: 'text-[#a5afc0]',
-                identityPreviewEditButton: 'text-[#d7a84f]',
+                rootBox:     'w-full',
+                card:        'shadow-2xl',
+                formButtonPrimary: 'font-bold',
+                footerActionLink: 'text-[#d7a84f]',
               },
             }}
           />
         </div>
 
         {/* Footer link */}
-        <p style={{ color: '#7d8799', fontSize: 12, textAlign: 'center' }}>
+        <p style={{ color: '#7d8799', fontSize: 12, textAlign: 'center', margin: 0 }}>
           Don&apos;t have an account?{' '}
           <Link href="/sign-up" style={{ color: '#d7a84f', textDecoration: 'none', fontWeight: 500 }}>
             Sign up free
