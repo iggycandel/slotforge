@@ -842,6 +842,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         />
       </div>
     </div>
+    </>
   )
 }
 
@@ -2250,6 +2251,5 @@ function FeedbackTab({ logs }: { logs: string[] }) {
         </div>
       )}
     </div>
-    </>
   )
 }
