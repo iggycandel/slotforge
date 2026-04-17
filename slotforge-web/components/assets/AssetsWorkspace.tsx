@@ -223,6 +223,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const [regenTarget, setRegenTarget] = useState<AssetType | null>(null)
   const [customPrompt, setCustomPrompt] = useState('')
 
+  // Failed asset tracking — populated after each batch, cleared on next run
+  const [failedTypes, setFailedTypes] = useState<Set<AssetType>>(new Set())
+
   // (asset tab removed — all assets shown in one unified grid)
 
   const addLog = useCallback((msg: string) => {
@@ -312,6 +315,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     setBatchRunning(true)
     setBatchProgress({ completed: 0, total: targetTypes.length })
     setBatchLogs([])
+    setFailedTypes(new Set())       // clear previous failures before each run
     saveContext(theme, styleId, provider)
     addLog(fillGaps
       ? `Filling ${targetTypes.length} missing asset(s) for theme: "${theme || '(from project settings)'}"`
@@ -382,6 +386,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             case 'complete':
               if (data.failed?.length) {
                 addLog(`⚠ ${data.failed.length} asset(s) failed`)
+                setFailedTypes(new Set(
+                  (data.failed as Array<{ type: AssetType }>).map(f => f.type)
+                ))
               }
               addLog(`✓ Generation complete — ${data.assets?.length ?? 0} assets ready`)
               break
@@ -434,6 +441,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       const newAsset = json.asset as GeneratedAsset
       setAssets(prev => ({ ...prev, [assetType]: newAsset }))
       setAssetHistory(prev => ({ ...prev, [assetType]: [newAsset, ...(prev[assetType] ?? [])] }))
+      setFailedTypes(prev => { const s = new Set(prev); s.delete(assetType); return s })
       setRightTab('inspector')
       addLog(`✓ Regenerated ${assetType}`)
     } catch (err) {
@@ -697,6 +705,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 key={group.id}
                 group={group}
                 assets={assets}
+                failedTypes={failedTypes}
                 selectedType={selected}
                 regenTarget={regenTarget}
                 onSelect={type => {
@@ -1007,7 +1016,7 @@ function GenerationControlBar({
           ))}
         </div>
 
-        {/* Advanced toggle */}
+        {/* Advanced / style toggle */}
         <button
           onClick={onToggleAdvanced}
           className="sf-btn"
@@ -1016,16 +1025,23 @@ function GenerationControlBar({
             alignItems: 'center',
             gap:        4,
             padding:    '7px 10px',
-            background: showAdvanced ? C.goldBg : C.surfHigh,
-            border:     `1px solid ${showAdvanced ? C.gold + '40' : C.border}`,
+            background: showAdvanced ? C.goldBg : styleId ? 'rgba(201,168,76,.06)' : C.surfHigh,
+            border:     `1px solid ${showAdvanced || styleId ? C.gold + '40' : C.border}`,
             borderRadius: 8,
-            color:      showAdvanced ? C.gold : C.txMuted,
+            color:      showAdvanced || styleId ? C.gold : C.txMuted,
             fontSize:   11,
             cursor:     'pointer',
+            whiteSpace: 'nowrap',
           }}
         >
           {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          Style
+          {styleId
+            ? (() => {
+                const s = GRAPHIC_STYLES.find(g => g.id === styleId)
+                return s ? `${s.emoji} ${s.name}` : 'Style'
+              })()
+            : 'Style'
+          }
         </button>
 
         {/* Fill gaps button */}
@@ -1202,6 +1218,7 @@ function BatchProgressBar({ completed, total }: { completed: number; total: numb
 interface AssetGroupSectionProps {
   group:           AssetGroup
   assets:          Partial<Record<AssetType, GeneratedAsset>>
+  failedTypes:     Set<AssetType>
   assetHistory:    Partial<Record<AssetType, GeneratedAsset[]>>
   selectedType:    AssetType | null
   regenTarget:     AssetType | null
@@ -1215,7 +1232,7 @@ interface AssetGroupSectionProps {
 }
 
 function AssetGroupSection({
-  group, assets, assetHistory, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, isActive, shortLabels,
+  group, assets, failedTypes, assetHistory, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, isActive, shortLabels,
 }: AssetGroupSectionProps) {
   const filledCount = group.types.filter(t => !!assets[t]).length
 
@@ -1267,6 +1284,7 @@ function AssetGroupSection({
             history={assetHistory[type]}
             isSelected={selectedType === type}
             isRegenerating={regenTarget === type}
+            isFailed={failedTypes.has(type)}
             aspectRatio={group.aspectRatio}
             onSelect={() => onSelect(type)}
             onRegen={() => onRegen(type)}
@@ -1291,6 +1309,7 @@ interface AssetTileProps {
   history?:        GeneratedAsset[]
   isSelected:      boolean
   isRegenerating:  boolean
+  isFailed?:       boolean
   aspectRatio:     '16/9' | '1/1'
   onSelect:        () => void
   onRegen:         () => void
@@ -1301,13 +1320,16 @@ interface AssetTileProps {
 }
 
 function AssetTile({
-  assetType, asset, history, isSelected, isRegenerating, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, label: labelProp,
+  assetType, asset, history, isSelected, isRegenerating, isFailed, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, label: labelProp,
 }: AssetTileProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const [showHistory, setShowHistory] = useState(false)
   const label = labelProp ?? ASSET_LABELS[assetType] ?? assetType
   // Previous versions = history minus the current active asset
   const prevVersions = history?.filter(h => h.id !== asset?.id) ?? []
+
+  // Border colour: gold=selected, red=failed, default otherwise
+  const borderColor = isSelected ? C.gold : isFailed ? C.red : C.border
 
   return (
     <div
@@ -1317,15 +1339,15 @@ function AssetTile({
         position:    'relative',
         aspectRatio: aspectRatio,
         background:  C.surfHigh,
-        border:      `1px solid ${isSelected ? C.gold : C.border}`,
+        border:      `1px solid ${borderColor}`,
         borderRadius: 10,
         overflow:    'hidden',
         cursor:      'pointer',
         transition:  'border-color .15s',
-        boxShadow:   isSelected ? `0 0 0 1px ${C.gold}40` : 'none',
+        boxShadow:   isSelected ? `0 0 0 1px ${C.gold}40` : isFailed ? `0 0 0 1px ${C.red}30` : 'none',
       }}
     >
-      {/* Image */}
+      {/* Image / placeholder */}
       {asset?.url ? (
         <img
           src={asset.url}
@@ -1337,6 +1359,8 @@ function AssetTile({
             display:    'block',
           }}
         />
+      ) : isFailed ? (
+        <FailedTilePlaceholder label={label} onRetry={e => { e.stopPropagation(); onRegen() }} />
       ) : (
         <EmptyTilePlaceholder label={label} isRegenerating={isRegenerating} />
       )}
@@ -1656,6 +1680,46 @@ function EmptyTilePlaceholder({ label, isRegenerating }: { label: string; isRege
       {!isRegenerating && (
         <span style={{ fontSize: 8, color: C.txFaint, letterSpacing: '.04em' }}>Hover to generate</span>
       )}
+    </div>
+  )
+}
+
+function FailedTilePlaceholder({ label, onRetry }: { label: string; onRetry: (e: React.MouseEvent) => void }) {
+  return (
+    <div style={{
+      width:          '100%',
+      height:         '100%',
+      display:        'flex',
+      flexDirection:  'column',
+      alignItems:     'center',
+      justifyContent: 'center',
+      gap:            6,
+      background:     'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(248,113,113,.025) 6px, rgba(248,113,113,.025) 12px)',
+    }}>
+      <XCircle size={16} style={{ color: C.red, opacity: .7 }} />
+      <span style={{ fontSize: 9, fontWeight: 600, color: C.red, opacity: .8, letterSpacing: '.04em', textAlign: 'center', padding: '0 6px' }}>
+        {label}
+      </span>
+      <button
+        onClick={onRetry}
+        style={{
+          display:    'flex',
+          alignItems: 'center',
+          gap:        4,
+          padding:    '4px 8px',
+          background: 'rgba(248,113,113,.12)',
+          border:     '1px solid rgba(248,113,113,.3)',
+          borderRadius: 5,
+          color:      C.red,
+          fontSize:   9,
+          fontWeight: 700,
+          cursor:     'pointer',
+          letterSpacing: '.04em',
+        }}
+      >
+        <RefreshCw size={9} />
+        Retry
+      </button>
     </div>
   )
 }
