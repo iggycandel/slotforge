@@ -11,6 +11,10 @@ import { getOrgSubscription } from '@/lib/billing/subscription'
 import type { Plan }          from '@/lib/billing/plans'
 
 export async function POST(req: NextRequest) {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return NextResponse.json({ error: 'Stripe is not configured' }, { status: 503 })
+  }
+
   const { userId, orgId } = await auth()
   if (!userId || !orgId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
