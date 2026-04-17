@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Subscription plan definitions
-// Single source of truth for tier names, limits, and feature flags.
+// Spinative — Subscription plan definitions
+// Per-seat model: Freelancer €29/seat/mo · Studio €49/seat/mo
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type Plan = 'free' | 'pro' | 'studio'
+export type Plan = 'free' | 'freelancer' | 'studio'
 
 export interface PlanLimits {
   /** Max active projects (null = unlimited) */
@@ -14,41 +14,53 @@ export interface PlanLimits {
   aiEnabled:         boolean
   /** Asset download / export allowed */
   exportsEnabled:    boolean
+  /** Included AI credits per seat per month */
+  creditsPerSeat:    number
   /** Stripe price IDs — used when creating checkout sessions */
   stripePriceId?:    string
 }
 
-export const PLANS: Record<Plan, PlanLimits & { name: string; price: string; period?: string; description: string; highlight?: boolean }> = {
+export const PLANS: Record<Plan, PlanLimits & {
+  name:         string
+  price:        string
+  period?:      string
+  description:  string
+  highlight?:   boolean
+}> = {
   free: {
     name:           'Free',
-    price:          '$0',
+    price:          '€0',
     description:    'Explore the canvas and manage projects — no card required.',
     maxProjects:    2,
     maxMembers:     1,
     aiEnabled:      false,
     exportsEnabled: false,
+    creditsPerSeat: 0,
   },
-  pro: {
-    name:           'Pro',
-    price:          '$49',
-    period:         '/mo',
-    description:    'Full AI generation suite for solo art directors.',
-    highlight:      true,
+  freelancer: {
+    name:           'Freelancer',
+    price:          '€29',
+    period:         '/seat/mo',
+    description:    'Full AI generation for solo art directors and indie designers.',
+    highlight:      false,
     maxProjects:    null,
     maxMembers:     1,
     aiEnabled:      true,
     exportsEnabled: true,
-    stripePriceId:  process.env.STRIPE_PRO_PRICE_ID,
+    creditsPerSeat: 50,
+    stripePriceId:  process.env.STRIPE_FREELANCER_PRICE_ID,
   },
   studio: {
     name:           'Studio',
-    price:          '$99',
-    period:         '/mo',
-    description:    'AI + team collaboration for growing studios.',
+    price:          '€49',
+    period:         '/seat/mo',
+    description:    'AI generation + team collaboration for growing studios.',
+    highlight:      true,
     maxProjects:    null,
-    maxMembers:     10,
+    maxMembers:     null,   // unlimited seats, pay per seat
     aiEnabled:      true,
     exportsEnabled: true,
+    creditsPerSeat: 100,
     stripePriceId:  process.env.STRIPE_STUDIO_PRICE_ID,
   },
 }
@@ -62,27 +74,31 @@ export const PLAN_FEATURES: Record<Plan, string[]> = {
     '— AI generation not available',
     '— Exports not available',
   ],
-  pro: [
+  freelancer: [
     'Unlimited projects',
+    '50 AI credits / seat / month',
     'Full AI generation (all asset types)',
     'Graphic style presets',
-    'Asset version history',
-    'PNG / JPG export',
-    'Solo workspace',
+    'GDD parsing & auto-setup',
+    'PNG export at full resolution',
+    'Solo workspace (1 seat)',
+    'Email support',
   ],
   studio: [
-    'Everything in Pro',
-    'Up to 10 workspace members',
-    'Team project access',
+    'Everything in Freelancer',
+    '100 AI credits / seat / month',
+    'Multi-seat team workspace',
+    'Shared style library & templates',
+    'Batch generation with progress tracking',
+    'Version history & rollback',
     'Priority generation queue',
-    'Early access to new features',
-    'Email support',
+    'Email + live chat support',
   ],
 }
 
 /** Returns the Plan enum value from a Stripe price ID. */
 export function planFromPriceId(priceId: string): Plan | null {
-  if (priceId === process.env.STRIPE_PRO_PRICE_ID)    return 'pro'
-  if (priceId === process.env.STRIPE_STUDIO_PRICE_ID) return 'studio'
+  if (priceId === process.env.STRIPE_FREELANCER_PRICE_ID) return 'freelancer'
+  if (priceId === process.env.STRIPE_STUDIO_PRICE_ID)     return 'studio'
   return null
 }

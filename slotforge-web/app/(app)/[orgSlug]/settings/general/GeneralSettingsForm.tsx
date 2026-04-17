@@ -65,7 +65,7 @@ export default function GeneralSettingsForm({ orgName, orgSlug, currentOrgSlug }
             </label>
             <div className="flex items-center gap-0">
               <span className="px-3 py-2.5 bg-sf-overlay border border-r-0 border-sf-border rounded-l-xl text-sf-subtle text-sm select-none">
-                slotforge.com/
+                spinative.com/
               </span>
               <input
                 name="slug"

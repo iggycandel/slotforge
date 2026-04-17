@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — POST /api/ai-single
+// Spinative — POST /api/ai-single
 // Generates (or regenerates) a single asset.
 // Used by:
 //   1. The "Regenerate" button on individual asset tiles in AssetsPanel
@@ -21,7 +21,9 @@ import { buildPrompt }        from '@/lib/ai/promptBuilder'
 import { generateImage }      from '@/lib/ai'
 import { uploadGeneratedAsset } from '@/lib/storage/assets'
 import type { AssetType, ProjectMeta } from '@/types/assets'
-import { getOrgPlan, canUseAI } from '@/lib/billing/subscription'
+import { getOrgPlan, canUseAI,
+         getOrgCreditStatus,
+         consumeCredits }       from '@/lib/billing/subscription'
 
 // Extend timeout for single-asset generation (~15-30 s)
 export const maxDuration = 60
@@ -60,13 +62,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Plan gate — AI generation requires Pro or Studio
+  // Plan gate — AI generation requires Freelancer or Studio
   if (orgId) {
     const plan = await getOrgPlan(orgId)
     if (!canUseAI(plan)) {
       return NextResponse.json(
-        { error: 'upgrade_required', plan, message: 'AI generation requires a Pro or Studio plan.' },
+        { error: 'upgrade_required', plan, message: 'AI generation requires a Freelancer or Studio plan.' },
         { status: 403 }
+      )
+    }
+    const credits = await getOrgCreditStatus(orgId)
+    if (!credits.canGenerate) {
+      return NextResponse.json(
+        { error: 'credits_exhausted', remaining: 0, message: 'No AI credits remaining this month.' },
+        { status: 402 }
       )
     }
   }
@@ -106,6 +115,9 @@ export async function POST(req: NextRequest) {
       built.prompt,
       generated.provider
     )
+
+    // Consume 1 credit for the successfully generated image
+    if (orgId) consumeCredits(orgId, 1).catch(() => {})
 
     return NextResponse.json({ asset })
 

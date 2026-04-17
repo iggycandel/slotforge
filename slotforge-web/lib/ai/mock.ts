@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Mock AI provider (for dev/testing without API keys)
+// Spinative — Mock AI provider (for dev/testing without API keys)
 // Returns placeholder image URLs so the full pipeline can be exercised locally
 // ─────────────────────────────────────────────────────────────────────────────
 

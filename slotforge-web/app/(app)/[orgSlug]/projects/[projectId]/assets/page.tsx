@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — ASSETS Workspace Page
+// Spinative — ASSETS Workspace Page
 // /[orgSlug]/projects/[projectId]/assets
 // Server component: fetches project data + initial assets, renders workspace.
 // ─────────────────────────────────────────────────────────────────────────────

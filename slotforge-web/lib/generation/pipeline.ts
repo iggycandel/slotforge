@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Asset Generation Pipeline
+// Spinative — Asset Generation Pipeline
 // Orchestrates: prompt building → AI generation → storage upload
 // ─────────────────────────────────────────────────────────────────────────────
 

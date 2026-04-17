@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Shared asset type definitions
+// Spinative — Shared asset type definitions
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Rich project context from the Theme panel — fed directly into AI prompts */

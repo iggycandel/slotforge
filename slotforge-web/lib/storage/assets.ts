@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Generated Asset Storage Service
+// Spinative — Generated Asset Storage Service
 // Downloads remote AI URLs → uploads to Supabase Storage → returns public URLs
 // ─────────────────────────────────────────────────────────────────────────────
 

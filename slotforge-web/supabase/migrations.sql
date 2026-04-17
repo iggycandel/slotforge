@@ -284,3 +284,41 @@ ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role can manage subscriptions"
 ON subscriptions FOR ALL TO service_role
 USING (true) WITH CHECK (true);
+
+
+-- ── 9. Subscriptions — per-seat model update ──────────────────────────────────
+-- Add seat_count column and update plan check to new tier names.
+
+ALTER TABLE subscriptions
+  ADD COLUMN IF NOT EXISTS seat_count integer NOT NULL DEFAULT 1;
+
+-- Update plan constraint to new tier names (freelancer replaces pro)
+ALTER TABLE subscriptions
+  DROP CONSTRAINT IF EXISTS subscriptions_plan_check;
+
+ALTER TABLE subscriptions
+  ADD CONSTRAINT subscriptions_plan_check
+  CHECK (plan IN ('free', 'freelancer', 'studio'));
+
+
+-- ── 10. Credit usage ─────────────────────────────────────────────────────────
+-- Tracks AI image generation credits consumed per org per calendar month.
+-- One row per (org_id, month). Resets naturally — a new month = new row.
+-- Month format: 'YYYY-MM' (e.g. '2026-04').
+
+CREATE TABLE IF NOT EXISTS credit_usage (
+  org_id       text        NOT NULL,
+  month        text        NOT NULL,           -- 'YYYY-MM'
+  credits_used integer     NOT NULL DEFAULT 0,
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+
+  PRIMARY KEY (org_id, month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_credit_usage_org_month ON credit_usage (org_id, month);
+
+ALTER TABLE credit_usage ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role can manage credit_usage"
+ON credit_usage FOR ALL TO service_role
+USING (true) WITH CHECK (true);

@@ -3192,10 +3192,10 @@ function buildFilePayload(){
   const keyOrders = {};
   Object.entries(SDEFS).forEach(([s,def]) => { if(def.keys) keyOrders[s]=[...def.keys]; });
   return {
-    _format:   'slotforge',
+    _format:   'spinative',
     _version:  '1',
     _savedAt:  new Date().toISOString(),
-    _appBuild: 'SlotForge v25',
+    _appBuild: 'Spinative v25',
     // Core project data
     gameName:  P.gameName,
     theme:     P.theme,
@@ -3260,10 +3260,10 @@ async function saveProjectFile(promptName){
   // Unused arg kept for back-compat; promptName=true forces Save As dialog
   if('showSaveFilePicker' in window){
     try{
-      const suggested = _sfSlug(P.gameName||'untitled') + '.slotforge';
+      const suggested = _sfSlug(P.gameName||'untitled') + '.spinative';
       const handle = await window.showSaveFilePicker({
         suggestedName: suggested,
-        types:[{ description:'SlotForge Project', accept:{'application/json':['.slotforge']} }],
+        types:[{ description:'Spinative Project', accept:{'application/json':['.spinative']} }],
         excludeAcceptAllOption: true
       });
       const payload = buildFilePayload();
@@ -3284,9 +3284,9 @@ async function saveProjectFile(promptName){
 function _saveProjectFallback(){
   // Fallback for Firefox / Safari — prompt + download
   const name = P.gameName || 'Untitled';
-  const entered = window.prompt('Save as:', _sfSlug(name) + '.slotforge');
+  const entered = window.prompt('Save as:', _sfSlug(name) + '.spinative');
   if(!entered) return;
-  const filename = entered.replace(/\.slotforge$/i,'').replace(/[^a-zA-Z0-9_\-. ]/g,'') + '.slotforge';
+  const filename = entered.replace(/\.spinative$/i,'').replace(/[^a-zA-Z0-9_\-. ]/g,'') + '.spinative';
   const payload  = buildFilePayload();
   const blob     = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const a        = document.createElement('a');
@@ -3298,19 +3298,19 @@ function _saveProjectFallback(){
   try{ localStorage.setItem('sf_autosave', JSON.stringify(payload)); }catch(e){}
 }
 
-// ─── Load a .slotforge file ───────────────────────────────
+// ─── Load a .spinative file ───────────────────────────────
 async function loadProjectFile(){
   if('showOpenFilePicker' in window){
     try{
       const [handle] = await window.showOpenFilePicker({
-        types:[{ description:'SlotForge Project', accept:{'application/json':['.slotforge']} }],
+        types:[{ description:'Spinative Project', accept:{'application/json':['.spinative']} }],
         excludeAcceptAllOption: true,
         multiple: false
       });
       const file = await handle.getFile();
       const text = await file.text();
       const d = JSON.parse(text);
-      if(d._format !== 'slotforge'){ alert('Not a valid .slotforge file.'); return; }
+      if(d._format !== 'spinative'){ alert('Not a valid .spinative file.'); return; }
       _restoreFilePayload(d);
       _currentFileHandle = handle;
       _showSaved(handle.name);
@@ -3326,17 +3326,17 @@ async function loadProjectFile(){
 function _loadProjectFallback(){
   const inp = document.createElement('input');
   inp.type = 'file';
-  inp.accept = '.slotforge,application/json';
+  inp.accept = '.spinative,application/json';
   inp.onchange = e => {
     const file = e.target.files[0]; if(!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
       try{
         const d = JSON.parse(ev.target.result);
-        if(d._format !== 'slotforge'){ alert('Not a valid .slotforge file.'); return; }
+        if(d._format !== 'spinative'){ alert('Not a valid .spinative file.'); return; }
         _restoreFilePayload(d);
         _currentFileHandle = null;
-        _showSaved(file.name.replace(/\.slotforge$/i,'') + '.slotforge');
+        _showSaved(file.name.replace(/\.spinative$/i,'') + '.spinative');
         showToast('Loaded ' + file.name);
       }catch(err){ alert('Could not load file: ' + err.message); }
     };
@@ -3537,13 +3537,13 @@ function disconnectGdrive(){
 
 async function _gdriveEnsureFolder(){
   const res = await fetch(
-    'https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent("name='SlotForge Projects' and mimeType='application/vnd.google-apps.folder' and trashed=false")+'&fields=files(id)',
+    'https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent("name='Spinative Projects' and mimeType='application/vnd.google-apps.folder' and trashed=false")+'&fields=files(id)',
     {headers:{Authorization:'Bearer '+_gdriveToken}});
   const data = await res.json();
   if(data.files?.[0]) return data.files[0].id;
   const cr = await fetch('https://www.googleapis.com/drive/v3/files',{
     method:'POST', headers:{Authorization:'Bearer '+_gdriveToken,'Content-Type':'application/json'},
-    body:JSON.stringify({name:'SlotForge Projects',mimeType:'application/vnd.google-apps.folder'})
+    body:JSON.stringify({name:'Spinative Projects',mimeType:'application/vnd.google-apps.folder'})
   });
   return (await cr.json()).id;
 }
@@ -3558,8 +3558,8 @@ async function _gdriveListFiles(){
       'https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent("'"+fid+"' in parents and trashed=false")+'&fields=files(id,name,modifiedTime)&orderBy=modifiedTime+desc',
       {headers:{Authorization:'Bearer '+_gdriveToken}});
     const data = await res.json();
-    const files = (data.files||[]).filter(f=>f.name.endsWith('.slotforge'));
-    if(!files.length){ el.innerHTML='<div class="cloud-empty">No .slotforge files yet</div>'; return; }
+    const files = (data.files||[]).filter(f=>f.name.endsWith('.spinative'));
+    if(!files.length){ el.innerHTML='<div class="cloud-empty">No .spinative files yet</div>'; return; }
     el.innerHTML = files.map(f=>{
       const d = new Date(f.modifiedTime); const ds = d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
       return `<div class="cloud-file-item" data-id="${f.id}" data-name="${f.name}" onclick="_gdriveSelectFile(this)">
@@ -3569,7 +3569,7 @@ async function _gdriveListFiles(){
       </div>`;
     }).join('');
     const fnInp = document.getElementById('gdrive-filename');
-    if(fnInp && !fnInp.value) fnInp.value = _sfSlug(P.gameName||'untitled')+'.slotforge';
+    if(fnInp && !fnInp.value) fnInp.value = _sfSlug(P.gameName||'untitled')+'.spinative';
   }catch(err){ el.innerHTML='<div class="cloud-empty" style="color:#c06060">Error: '+err.message+'</div>'; }
 }
 
@@ -3584,8 +3584,8 @@ function _gdriveSelectFile(el){
 async function saveToGdrive(){
   if(!_gdriveToken){ _cloudStatus('gdrive','Not connected.','err'); return; }
   const fnInp = document.getElementById('gdrive-filename');
-  let filename = (fnInp?.value||'').trim() || _sfSlug(P.gameName||'untitled')+'.slotforge';
-  if(!filename.endsWith('.slotforge')) filename += '.slotforge';
+  let filename = (fnInp?.value||'').trim() || _sfSlug(P.gameName||'untitled')+'.spinative';
+  if(!filename.endsWith('.spinative')) filename += '.spinative';
   _cloudStatus('gdrive','Saving…');
   try{
     const folderId = await _gdriveEnsureFolder();
@@ -3621,7 +3621,7 @@ async function openFromGdrive(){
     const res = await fetch('https://www.googleapis.com/drive/v3/files/'+_cloudSelectedFile.gdrive.id+'?alt=media',
       {headers:{Authorization:'Bearer '+_gdriveToken}});
     const d = await res.json();
-    if(d._format !== 'slotforge'){ _cloudStatus('gdrive','Not a valid .slotforge file.','err'); return; }
+    if(d._format !== 'spinative'){ _cloudStatus('gdrive','Not a valid .spinative file.','err'); return; }
     _restoreFilePayload(d);
     _currentFileHandle = null;
     _showSaved(_cloudSelectedFile.gdrive.name,'gdrive');
@@ -3694,8 +3694,8 @@ async function _onedriveListFiles(){
     const token = await _odToken();
     const res = await fetch('https://graph.microsoft.com/v1.0/me/drive/special/approot/children',{headers:{Authorization:'Bearer '+token}});
     const data = await res.json();
-    const files = (data.value||[]).filter(f=>f.name.endsWith('.slotforge'));
-    if(!files.length){ el.innerHTML='<div class="cloud-empty">No .slotforge files yet</div>'; return; }
+    const files = (data.value||[]).filter(f=>f.name.endsWith('.spinative'));
+    if(!files.length){ el.innerHTML='<div class="cloud-empty">No .spinative files yet</div>'; return; }
     el.innerHTML = files.sort((a,b)=>new Date(b.lastModifiedDateTime)-new Date(a.lastModifiedDateTime)).map(f=>{
       const d = new Date(f.lastModifiedDateTime); const ds = d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
       return `<div class="cloud-file-item" data-id="${f.id}" data-name="${f.name}" onclick="_odSelectFile(this)">
@@ -3705,7 +3705,7 @@ async function _onedriveListFiles(){
       </div>`;
     }).join('');
     const fnInp = document.getElementById('od-filename');
-    if(fnInp && !fnInp.value) fnInp.value = _sfSlug(P.gameName||'untitled')+'.slotforge';
+    if(fnInp && !fnInp.value) fnInp.value = _sfSlug(P.gameName||'untitled')+'.spinative';
   }catch(err){ el.innerHTML='<div class="cloud-empty" style="color:#c06060">Error: '+err.message+'</div>'; }
 }
 
@@ -3721,8 +3721,8 @@ async function saveToOneDrive(){
   _cloudStatus('onedrive','Saving…');
   try{
     const fnInp = document.getElementById('od-filename');
-    let filename = (fnInp?.value||'').trim() || _sfSlug(P.gameName||'untitled')+'.slotforge';
-    if(!filename.endsWith('.slotforge')) filename += '.slotforge';
+    let filename = (fnInp?.value||'').trim() || _sfSlug(P.gameName||'untitled')+'.spinative';
+    if(!filename.endsWith('.spinative')) filename += '.spinative';
     const token = await _odToken();
     const payload = buildFilePayload();
     await fetch('https://graph.microsoft.com/v1.0/me/drive/special/approot:/'+encodeURIComponent(filename)+':/content',{
@@ -3742,7 +3742,7 @@ async function openFromOneDrive(){
     const token = await _odToken();
     const res = await fetch('https://graph.microsoft.com/v1.0/me/drive/items/'+_cloudSelectedFile.onedrive.id+'/content',{headers:{Authorization:'Bearer '+token}});
     const d = await res.json();
-    if(d._format !== 'slotforge'){ _cloudStatus('onedrive','Not a valid .slotforge file.','err'); return; }
+    if(d._format !== 'spinative'){ _cloudStatus('onedrive','Not a valid .spinative file.','err'); return; }
     _restoreFilePayload(d);
     _currentFileHandle = null;
     _showSaved(_cloudSelectedFile.onedrive.name,'onedrive');
@@ -5019,7 +5019,7 @@ async function exportZipWithJSX(){
 
     // Generate Photoshop JSX assembly script
     const jsxLines=[
-      '// SlotForge — Auto-generated Photoshop Assembly Script',
+      '// Spinative — Auto-generated Photoshop Assembly Script',
       '// Game: '+P.gameName+' | Screen: '+(SDEFS[P.screen]?.label||P.screen),
       '// Generated: '+new Date().toISOString(),
       '// USAGE: In Photoshop, go to File > Scripts > Browse, select this file.',
@@ -5061,7 +5061,7 @@ async function exportZipWithJSX(){
 
     // Add a README
     const readme=[
-      '# '+P.gameName+' — SlotForge Export',
+      '# '+P.gameName+' — Spinative Export',
       'Screen: '+(SDEFS[P.screen]?.label||P.screen)+' | Viewport: '+vp,
       'Exported: '+new Date().toLocaleString(),
       '',
@@ -5734,7 +5734,7 @@ function generateGDDHTML(d){
       ${[['Studio',d.studio],['Date',today],['Rating',d.rating],['Platform',d.platform],['Audience',d.audience],['Version',d.version]].map(([l,v])=>`<div style="font-size:10px;color:#9090b0"><span style="color:#4a4a62;margin-right:5px">${l}</span>${escH(v)}</div>`).join('')}
     </div>
     <div style="margin-top:14px">${_gddSwatch(c1,'Primary')}${_gddSwatch(c2,'Background')}${_gddSwatch(c3,'Accent')}</div>
-    <div style="position:absolute;bottom:12px;right:16px;font-size:9px;color:#2a2a3a;font-family:DM Mono,monospace">Generated by SlotForge</div>
+    <div style="position:absolute;bottom:12px;right:16px;font-size:9px;color:#2a2a3a;font-family:DM Mono,monospace">Generated by Spinative</div>
   </div>
 
   ${_gddSection('Narrative & World','📖',c1,`
@@ -5803,7 +5803,7 @@ function generateGDDHTML(d){
     <div style="margin-top:12px"><div style="font-size:9px;color:#4a4a62;font-family:DM Mono,monospace;letter-spacing:.05em;margin-bottom:6px;text-transform:uppercase">Technical Notes</div>${_gddNote('')}</div>
   `)}
 
-  <div style="text-align:center;padding:16px 0 4px;font-size:9px;color:#2e2e42;font-family:DM Mono,monospace">Generated by SlotForge · ${today}</div>
+  <div style="text-align:center;padding:16px 0 4px;font-size:9px;color:#2e2e42;font-family:DM Mono,monospace">Generated by Spinative · ${today}</div>
 </div>`;
 }
 
@@ -5831,7 +5831,7 @@ function generateMathSpecHTML(d){
   ${d.jps.length?`<div style="margin-bottom:24px"><div style="font-size:10px;font-weight:700;color:#4ac8f0;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #4ac8f022">Jackpot Parameters</div>
     ${row('Contribution % (of total RTP)','TBD%')}${row('Reset Frequency','TBD')}${d.jps.map(j=>row(j.split(':')[0].trim()+' Seed',j.split(':')[1]?.trim()||'TBD')).join('')}
   </div>`:''}
-  <div style="text-align:center;padding:16px 0 4px;font-size:9px;color:#2e2e42;font-family:DM Mono,monospace">Generated by SlotForge · ${today}</div>
+  <div style="text-align:center;padding:16px 0 4px;font-size:9px;color:#2e2e42;font-family:DM Mono,monospace">Generated by Spinative · ${today}</div>
 </div>`;
 }
 
@@ -5865,7 +5865,7 @@ function generateArtBriefHTML(d){
   <div style="margin-bottom:24px"><div style="font-size:10px;font-weight:700;color:#9a7cdf;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #7c5cbf22">Delivery Format</div>
     ${['PSD source files per screen (layered, organised by screen)','PNG exports at 1× and 2× retina resolution','Spine JSON + PNG atlas (RGBA8888, max 2048×2048)','Colour swatch file (.aco / .clr / SVG palette)','Font files used in any UI elements (OTF or TTF)','Naming convention: BG_BaseGame · ReelFrame · JP_Grand · UI_SpinBtn'].map(r=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:11px;color:#b0b0c8;border-bottom:1px solid #1a1a2844"><span style="color:#9a7cdf;flex-shrink:0">▸</span><span contenteditable="true">${r}</span></div>`).join('')}
   </div>
-  <div style="text-align:center;padding:16px 0 4px;font-size:9px;color:#2e2e42;font-family:DM Mono,monospace">Generated by SlotForge · ${today}</div>
+  <div style="text-align:center;padding:16px 0 4px;font-size:9px;color:#2e2e42;font-family:DM Mono,monospace">Generated by Spinative · ${today}</div>
 </div>`;
 }
 
@@ -5924,7 +5924,7 @@ document.getElementById('gdd-download-btn')?.addEventListener('click', ()=>{
   const labels={gdd:'GDD',math:'MathSpec',art:'ArtBrief'};
   if(GDD_CURRENT_TAB==='flow'){ openGameFlowDesigner(); return; }
   const content = document.getElementById('gdd-content').innerHTML;
-  const name = P.gameName||'SlotForge';
+  const name = P.gameName||'Spinative';
   const fn = name.replace(/\s/g,'_')+'_'+(labels[GDD_CURRENT_TAB]||'Doc')+'.html';
   const fullDoc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${name} — ${labels[GDD_CURRENT_TAB]||'Document'}</title><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Space Grotesk,sans-serif;background:#111120;color:#c0c0d0;padding:48px 32px;max-width:860px;margin:0 auto;line-height:1.6}[contenteditable="true"]:hover{background:#ffffff08;border-radius:4px}[contenteditable="true"]:focus{outline:2px solid #c9a84c55;border-radius:4px;padding:2px 4px}table{border-collapse:collapse}th,td{padding:6px 10px}</style></head><body>${content}</body></html>`;
   const blob = new Blob([fullDoc],{type:'text/html'});
@@ -9003,7 +9003,7 @@ function buildAssetChecklist(){
     const data = { project: P.name, screens: P.screens, features: P.features, jackpots: P.jackpots };
     const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=(P.name||'slotforge')+'-flow.json'; a.click();
+    a.download=(P.name||'spinative')+'-flow.json'; a.click();
   };
   const btnMap = {
     'm-flow-gen':         () => { switchWorkspace('flow'); showToast('Flow generated from project state'); },
@@ -9073,7 +9073,7 @@ function buildAssetChecklist(){
   const aboutBtn = document.getElementById('m-about');
   if(aboutBtn) aboutBtn.addEventListener('click', () => {
     closeAllMenus();
-    showToast('SlotForge — Slot Game Design Tool');
+    showToast('Spinative — Slot Game Design Tool');
   });
   const tutBtn = document.getElementById('m-tutorial');
   if(tutBtn) tutBtn.addEventListener('click', () => {
@@ -9612,7 +9612,7 @@ window._sfApplyPayload = function(payload){
   window._sfPayloadLoaded = true;
 };
 
-/* ── SlotForge postMessage bridge ── */
+/* ── Spinative postMessage bridge ── */
 window._sfBridge = (function(){
   'use strict';
 

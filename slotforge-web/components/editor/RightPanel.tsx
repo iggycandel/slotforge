@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Right Panel (Adobe PS-style fixed sidebar)
+// Spinative — Right Panel (Adobe PS-style fixed sidebar)
 // Two tabs: Layers | Assets
 // Layers: drag-to-reorder, right-click context menu, visibility/lock/blend mode
 // Assets: embeds AssetsPanel in embedded mode

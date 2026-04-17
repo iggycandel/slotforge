@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — AI Asset Generator Page
+// Spinative — AI Asset Generator Page
 // /[orgSlug]/projects/[projectId]/generate
 // ─────────────────────────────────────────────────────────────────────────────
 

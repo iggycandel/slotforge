@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { WorkspaceSwitcher } from './workspace-switcher'
 import { NavItem } from './nav-item'
+import { CreditsIndicator } from '@/components/billing/CreditsIndicator'
 
 /**
  * Primary sidebar — always visible in the app shell.
@@ -66,6 +67,9 @@ export function Sidebar() {
           </>
         )}
       </nav>
+
+      {/* Credits indicator — only visible when on a paid plan */}
+      {slug && <CreditsIndicator orgSlug={slug} />}
 
       {/* Footer — user button + help */}
       <div className="border-t border-sf-border p-3 space-y-1 flex-shrink-0">

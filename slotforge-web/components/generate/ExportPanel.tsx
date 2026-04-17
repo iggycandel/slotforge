@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Export Panel
+// Spinative — Export Panel
 // Bulk download (sequential) or individual PNG exports, Spine-ready naming
 // No external zip dependency — uses native browser anchor download
 // ─────────────────────────────────────────────────────────────────────────────

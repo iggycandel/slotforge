@@ -14,7 +14,7 @@ const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
 const EDITOR_VERSION = 'v55'
-const editorSrc = `/editor/slotforge.html?v=${EDITOR_VERSION}`
+const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
 //  • Hides the duplicate Assets tab and library section

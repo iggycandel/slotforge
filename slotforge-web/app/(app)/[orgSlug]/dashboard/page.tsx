@@ -55,7 +55,7 @@ function UserMenu() {
     {
       label: 'Help & Docs',
       icon: '📖',
-      action: () => { setOpen(false); window.open('https://slotforge.io/docs', '_blank') },
+      action: () => { setOpen(false); window.open('https://spinative.io/docs', '_blank') },
     },
   ]
 

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — POST /api/parse-gdd
+// Spinative — POST /api/parse-gdd
 // Accepts a GDD / Art Direction document (PDF, DOCX, TXT, MD) via multipart
 // form upload, extracts its text, then asks GPT-4o to parse it into a
 // structured JSON object that maps 1-to-1 onto Project Settings field IDs.

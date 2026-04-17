@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — POST/GET /api/project-context
+// Spinative — POST/GET /api/project-context
 //
 // GET  ?project_id=<uuid>            → { context: { theme, style_id, provider } }
 // POST { project_id, theme, style_id?, provider? } → { ok: true }

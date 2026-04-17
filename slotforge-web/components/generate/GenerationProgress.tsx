@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Generation Progress Panel
+// Spinative — Generation Progress Panel
 // Real-time progress bars per asset type during generation
 // ─────────────────────────────────────────────────────────────────────────────
 

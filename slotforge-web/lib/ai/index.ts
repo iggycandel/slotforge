@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — AI Service Factory
+// Spinative — AI Service Factory
 // Selects the right provider based on available env vars.
 // All callers import from here — never directly from runway.ts / openai.ts.
 // ─────────────────────────────────────────────────────────────────────────────

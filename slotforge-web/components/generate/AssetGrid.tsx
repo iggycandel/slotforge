@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Asset Grid
+// Spinative — Asset Grid
 // Displays generated assets with download / layer-add controls
 // ─────────────────────────────────────────────────────────────────────────────
 

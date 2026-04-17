@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Runway Gen-4 Image Turbo API Client
+// Spinative — Runway Gen-4 Image Turbo API Client
 // https://docs.runwayml.com
 // ─────────────────────────────────────────────────────────────────────────────
 

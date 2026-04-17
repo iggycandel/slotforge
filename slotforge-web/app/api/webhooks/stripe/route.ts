@@ -4,8 +4,13 @@
 //
 // Events handled:
 //   checkout.session.completed         → create/update subscription row
-//   customer.subscription.updated      → update plan/status
+//   customer.subscription.updated      → update plan/status/seat_count
 //   customer.subscription.deleted      → mark as canceled (back to free)
+//
+// orgId resolution order:
+//   1. session.client_reference_id  (set by Stripe Pricing Table)
+//   2. session.metadata.orgId       (set by custom checkout API)
+//   3. subscription.metadata.orgId  (fallback for sub events)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -24,8 +29,9 @@ async function upsertSubscription(params: {
   status:             string
   currentPeriodEnd:   number
   cancelAtPeriodEnd:  boolean
+  seatCount?:         number
 }) {
-  const plan = planFromPriceId(params.priceId) ?? 'free'
+  const plan     = planFromPriceId(params.priceId) ?? 'free'
   const supabase = createAdminClient()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,6 +42,7 @@ async function upsertSubscription(params: {
       stripe_customer_id:     params.stripeCustomerId,
       stripe_subscription_id: params.stripeSubId,
       plan,
+      seat_count:             params.seatCount ?? 1,
       status:                 params.status,
       current_period_end:     new Date(params.currentPeriodEnd * 1000).toISOString(),
       cancel_at_period_end:   params.cancelAtPeriodEnd,
@@ -69,21 +76,26 @@ export async function POST(req: NextRequest) {
         const session = event.data.object as any
         if (session.mode !== 'subscription') break
 
-        const orgId = session.metadata?.orgId as string | undefined
-        if (!orgId) { console.error('[webhook] No orgId in session metadata'); break }
+        // Stripe Pricing Table sets client_reference_id; custom checkout sets metadata.orgId
+        const orgId = (session.client_reference_id as string | null)
+                   ?? (session.metadata?.orgId as string | undefined)
+        if (!orgId) { console.error('[webhook] No orgId in session'); break }
 
-        // Expand the subscription to get price details
+        // Expand the subscription to get price + quantity (seat count)
         const sub = await stripe.subscriptions.retrieve(session.subscription as string, {
           expand: ['items.data.price'],
         })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const priceId = (sub.items.data[0].price as any).id as string
+        const item      = sub.items.data[0] as any
+        const priceId   = item.price.id as string
+        const seatCount = item.quantity ?? 1
 
         await upsertSubscription({
           orgId,
           stripeCustomerId:   session.customer as string,
           stripeSubId:        sub.id,
           priceId,
+          seatCount,
           status:             sub.status,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           currentPeriodEnd:   (sub as any).current_period_end as number,
@@ -95,16 +107,21 @@ export async function POST(req: NextRequest) {
 
       case 'customer.subscription.updated': {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sub    = event.data.object as any
-        const orgId  = sub.metadata?.orgId as string | undefined
+        const sub   = event.data.object as any
+        const orgId = sub.metadata?.orgId as string | undefined
         if (!orgId) break
 
-        const priceId = sub.items.data[0].price.id as string
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const item      = sub.items.data[0] as any
+        const priceId   = item.price.id as string
+        const seatCount = item.quantity ?? 1
+
         await upsertSubscription({
           orgId,
           stripeCustomerId:   sub.customer as string,
           stripeSubId:        sub.id,
           priceId,
+          seatCount,
           status:             sub.status,
           currentPeriodEnd:   sub.current_period_end as number,
           cancelAtPeriodEnd:  sub.cancel_at_period_end as boolean,
@@ -122,7 +139,12 @@ export async function POST(req: NextRequest) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (supabase as any)
           .from('subscriptions')
-          .update({ plan: 'free', status: 'canceled', updated_at: new Date().toISOString() })
+          .update({
+            plan:       'free',
+            seat_count: 1,
+            status:     'canceled',
+            updated_at: new Date().toISOString(),
+          })
           .eq('org_id', orgId)
         break
       }

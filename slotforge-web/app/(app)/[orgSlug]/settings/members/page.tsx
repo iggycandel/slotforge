@@ -9,7 +9,7 @@ export const metadata = { title: 'Members · Settings' }
  * - pending invitations
  * - member removal
  *
- * Styled to match SlotForge's dark theme via appearance props.
+ * Styled to match Spinative's dark theme via appearance props.
  */
 export default function MembersPage() {
   return (

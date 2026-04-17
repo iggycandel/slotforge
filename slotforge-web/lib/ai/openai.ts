@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — OpenAI Images API Client (gpt-image-1 / dall-e-3)
+// Spinative — OpenAI Images API Client (gpt-image-1 / dall-e-3)
 // https://platform.openai.com/docs/api-reference/images
 // ─────────────────────────────────────────────────────────────────────────────
 

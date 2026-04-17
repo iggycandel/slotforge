@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Canvas Asset List Panel (floating overlay or embedded)
+// Spinative — Canvas Asset List Panel (floating overlay or embedded)
 //
 // Displays all asset types for the project.
 // Users can drag any asset onto the canvas, add to a slot, or upload directly.

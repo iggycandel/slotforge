@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Prompt Engineering System V3
+// Spinative — Prompt Engineering System V3
 // All AI prompts flow through here. Never expose master prompt to the client.
 //
 // V3 key changes:

@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Layers Panel (floating overlay, snap-to-right)
+// Spinative — Layers Panel (floating overlay, snap-to-right)
 // Receives SF_LAYERS_UPDATE from the editor iframe.
 // Sends SF_LAYER_OP back for select / visibility / lock / delete / duplicate / blend.
 // ─────────────────────────────────────────────────────────────────────────────

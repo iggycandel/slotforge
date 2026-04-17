@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — ASSETS Workspace (3-panel layout)
+// Spinative — ASSETS Workspace (3-panel layout)
 //
 // Left sidebar  (240 px) — asset-type navigator + batch actions
 // Main area     (flex-1) — GenerationControlBar + 19-tile grid + SSE progress
@@ -9,11 +9,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import {
   Sparkles, ChevronLeft, LayoutGrid, Layers, Box,
   RefreshCw, Download, Loader2, CheckCircle2,
   XCircle, Wand2, ZapIcon, AlignLeft, MessageSquare,
-  ChevronDown, ChevronUp, Eye, Upload,
+  ChevronDown, ChevronUp, Eye, Upload, X,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import { ASSET_LABELS } from '@/types/assets'
@@ -194,6 +195,13 @@ interface Props {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta }: Props) {
+  // Route params (for billing page link)
+  const params = useParams<{ orgSlug: string }>()
+  const routeSlug = orgSlug ?? params?.orgSlug ?? ''
+
+  // Gate modal — shown when plan or credits block generation
+  const [gateModal, setGateModal] = useState<{ type: 'upgrade' | 'credits' } | null>(null)
+
   // Asset state
   const [assets, setAssets] = useState<Partial<Record<AssetType, GeneratedAsset>>>(
     () => buildAssetMap(initialAssets)
@@ -339,7 +347,10 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Request failed' }))
+        if (err.error === 'upgrade_required') { setGateModal({ type: 'upgrade' }); setBatchRunning(false); return }
+        if (err.error === 'credits_exhausted') { setGateModal({ type: 'credits' }); setBatchRunning(false); return }
         addLog(`Error: ${err.error ?? 'Request failed'}`)
+        setBatchRunning(false)
         return
       }
 
@@ -501,6 +512,90 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <>
+    {/* ── Plan / Credits gate modal ──────────────────────────────────────────── */}
+    {gateModal && (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <div style={{
+          background: '#13131a', border: '1px solid rgba(201,168,76,.3)',
+          borderRadius: 20, padding: 32, maxWidth: 400, width: '90%',
+          position: 'relative',
+        }}>
+          <button
+            onClick={() => setGateModal(null)}
+            style={{ position: 'absolute', top: 14, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: '#7a7a8a' }}
+          ><X size={16} /></button>
+
+          {gateModal.type === 'upgrade' ? (
+            <>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>✨</div>
+              <p style={{ fontWeight: 700, fontSize: 17, color: '#eeede6', marginBottom: 8 }}>
+                AI generation requires a paid plan
+              </p>
+              <p style={{ fontSize: 13, color: '#7a7a8a', marginBottom: 24, lineHeight: 1.6 }}>
+                The Free plan lets you explore the canvas and manage projects, but AI generation is a Freelancer and Studio feature. Upgrade to start generating assets in seconds.
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Link href={`/${routeSlug}/settings/billing`}
+                  style={{
+                    flex: 1, textAlign: 'center', padding: '10px 0',
+                    background: '#c9a84c', color: '#06060a',
+                    borderRadius: 10, fontWeight: 700, fontSize: 14,
+                    textDecoration: 'none',
+                  }}
+                  onClick={() => setGateModal(null)}
+                >
+                  View plans
+                </Link>
+                <button
+                  onClick={() => setGateModal(null)}
+                  style={{
+                    padding: '10px 18px', background: 'none',
+                    border: '1px solid rgba(255,255,255,.1)', color: '#7a7a8a',
+                    borderRadius: 10, cursor: 'pointer', fontSize: 14,
+                  }}
+                >Dismiss</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🔋</div>
+              <p style={{ fontWeight: 700, fontSize: 17, color: '#eeede6', marginBottom: 8 }}>
+                No AI credits remaining
+              </p>
+              <p style={{ fontSize: 13, color: '#7a7a8a', marginBottom: 24, lineHeight: 1.6 }}>
+                You&apos;ve used all your included credits for this month. Top up with a credit pack (50 credits for €10) or wait for your monthly reset.
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Link href={`/${routeSlug}/settings/billing`}
+                  style={{
+                    flex: 1, textAlign: 'center', padding: '10px 0',
+                    background: '#c9a84c', color: '#06060a',
+                    borderRadius: 10, fontWeight: 700, fontSize: 14,
+                    textDecoration: 'none',
+                  }}
+                  onClick={() => setGateModal(null)}
+                >
+                  Top up credits
+                </Link>
+                <button
+                  onClick={() => setGateModal(null)}
+                  style={{
+                    padding: '10px 18px', background: 'none',
+                    border: '1px solid rgba(255,255,255,.1)', color: '#7a7a8a',
+                    borderRadius: 10, cursor: 'pointer', fontSize: 14,
+                  }}
+                >Dismiss</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )}
     <div style={{
       display:    'flex',
       flexDirection: 'column',
@@ -571,7 +666,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           <div style={{ width: 1, height: 20, background: C.border }} />
 
           <span style={{ fontSize: 13, fontWeight: 700, color: C.gold, letterSpacing: '.5px' }}>
-            SLOTFORGE
+            SPINATIVE
           </span>
           <span style={{ fontSize: 12, color: C.txFaint }}>·</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: C.txMuted, letterSpacing: '.08em', textTransform: 'uppercase' }}>
@@ -2155,5 +2250,6 @@ function FeedbackTab({ logs }: { logs: string[] }) {
         </div>
       )}
     </div>
+    </>
   )
 }

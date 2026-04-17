@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Graphic Style Definitions
+// Spinative — Graphic Style Definitions
 // Each style injects a prompt modifier into every asset generation.
 // Preview images are generated on demand and cached in /public/style-refs/.
 // ─────────────────────────────────────────────────────────────────────────────

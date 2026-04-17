@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — POST /api/generate
+// Spinative — POST /api/generate
 // Accepts { theme, project_id, provider? } and streams generation progress
 // via Server-Sent Events (SSE) so the UI can update in real time.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9,7 +9,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z }                     from 'zod'
 import { generateSlotAssets, ALL_TYPES } from '@/lib/generation/pipeline'
 import type { AssetType, ProjectMeta }  from '@/types/assets'
-import { getOrgPlan, canUseAI }  from '@/lib/billing/subscription'
+import { getOrgPlan, canUseAI,
+         getOrgCreditStatus,
+         consumeCredits }        from '@/lib/billing/subscription'
 
 // ─── Vercel function timeout ─────────────────────────────────────────────────
 // 15 assets × ~25 s each (in batches of 3) ≈ 125 s.
@@ -44,13 +46,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Plan gate — AI generation requires Pro or Studio
+  // Plan gate — AI generation requires Freelancer or Studio
   if (orgId) {
     const plan = await getOrgPlan(orgId)
     if (!canUseAI(plan)) {
       return NextResponse.json(
-        { error: 'upgrade_required', plan, message: 'AI generation requires a Pro or Studio plan.' },
+        { error: 'upgrade_required', plan, message: 'AI generation requires a Freelancer or Studio plan.' },
         { status: 403 }
+      )
+    }
+    // Credit gate — check remaining credits before starting a batch
+    const credits = await getOrgCreditStatus(orgId)
+    if (!credits.canGenerate) {
+      return NextResponse.json(
+        { error: 'credits_exhausted', remaining: 0, message: 'No AI credits remaining this month. Top up from the billing page.' },
+        { status: 402 }
       )
     }
   }
@@ -98,6 +108,8 @@ export async function POST(req: NextRequest) {
             // instead of waiting for the full 'complete' event.
             onAssetComplete: (asset) => {
               emit('asset', asset)
+              // Consume 1 credit per successfully generated image
+              if (orgId) consumeCredits(orgId, 1).catch(() => {})
             },
           }
         )

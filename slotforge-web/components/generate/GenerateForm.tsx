@@ -1,6 +1,6 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Generate Form
+// Spinative — Generate Form
 // Single-input theme entry with provider selector
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SlotForge — Stripe client singleton (server-side only)
+// Spinative — Stripe client singleton (server-side only)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Stripe from 'stripe'
