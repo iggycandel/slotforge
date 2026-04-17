@@ -21,6 +21,7 @@ import { buildPrompt }        from '@/lib/ai/promptBuilder'
 import { generateImage }      from '@/lib/ai'
 import { uploadGeneratedAsset } from '@/lib/storage/assets'
 import type { AssetType, ProjectMeta } from '@/types/assets'
+import { getOrgPlan, canUseAI } from '@/lib/billing/subscription'
 
 // Extend timeout for single-asset generation (~15-30 s)
 export const maxDuration = 60
@@ -54,9 +55,20 @@ const RequestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   // Auth
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Plan gate — AI generation requires Pro or Studio
+  if (orgId) {
+    const plan = await getOrgPlan(orgId)
+    if (!canUseAI(plan)) {
+      return NextResponse.json(
+        { error: 'upgrade_required', plan, message: 'AI generation requires a Pro or Studio plan.' },
+        { status: 403 }
+      )
+    }
   }
 
   // Parse and validate

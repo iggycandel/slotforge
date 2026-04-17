@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z }                     from 'zod'
 import { generateSlotAssets, ALL_TYPES } from '@/lib/generation/pipeline'
 import type { AssetType, ProjectMeta }  from '@/types/assets'
+import { getOrgPlan, canUseAI }  from '@/lib/billing/subscription'
 
 // ─── Vercel function timeout ─────────────────────────────────────────────────
 // 15 assets × ~25 s each (in batches of 3) ≈ 125 s.
@@ -38,9 +39,20 @@ function sseEvent(event: string, data: unknown): string {
 
 export async function POST(req: NextRequest) {
   // Auth check
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Plan gate — AI generation requires Pro or Studio
+  if (orgId) {
+    const plan = await getOrgPlan(orgId)
+    if (!canUseAI(plan)) {
+      return NextResponse.json(
+        { error: 'upgrade_required', plan, message: 'AI generation requires a Pro or Studio plan.' },
+        { status: 403 }
+      )
+    }
   }
 
   // Parse body

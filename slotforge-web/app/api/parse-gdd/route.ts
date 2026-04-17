@@ -115,8 +115,20 @@ const USER_PROMPT = (text: string) =>
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Plan gate — GDD parsing is an AI feature, requires Pro or Studio
+  if (orgId) {
+    const { getOrgPlan, canUseAI } = await import('@/lib/billing/subscription')
+    const plan = await getOrgPlan(orgId)
+    if (!canUseAI(plan)) {
+      return NextResponse.json(
+        { error: 'upgrade_required', plan, message: 'GDD import requires a Pro or Studio plan.' },
+        { status: 403 }
+      )
+    }
+  }
 
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 })

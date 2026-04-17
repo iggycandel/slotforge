@@ -3,12 +3,12 @@
 import { auth, clerkClient }  from '@clerk/nextjs/server'
 import GeneralSettingsForm     from './GeneralSettingsForm'
 
-interface Props { params: Promise<{ orgSlug: string }> }
+interface Props { params: { orgSlug: string } }
 
 export const metadata = { title: 'General · Settings' }
 
 export default async function GeneralSettingsPage({ params }: Props) {
-  const { orgSlug } = await params
+  const { orgSlug } = params
   const { orgId }   = await auth()
   const client      = await clerkClient()
 

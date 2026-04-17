@@ -255,3 +255,32 @@ WITH CHECK (
     )
   )
 );
+
+
+-- ── 8. Subscriptions ──────────────────────────────────────────────────────────
+-- Stores Stripe subscription state per Clerk organisation.
+-- Written by the Stripe webhook handler; read by plan-gate helpers.
+-- Free-tier orgs have no row — absence = free.
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id                      uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id                  text        NOT NULL UNIQUE,
+  stripe_customer_id      text        NOT NULL,
+  stripe_subscription_id  text        NOT NULL,
+  plan                    text        NOT NULL DEFAULT 'free'
+                          CHECK (plan IN ('free', 'pro', 'studio')),
+  status                  text        NOT NULL DEFAULT 'active'
+                          CHECK (status IN ('active', 'trialing', 'past_due', 'canceled', 'incomplete')),
+  current_period_end      timestamptz,
+  cancel_at_period_end    boolean     NOT NULL DEFAULT false,
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at              timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_org_id ON subscriptions (org_id);
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role can manage subscriptions"
+ON subscriptions FOR ALL TO service_role
+USING (true) WITH CHECK (true);
