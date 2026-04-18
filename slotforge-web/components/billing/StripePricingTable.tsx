@@ -29,8 +29,9 @@ declare global {
 }
 
 export default function StripePricingTable({ orgId, email }: Props) {
-  const tableId  = process.env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID
-  const pubKey   = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  // Fallback to hardcoded values so the table renders even if env vars are missing
+  const tableId  = process.env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID  ?? 'prctbl_1TNITLRxNNF46RtxUm5XOJGy'
+  const pubKey   = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY   ?? 'pk_live_51TNE5BRxNNF46RtxTOJczIGT1Di0vCWRHKDqerBFO6Pu3uFBRSm6yPppf1re5lkM4QEUaIG4eRvwUMVO7HMaBCwp00sLVBXkXB'
 
   if (!tableId || !pubKey) return null
 

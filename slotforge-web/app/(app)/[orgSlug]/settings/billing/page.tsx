@@ -47,8 +47,11 @@ function CreditBar({ used, included }: { used: number; included: number }) {
 
 export default async function BillingPage({ params }: Props) {
   const { userId, orgId } = await auth()
-  const sub               = orgId ? await getOrgSubscription(orgId) : null
-  const credits           = orgId ? await getOrgCreditStatus(orgId) : null
+  // The app routes by userId (not Clerk org), so orgId is often null.
+  // Use userId as the billing identifier when no org exists.
+  const effectiveId       = orgId ?? userId ?? ''
+  const sub               = effectiveId ? await getOrgSubscription(effectiveId) : null
+  const credits           = effectiveId ? await getOrgCreditStatus(effectiveId) : null
   const activePlan        = (sub?.plan ?? 'free') as Plan
 
   // Fetch user email for pre-filling Stripe checkout
@@ -112,17 +115,23 @@ export default async function BillingPage({ params }: Props) {
           {credits && activePlan !== 'free' && (
             <CreditBar used={credits.used} included={credits.included} />
           )}
+          {/* Manage billing button for paid plans */}
+          {activePlan !== 'free' && (
+            <div className="mt-4 pt-4 border-t border-sf-border">
+              <BillingActions mode="portal" orgSlug={params.orgSlug} />
+            </div>
+          )}
         </div>
       </section>
 
       {/* ── Upgrade — show Stripe Pricing Table for free users ──────────── */}
-      {activePlan === 'free' && orgId && (
+      {activePlan === 'free' && effectiveId && (
         <section>
           <h2 className="text-sm font-semibold text-sf-text mb-1">Upgrade your plan</h2>
           <p className="text-xs text-sf-muted mb-5">
             All prices are per seat, per month. VAT added at checkout where applicable.
           </p>
-          <StripePricingTable orgId={orgId} email={userEmail} />
+          <StripePricingTable orgId={effectiveId} email={userEmail} />
         </section>
       )}
 
@@ -173,11 +182,13 @@ export default async function BillingPage({ params }: Props) {
                   ))}
                 </ul>
 
-                {isCurrent && (
-                  <p className="text-center text-xs text-sf-subtle mt-3 pt-3 border-t border-sf-border">
-                    Current plan
-                  </p>
-                )}
+                <div className="mt-3 pt-3 border-t border-sf-border">
+                  {isCurrent ? (
+                    <p className="text-center text-xs text-sf-subtle">Current plan</p>
+                  ) : plan !== 'free' ? (
+                    <BillingActions mode="checkout" orgSlug={params.orgSlug} plan={plan} />
+                  ) : null}
+                </div>
               </div>
             )
           })}
