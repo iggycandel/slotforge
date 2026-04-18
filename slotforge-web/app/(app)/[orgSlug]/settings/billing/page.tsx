@@ -124,17 +124,6 @@ export default async function BillingPage({ params }: Props) {
         </div>
       </section>
 
-      {/* ── Upgrade — show Stripe Pricing Table for free users ──────────── */}
-      {activePlan === 'free' && effectiveId && (
-        <section>
-          <h2 className="text-sm font-semibold text-sf-text mb-1">Upgrade your plan</h2>
-          <p className="text-xs text-sf-muted mb-5">
-            All prices are per seat, per month. VAT added at checkout where applicable.
-          </p>
-          <StripePricingTable orgId={effectiveId} email={userEmail} />
-        </section>
-      )}
-
       {/* ── Plan feature comparison (always visible) ────────────────────── */}
       <section>
         <h2 className="text-sm font-semibold text-sf-text mb-4">Plan features</h2>

@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useOrganizationList, useOrganization } from '@clerk/nextjs'
-import { ChevronDown, Check, Plus } from 'lucide-react'
+import { useUser } from '@clerk/nextjs'
+import { ChevronDown, Settings } from 'lucide-react'
 
 const AVATAR_COLORS = [
   { bg: 'rgba(123,116,255,0.18)', text: '#a09bff' },
@@ -31,10 +31,7 @@ function WorkspaceAvatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'm
 }
 
 export function WorkspaceSwitcher() {
-  const { organization } = useOrganization()
-  const { userMemberships, isLoaded, setActive } = useOrganizationList({
-    userMemberships: { infinite: true },
-  })
+  const { user, isLoaded } = useUser()
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -49,11 +46,13 @@ export function WorkspaceSwitcher() {
     )
   }
 
-  const handleSwitch = async (orgId: string, orgSlug: string) => {
-    setOpen(false)
-    await setActive?.({ organization: orgId })
-    router.push(`/${orgSlug}/dashboard`)
-  }
+  const workspaceName =
+    (user?.firstName ? `${user.firstName}'s workspace` : null) ??
+    user?.username ??
+    user?.emailAddresses[0]?.emailAddress?.split('@')[0] ??
+    'My workspace'
+
+  const orgSlug = user?.id ?? ''
 
   return (
     <div style={{ position: 'relative', margin: '0 10px' }}>
@@ -71,12 +70,12 @@ export function WorkspaceSwitcher() {
           transition: 'background 0.15s, border-color 0.15s',
         }}
       >
-        <WorkspaceAvatar name={organization?.name ?? '?'} />
+        <WorkspaceAvatar name={workspaceName} />
         <span style={{
           flex: 1, fontSize: 13, fontWeight: 600, color: '#f4efe4',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
-          {organization?.name ?? 'Select workspace'}
+          {workspaceName}
         </span>
         <ChevronDown style={{
           width: 14, height: 14, color: 'rgba(255,255,255,0.3)',
@@ -109,25 +108,41 @@ export function WorkspaceSwitcher() {
               textTransform: 'uppercase', letterSpacing: '0.1em',
               borderBottom: '1px solid rgba(255,255,255,0.07)',
             }}>
-              Workspaces
+              Workspace
             </div>
 
-            {/* List */}
-            <div style={{ maxHeight: 260, overflowY: 'auto', padding: '4px 0' }}>
-              {userMemberships.data?.map(({ organization: org }) => (
-                <DropdownItem
-                  key={org.id}
-                  label={org.name}
-                  active={org.id === organization?.id}
-                  onClick={() => handleSwitch(org.id, org.slug ?? '')}
-                />
-              ))}
+            {/* Current workspace */}
+            <div style={{ padding: '4px 0' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 9,
+                padding: '8px 12px',
+              }}>
+                <WorkspaceAvatar name={workspaceName} size="sm" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 500, color: '#f4efe4',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {workspaceName}
+                  </div>
+                  <div style={{
+                    fontSize: 11, color: 'rgba(255,255,255,0.35)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {user?.emailAddresses[0]?.emailAddress}
+                  </div>
+                </div>
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: '#d7a84f', flexShrink: 0,
+                }} />
+              </div>
             </div>
 
-            {/* Add workspace */}
+            {/* Settings link */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '4px 0' }}>
               <button
-                onClick={() => { setOpen(false); router.push('/onboarding') }}
+                onClick={() => { setOpen(false); router.push(`/${orgSlug}/settings/general`) }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                   padding: '9px 12px', background: 'none', border: 'none',
@@ -146,50 +161,18 @@ export function WorkspaceSwitcher() {
               >
                 <div style={{
                   width: 22, height: 22, borderRadius: 6,
-                  border: '1px dashed rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.12)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
                 }}>
-                  <Plus style={{ width: 12, height: 12 }} />
+                  <Settings style={{ width: 12, height: 12 }} />
                 </div>
-                Add workspace
+                Workspace settings
               </button>
             </div>
           </div>
         </>
       )}
     </div>
-  )
-}
-
-function DropdownItem({
-  label, active, onClick,
-}: { label: string; active: boolean; onClick: () => void }) {
-  const [hov, setHov] = useState(false)
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-        padding: '8px 12px', background: hov ? 'rgba(255,255,255,0.05)' : 'none',
-        border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-        transition: 'background 0.1s',
-      }}
-    >
-      <WorkspaceAvatar name={label} size="sm" />
-      <span style={{
-        flex: 1, fontSize: 13, fontWeight: 500,
-        color: active ? '#f4efe4' : '#a5afc0',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        textAlign: 'left',
-      }}>
-        {label}
-      </span>
-      {active && (
-        <Check style={{ width: 13, height: 13, color: '#d7a84f', flexShrink: 0 }} />
-      )}
-    </button>
   )
 }

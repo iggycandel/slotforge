@@ -13,8 +13,15 @@ export async function createClient() {
   const cookieStore = await cookies()
   const { getToken } = await auth()
 
-  // Get the Supabase-specific JWT from Clerk (requires Clerk JWT Template named "supabase")
-  const clerkToken = await getToken({ template: 'supabase' })
+  // Get the Supabase-specific JWT from Clerk (requires Clerk JWT Template named "supabase").
+  // If the template isn't configured in Clerk, getToken throws — catch and fall back to
+  // the anon key so the app doesn't crash; RLS policies will apply as an anonymous user.
+  let clerkToken: string | null = null
+  try {
+    clerkToken = await getToken({ template: 'supabase' })
+  } catch (err) {
+    console.warn('[supabase/server] Clerk JWT template "supabase" not found — using anon key.', err)
+  }
 
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
