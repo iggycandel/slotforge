@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createProject } from '@/actions/projects'
 import { ArrowLeft, Check } from 'lucide-react'
 import Link from 'next/link'
+import { UpgradeModal } from '@/components/ui/upgrade-modal'
 
 const THEMES = [
   { value: 'western',  label: 'Western',  emoji: '🤠' },
@@ -37,6 +38,7 @@ export default function NewProjectPage() {
   const [reelset, setReelset] = useState('5x3')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
+  const [showLimit, setShowLimit] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,6 +54,11 @@ export default function NewProjectPage() {
     })
 
     if (result.error) {
+      if (result.error === 'project_limit_reached') {
+        setShowLimit(true)
+        setLoading(false)
+        return
+      }
       setError(result.error)
       setLoading(false)
       return
@@ -61,6 +68,14 @@ export default function NewProjectPage() {
   }
 
   return (
+    <>
+    {showLimit && (
+      <UpgradeModal
+        type="project_limit"
+        billingHref={`/${params.orgSlug}/settings/billing`}
+        onClose={() => setShowLimit(false)}
+      />
+    )}
     <div className="flex flex-col h-full overflow-hidden" style={{ background: '#07080d' }}>
       {/* Header */}
       <div
@@ -204,6 +219,7 @@ export default function NewProjectPage() {
         </form>
       </div>
     </div>
+    </>
   )
 }
 

@@ -1,18 +1,23 @@
 'use client'
 // ─────────────────────────────────────────────────────────────────────────────
 // Spinative — Export Panel
-// Bulk download (sequential) or individual PNG exports, Spine-ready naming
-// No external zip dependency — uses native browser anchor download
+// Bulk download (sequential) or individual PNG exports, Spine-ready naming.
+// Shows an upgrade prompt for users without export access.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react'
-import { Download, Package } from 'lucide-react'
+import { Download, Package, Lock } from 'lucide-react'
 import { ASSET_LABELS } from '@/types/assets'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
+import Link from 'next/link'
 
 interface Props {
-  assets: Partial<Record<AssetType, GeneratedAsset>>
-  theme:  string
+  assets:          Partial<Record<AssetType, GeneratedAsset>>
+  theme:           string
+  /** Whether the current plan allows exports. Default: true (for backwards-compat). */
+  exportsEnabled?: boolean
+  /** Billing page href, used in upgrade prompt. */
+  billingHref?:    string
 }
 
 // Spine-ready filename convention
@@ -46,7 +51,12 @@ async function downloadFile(url: string, filename: string) {
   URL.revokeObjectURL(href)
 }
 
-export function ExportPanel({ assets, theme }: Props) {
+export function ExportPanel({
+  assets,
+  theme,
+  exportsEnabled = true,
+  billingHref,
+}: Props) {
   const [exporting, setExporting] = useState(false)
   const [progress,  setProgress]  = useState(0)
 
@@ -76,6 +86,41 @@ export function ExportPanel({ assets, theme }: Props) {
   }
 
   if (count === 0) return null
+
+  // ── Upgrade prompt for free-tier users ───────────────────────────────────
+
+  if (!exportsEnabled) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+            Export
+          </h3>
+          <span className="text-[10px] text-zinc-600">{count} assets ready</span>
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 text-center">
+          <div className="w-9 h-9 rounded-lg bg-zinc-800 flex items-center justify-center mx-auto mb-3">
+            <Lock className="w-4 h-4 text-zinc-500" />
+          </div>
+          <p className="text-xs font-semibold text-zinc-300 mb-1">Exports locked</p>
+          <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">
+            Asset downloads are available on the Freelancer and Studio plans.
+          </p>
+          {billingHref && (
+            <Link
+              href={billingHref}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 transition-colors"
+            >
+              Upgrade to export →
+            </Link>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Normal export UI ─────────────────────────────────────────────────────
 
   return (
     <div className="space-y-3">

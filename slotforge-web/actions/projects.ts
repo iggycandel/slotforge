@@ -3,6 +3,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@/lib/supabase/server'
 import { slugify } from '@/lib/utils'
+import { getOrgPlan, underProjectLimit } from '@/lib/billing/subscription'
 import type { Project, ActionResult } from '@/types'
 
 // ─── Read ───────────────────────────────────────────────────────────────────
@@ -78,6 +79,18 @@ export async function createProject(input: {
   if (wsError || !workspace) {
     return { data: null, error: 'Workspace not found' }
   }
+
+  // ── Plan limit check ────────────────────────────────────────────────────────
+  const plan = await getOrgPlan(userId)
+  const { count: projectCount } = await supabase
+    .from('projects')
+    .select('*', { count: 'exact', head: true })
+    .eq('workspace_id', workspace.id)
+
+  if (!underProjectLimit(plan, projectCount ?? 0)) {
+    return { data: null, error: 'project_limit_reached' }
+  }
+  // ───────────────────────────────────────────────────────────────────────────
 
   const slug = slugify(input.name)
 

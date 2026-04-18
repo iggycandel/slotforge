@@ -4,12 +4,13 @@
 // /[orgSlug]/projects/[projectId]/generate
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useRef }   from 'react'
-import { Sparkles }            from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Sparkles, Zap }               from 'lucide-react'
 import { GenerateForm }        from '@/components/generate/GenerateForm'
 import { GenerationProgress }  from '@/components/generate/GenerationProgress'
 import { AssetGrid }           from '@/components/generate/AssetGrid'
 import { ExportPanel }         from '@/components/generate/ExportPanel'
+import { UpgradeModal }        from '@/components/ui/upgrade-modal'
 import type { AssetType, GeneratedAsset, GenerationResult } from '@/types/assets'
 import type { GenerationStatus } from '@/components/generate/GenerationProgress'
 
@@ -25,6 +26,18 @@ interface SSEComplete {
 }
 interface SSEError { message: string }
 
+// ─── Credit status ────────────────────────────────────────────────────────────
+
+interface CreditStatus {
+  plan:           string
+  aiEnabled:      boolean
+  exportsEnabled: boolean
+  included:       number
+  used:           number
+  remaining:      number
+  canGenerate:    boolean
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface Props {
@@ -32,7 +45,11 @@ interface Props {
 }
 
 export default function GeneratePage({ params }: Props) {
-  const { projectId } = params
+  const { orgSlug, projectId } = params
+
+  // Credit / plan state
+  const [credits,    setCredits]    = useState<CreditStatus | null>(null)
+  const [gateModal,  setGateModal]  = useState<'upgrade' | 'credits' | null>(null)
 
   // Generation state
   const [isLoading,    setIsLoading]    = useState(false)
@@ -47,9 +64,37 @@ export default function GeneratePage({ params }: Props) {
 
   const abortRef = useRef<AbortController | null>(null)
 
+  // ─── Fetch credit status on mount ─────────────────────────────────────────
+
+  useEffect(() => {
+    fetch('/api/credits')
+      .then(r => r.json())
+      .then(setCredits)
+      .catch(console.warn)
+  }, [])
+
+  // ─── Refresh credits after generation completes ────────────────────────────
+
+  function refreshCredits() {
+    fetch('/api/credits')
+      .then(r => r.json())
+      .then(setCredits)
+      .catch(console.warn)
+  }
+
   // ─── Start generation ──────────────────────────────────────────────────────
 
   async function handleGenerate(userTheme: string, provider: string) {
+    // Gate check before hitting the API
+    if (credits && !credits.aiEnabled) {
+      setGateModal('upgrade')
+      return
+    }
+    if (credits && credits.aiEnabled && credits.remaining === 0) {
+      setGateModal('credits')
+      return
+    }
+
     // Cancel any in-flight request
     abortRef.current?.abort()
     const ctrl = new AbortController()
@@ -73,6 +118,17 @@ export default function GeneratePage({ params }: Props) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Request failed' }))
+        // Handle plan / credit gates from the API
+        if (res.status === 403 || err.error === 'upgrade_required') {
+          setGateModal('upgrade')
+          setIsLoading(false)
+          return
+        }
+        if (res.status === 402 || err.error === 'credits_exhausted') {
+          setGateModal('credits')
+          setIsLoading(false)
+          return
+        }
         setStatus(s => ({ ...s, done: true, error: err.error }))
         return
       }
@@ -151,6 +207,8 @@ export default function GeneratePage({ params }: Props) {
                   ? `${d.failed.length} asset(s) failed to generate`
                   : undefined,
               }))
+              // Refresh credits after successful generation
+              refreshCredits()
               break
             }
             case 'error': {
@@ -179,14 +237,55 @@ export default function GeneratePage({ params }: Props) {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <>
+    {/* Upgrade / credits modal */}
+    {gateModal && (
+      <UpgradeModal
+        type={gateModal}
+        billingHref={`/${orgSlug}/settings/billing`}
+        onClose={() => setGateModal(null)}
+      />
+    )}
+
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="max-w-7xl mx-auto px-6 py-8">
 
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-2.5 mb-1">
-            <Sparkles className="w-5 h-5 text-amber-400" />
-            <h1 className="text-xl font-bold tracking-tight">AI Asset Generator</h1>
+          <div className="flex items-center justify-between gap-4 mb-1">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-5 h-5 text-amber-400" />
+              <h1 className="text-xl font-bold tracking-tight">AI Asset Generator</h1>
+            </div>
+
+            {/* Credit pill */}
+            {credits !== null && (
+              credits.aiEnabled ? (
+                <div className={`
+                  flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border
+                  ${credits.remaining === 0
+                    ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                    : credits.remaining <= 10
+                    ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  }
+                `}>
+                  <Zap className="w-3 h-3" />
+                  {credits.remaining === 0
+                    ? 'No credits left'
+                    : `${credits.remaining} / ${credits.included} credits`
+                  }
+                </div>
+              ) : (
+                <button
+                  onClick={() => setGateModal('upgrade')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-amber-500/40 hover:text-amber-400 transition-colors"
+                >
+                  <Zap className="w-3 h-3" />
+                  Free plan · Upgrade for AI
+                </button>
+              )
+            )}
           </div>
           <p className="text-sm text-zinc-500">
             Enter a theme and generate all 15 slot game assets — backgrounds, symbols, wild, scatter, and logo.
@@ -213,7 +312,12 @@ export default function GeneratePage({ params }: Props) {
 
             {assetCount > 0 && (
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-                <ExportPanel assets={assets} theme={currentTheme} />
+                <ExportPanel
+                  assets={assets}
+                  theme={currentTheme}
+                  exportsEnabled={credits?.exportsEnabled ?? false}
+                  billingHref={`/${orgSlug}/settings/billing`}
+                />
               </div>
             )}
           </div>
@@ -225,12 +329,31 @@ export default function GeneratePage({ params }: Props) {
                 <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center mb-4">
                   <Sparkles className="w-7 h-7 text-zinc-600" />
                 </div>
-                <p className="text-sm font-medium text-zinc-500">
-                  Your generated assets will appear here
-                </p>
-                <p className="text-xs text-zinc-600 mt-1">
-                  15 assets · 2 backgrounds · 10 symbols · wild · scatter · logo
-                </p>
+                {credits && !credits.aiEnabled ? (
+                  <>
+                    <p className="text-sm font-medium text-zinc-400">
+                      AI generation is not available on the Free plan
+                    </p>
+                    <p className="text-xs text-zinc-600 mt-1 mb-4">
+                      Upgrade to Freelancer or Studio to generate assets
+                    </p>
+                    <button
+                      onClick={() => setGateModal('upgrade')}
+                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 transition-colors"
+                    >
+                      View upgrade options →
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-zinc-500">
+                      Your generated assets will appear here
+                    </p>
+                    <p className="text-xs text-zinc-600 mt-1">
+                      15 assets · 2 backgrounds · 10 symbols · wild · scatter · logo
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -264,5 +387,6 @@ export default function GeneratePage({ params }: Props) {
         </div>
       </div>
     </div>
+    </>
   )
 }
