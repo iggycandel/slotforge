@@ -63,6 +63,7 @@ export default function SignUpPage() {
         {/* Clerk sign-up card */}
         <div style={{ width: '100%' }}>
           <SignUp
+            forceRedirectUrl="/onboarding"
             appearance={{
               variables: {
                 colorPrimary:        '#d7a84f',
