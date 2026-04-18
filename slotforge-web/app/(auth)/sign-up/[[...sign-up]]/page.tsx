@@ -1,3 +1,4 @@
+'use client'
 import { SignUp } from '@clerk/nextjs'
 import Link from 'next/link'
 
