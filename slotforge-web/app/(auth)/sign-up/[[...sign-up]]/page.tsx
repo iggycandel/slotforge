@@ -2,8 +2,6 @@
 import { SignUp } from '@clerk/nextjs'
 import Link from 'next/link'
 
-export const metadata = { title: 'Create account · Spinative' }
-
 export default function SignUpPage() {
   return (
     <div style={{

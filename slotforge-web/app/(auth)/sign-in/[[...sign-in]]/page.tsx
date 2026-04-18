@@ -2,8 +2,6 @@
 import { SignIn } from '@clerk/nextjs'
 import Link from 'next/link'
 
-export const metadata = { title: 'Sign in · Spinative' }
-
 export default function SignInPage() {
   return (
     <div style={{
