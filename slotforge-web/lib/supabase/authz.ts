@@ -6,6 +6,17 @@
 // touching the project's data. Most of our routes use the service-role
 // admin client which bypasses RLS, so a plain auth() check is not enough —
 // without this, any signed-in user can act on any project by UUID.
+//
+// Ownership model (current, solo-only):
+//   - Every workspace row has `clerk_org_id`.
+//   - For a solo user, ensurePersonalWorkspace sets clerk_org_id = userId.
+//   - A user has access to a project iff that project's workspace has
+//     clerk_org_id === userId.
+//
+// When team orgs are supported, callers should pass `effectiveId` (orgId ??
+// userId) instead of the raw userId and this helper will continue to work.
+// The `workspace_members` table exists in the schema but is intentionally
+// not maintained (see app/api/webhooks/clerk/route.ts) — don't query it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createAdminClient } from './admin'
@@ -15,12 +26,12 @@ export interface ProjectAccess {
 }
 
 /**
- * Verify that `userId` is a member of the workspace that owns `projectId`.
- * Returns the project's workspace_id on success, or null if the project
- * doesn't exist or the user isn't a member of its workspace.
+ * Verify that `ownerId` (= Clerk userId, or effectiveId once orgs exist) owns
+ * the workspace that contains `projectId`. Returns the workspace id on
+ * success, or null if the project doesn't exist or belongs to someone else.
  */
 export async function assertProjectAccess(
-  userId: string,
+  ownerId: string,
   projectId: string,
 ): Promise<ProjectAccess | null> {
   const supabase = createAdminClient()
@@ -28,36 +39,31 @@ export async function assertProjectAccess(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: project } = await (supabase as any)
     .from('projects')
-    .select('workspace_id')
+    .select('workspace_id, workspaces!inner(clerk_org_id)')
     .eq('id', projectId)
     .maybeSingle()
 
   if (!project?.workspace_id) return null
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: member } = await (supabase as any)
-    .from('workspace_members')
-    .select('id')
-    .eq('workspace_id', project.workspace_id)
-    .eq('clerk_user_id', userId)
-    .maybeSingle()
+  const clerkOrgId = project.workspaces?.clerk_org_id
+  if (clerkOrgId !== ownerId) return null
 
-  if (!member) return null
   return { workspaceId: project.workspace_id as string }
 }
 
 /**
- * Verify that `userId` is a member of the workspace identified by `slug`.
+ * Verify that `ownerId` owns the workspace identified by `slug`.
  * Returns the workspace id on success, or null if the slug doesn't exist
- * or the user isn't a member. Use this anywhere you interpolate an
- * org slug into a URL or external request (e.g. Stripe return URLs).
+ * or belongs to someone else. Use this anywhere you interpolate an org
+ * slug into a URL or external request (e.g. Stripe return URLs).
  */
 export async function assertWorkspaceAccessBySlug(
-  userId: string,
+  ownerId: string,
   slug: string,
 ): Promise<{ workspaceId: string } | null> {
   // Defensive: slug is interpolated into URLs — reject anything that's not
-  // a plain slug-ish token before querying.
+  // a plain slug-ish token before querying. Clerk user ids (user_xxx) and
+  // org ids both pass this.
   if (!/^[a-zA-Z0-9_-]+$/.test(slug)) return null
 
   const supabase = createAdminClient()
@@ -65,21 +71,11 @@ export async function assertWorkspaceAccessBySlug(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: ws } = await (supabase as any)
     .from('workspaces')
-    .select('id')
+    .select('id, clerk_org_id')
     .eq('slug', slug)
     .maybeSingle()
 
-  if (!ws?.id) return null
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: member } = await (supabase as any)
-    .from('workspace_members')
-    .select('id')
-    .eq('workspace_id', ws.id)
-    .eq('clerk_user_id', userId)
-    .maybeSingle()
-
-  if (!member) return null
+  if (!ws || ws.clerk_org_id !== ownerId) return null
   return { workspaceId: ws.id as string }
 }
 
@@ -91,7 +87,7 @@ export async function assertWorkspaceAccessBySlug(
  * Returns { projectId, workspaceId, assetUrl } on success, null on deny.
  */
 export async function assertAssetAccess(
-  userId: string,
+  ownerId: string,
   assetId: string,
 ): Promise<{ projectId: string; workspaceId: string; assetUrl: string } | null> {
   const supabase = createAdminClient()
@@ -105,7 +101,7 @@ export async function assertAssetAccess(
 
   if (!asset?.project_id) return null
 
-  const access = await assertProjectAccess(userId, asset.project_id)
+  const access = await assertProjectAccess(ownerId, asset.project_id)
   if (!access) return null
 
   return {
