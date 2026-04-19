@@ -7743,34 +7743,98 @@ function buildFeatureOverlay(screenKey, def){
 
 function _el(tag, css){const d=document.createElement(tag);d.style.cssText=css;return d;}
 
-// ─── PICK GAME ───
+// ─── Asset-driven layer helpers ───
+// Every slot in a feature overlay is either an uploaded image (lookup by key
+// in EL_ASSETS) or a clear dashed placeholder labelled with the slot key.
+// The placeholder doubles as the "this slot needs an asset" affordance —
+// when the user sees the dashed box, they know exactly what to upload.
+function _imgSlot(key, x, y, w, h, fit){
+  const d = document.createElement('div');
+  d.dataset.assetKey = key;
+  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:none`;
+  const img = document.createElement('img');
+  img.src = EL_ASSETS[key];
+  img.style.cssText = `width:100%;height:100%;object-fit:${fit||'contain'};pointer-events:none`;
+  d.appendChild(img);
+  return d;
+}
+function _phSlot(key, x, y, w, h, label, c1){
+  const d = document.createElement('div');
+  d.dataset.assetKey = key;
+  d.dataset.placeholder = '1';
+  const fz = Math.max(10, Math.min(w, h) * 0.18);
+  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:#0a0a1a99;border:2px dashed ${c1}55;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:Space Grotesk,sans-serif;color:${c1}cc;text-align:center;padding:8px;box-sizing:border-box;pointer-events:none`;
+  const big = document.createElement('div');
+  big.style.cssText = `font-size:${fz}px;font-weight:700;letter-spacing:.04em`;
+  big.textContent = label;
+  d.appendChild(big);
+  const tag = document.createElement('div');
+  tag.style.cssText = `font-size:${Math.max(8, fz*0.42)}px;font-weight:500;color:${c1}77;font-family:DM Mono,monospace;opacity:.85`;
+  tag.textContent = key;
+  d.appendChild(tag);
+  return d;
+}
+// Shorthand: render an uploaded asset if present, otherwise a placeholder.
+function _slot(key, x, y, w, h, label, c1, fit){
+  return EL_ASSETS[key]
+    ? _imgSlot(key, x, y, w, h, fit)
+    : _phSlot(key, x, y, w, h, label, c1);
+}
+
+// ─── PICK GAME (asset-driven, v1 registry: bonuspick.*) ───
+// Composition matches docs/features-v1-catalogue.md §3:
+//   bg → header → grid of tile_closed (with prize icon overlays) → footer.
+// Each region is its own asset slot keyed `bonuspick.<slot>`. Empty slots
+// render as labelled dashed boxes so the user can see what to upload next.
 function _ovPickGame(ov, cx, cy, cw, ch, c1){
-  const pickCfg = document.getElementById('pick-type-sel')?.value || 'Pick from grid';
-  const picks = parseInt(document.getElementById('pick-picks-inp')?.value)||3;
-  const panelW = Math.round(cw*0.78), panelH = Math.round(ch*0.62);
-  const px = cx+Math.round((cw-panelW)/2), py = cy+Math.round((ch-panelH)/2);
-  const panel = _el('div',`position:absolute;left:${px}px;top:${py}px;width:${panelW}px;height:${panelH}px;background:#0a0a1aee;border:3px solid ${c1}66;border-radius:24px;display:flex;flex-direction:column;align-items:center;padding:30px`);
+  const picks = parseInt(document.getElementById('pick-picks-inp')?.value) || 3;
+  const cols = 4, rows = 3, totalTiles = cols * rows;
 
-  const title = _el('div',`font-size:${Math.round(panelW*0.045)}px;font-weight:700;color:${c1};font-family:Space Grotesk,sans-serif;letter-spacing:.06em;margin-bottom:${Math.round(panelH*0.05)}px;text-transform:uppercase`);
-  title.textContent = 'Choose Your Prize';
-  panel.appendChild(title);
+  // 1. Background — full viewport region (cover-fit)
+  ov.appendChild(_slot('bonuspick.bg', cx, cy, cw, ch, 'BG', c1, 'cover'));
 
-  const grid = _el('div',`display:grid;grid-template-columns:repeat(4,1fr);gap:14px;width:100%;flex:1`);
-  const emojis=['🎁','💰','⭐','🎯','💎','🏆','🌟','💫','🎰','🎪','🎠','🎡'];
-  const itemSize = Math.round(panelW / 5);
-  for(let i=0;i<12;i++){
-    const item = _el('div',`background:#ffffff0a;border:2px solid ${c1}44;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;padding:10px;transition:all .2s`);
-    const ico = _el('div',`font-size:${Math.round(itemSize*0.35)}px`); ico.textContent=emojis[i%emojis.length];
-    const lbl = _el('div',`font-size:${Math.round(itemSize*0.12)}px;color:${c1}88;font-family:Space Grotesk,sans-serif;font-weight:600`); lbl.textContent='???';
-    item.appendChild(ico); item.appendChild(lbl);
-    grid.appendChild(item);
+  // 2. Header band, top-center
+  const headerH = Math.round(ch * 0.075);
+  const headerW = Math.round(cw * 0.72);
+  const headerX = cx + Math.round((cw - headerW) / 2);
+  const headerY = cy + Math.round(ch * 0.06);
+  ov.appendChild(_slot('bonuspick.header', headerX, headerY, headerW, headerH, 'CHOOSE YOUR PRIZE', c1));
+
+  // 3. Tile grid
+  const gridY     = cy + Math.round(ch * 0.18);
+  const gridH     = Math.round(ch * 0.62);
+  const gridW     = Math.round(cw * 0.82);
+  const gridX     = cx + Math.round((cw - gridW) / 2);
+  const tileGap   = 14;
+  const tileW     = Math.round((gridW - (cols - 1) * tileGap) / cols);
+  const tileH     = Math.round((gridH - (rows - 1) * tileGap) / rows);
+  const prizeKeys = ['bonuspick.prize_coin', 'bonuspick.prize_multiplier', 'bonuspick.prize_freespin', 'bonuspick.prize_jackpot'];
+
+  for (let i = 0; i < totalTiles; i++) {
+    const r  = Math.floor(i / cols), c = i % cols;
+    const tx = gridX + c * (tileW + tileGap);
+    const ty = gridY + r * (tileH + tileGap);
+
+    // Tile background (closed state) — same asset for every tile in the grid
+    ov.appendChild(_slot('bonuspick.tile_closed', tx, ty, tileW, tileH, '?', c1));
+
+    // Mini prize icon centered on the tile, cycling through prize types
+    const prizeKey = prizeKeys[i % prizeKeys.length];
+    const pw = Math.round(tileW * 0.55);
+    const ph = Math.round(tileH * 0.55);
+    const px = tx + Math.round((tileW - pw) / 2);
+    const py = ty + Math.round((tileH - ph) / 2);
+    if (EL_ASSETS[prizeKey]) {
+      ov.appendChild(_imgSlot(prizeKey, px, py, pw, ph));
+    }
   }
-  panel.appendChild(grid);
 
-  const info = _el('div',`margin-top:16px;font-size:${Math.round(panelW*0.022)}px;color:#888;font-family:Space Grotesk,sans-serif`);
-  info.textContent = `Pick ${picks} of 12 · Prizes hidden until revealed`;
-  panel.appendChild(info);
-  ov.appendChild(panel);
+  // 4. Footer band, bottom-center
+  const footerH = Math.round(ch * 0.06);
+  const footerW = Math.round(cw * 0.65);
+  const footerX = cx + Math.round((cw - footerW) / 2);
+  const footerY = cy + Math.round(ch * 0.86);
+  ov.appendChild(_slot('bonuspick.footer', footerX, footerY, footerW, footerH, `Pick ${picks} of ${totalTiles}`, c1));
 }
 
 // ─── WHEEL BONUS ───
