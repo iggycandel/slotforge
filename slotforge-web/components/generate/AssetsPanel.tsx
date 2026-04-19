@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ImageIcon, CheckCircle2, Plus,
-  Minus, GripVertical, ChevronDown, ExternalLink, RefreshCw, Upload,
+  Minus, GripVertical, ChevronDown, ChevronRight, ExternalLink, RefreshCw, Upload,
   Loader2,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
@@ -300,6 +300,15 @@ function AssetLibraryContent({
   projectId, orgSlug, onAddToCanvas, assetRefreshTick, projectMeta,
 }: { projectId: string; orgSlug: string; onAddToCanvas: (type: AssetType, url: string) => void; assetRefreshTick?: number; projectMeta?: Record<string, unknown> }) {
   const [assets,  setAssets]  = useState<Record<string, GeneratedAsset>>({})
+  // Collapsed group keys — all groups default to expanded. Header click toggles.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }, [])
   const [loading, setLoading] = useState(true)
 
   const loadAssets = useCallback(() => {
@@ -443,33 +452,38 @@ function AssetLibraryContent({
         </div>
       )}
 
-      {/* ── Asset groups ─────────────────────────────────────────────────── */}
+      {/* ── Base game section divider ───────────────────────────────────── */}
+      {!loading && (
+        <div style={{
+          margin:        '6px 12px 4px',
+          padding:       '4px 0',
+          borderTop:     `1px solid ${T.border}`,
+          fontSize:      9,
+          fontWeight:    700,
+          color:         T.gold,
+          letterSpacing: '.08em',
+          textTransform: 'uppercase',
+        }}>
+          ◆ Base Game
+        </div>
+      )}
+
+      {/* ── Base game groups ─────────────────────────────────────────────── */}
       {!loading && displayGroups.map(group => {
+        const groupKey    = `legacy.${group.label}`
+        const collapsed   = collapsedGroups.has(groupKey)
         const groupAssets = group.types.map(t => ({ type: t, asset: assets[t] }))
         const filledCount = groupAssets.filter(a => !!a.asset).length
-
         return (
           <div key={group.label} style={{ marginBottom: 4 }}>
-            {/* Group label */}
-            <div style={{
-              display:   'flex',
-              alignItems:'center',
-              justifyContent:'space-between',
-              padding:   '6px 12px 4px',
-              fontSize:  10,
-              fontWeight:700,
-              color:     T.textFaint,
-              letterSpacing:'.06em',
-              textTransform:'uppercase',
-            }}>
-              <span>{group.label}</span>
-              <span style={{ color: filledCount === group.types.length ? T.green : T.textFaint }}>
-                {filledCount}/{group.types.length}
-              </span>
-            </div>
-
-            {/* All asset rows — filled and empty alike */}
-            {groupAssets.map(({ type, asset }) => (
+            <GroupHeader
+              label={group.label}
+              filled={filledCount}
+              total={group.types.length}
+              collapsed={collapsed}
+              onToggle={() => toggleGroup(groupKey)}
+            />
+            {!collapsed && groupAssets.map(({ type, asset }) => (
               <LibraryRow
                 key={type}
                 assetType={type}
@@ -485,12 +499,12 @@ function AssetLibraryContent({
       {/* ── Feature slot groups ──────────────────────────────────────────── */}
       {!loading && featureGroups.length > 0 && (
         <div style={{
-          margin: '14px 12px 4px',
-          padding: '4px 0 4px',
-          borderTop: `1px solid ${T.border}`,
-          fontSize: 9,
-          fontWeight: 700,
-          color: T.gold,
+          margin:        '14px 12px 4px',
+          padding:       '4px 0',
+          borderTop:     `1px solid ${T.border}`,
+          fontSize:      9,
+          fontWeight:    700,
+          color:         T.gold,
           letterSpacing: '.08em',
           textTransform: 'uppercase',
         }}>
@@ -498,26 +512,19 @@ function AssetLibraryContent({
         </div>
       )}
       {!loading && featureGroups.map(group => {
+        const groupKey    = `feature.${group.featureId}`
+        const collapsed   = collapsedGroups.has(groupKey)
         const filledCount = group.slots.filter(s => !!assets[s.key]).length
         return (
           <div key={group.featureId} style={{ marginBottom: 4 }}>
-            <div style={{
-              display:        'flex',
-              alignItems:     'center',
-              justifyContent: 'space-between',
-              padding:        '6px 12px 4px',
-              fontSize:       10,
-              fontWeight:     700,
-              color:          T.textFaint,
-              letterSpacing:  '.06em',
-              textTransform:  'uppercase',
-            }}>
-              <span>{group.label}</span>
-              <span style={{ color: filledCount === group.slots.length ? T.green : T.textFaint }}>
-                {filledCount}/{group.slots.length}
-              </span>
-            </div>
-            {group.slots.map(slot => (
+            <GroupHeader
+              label={group.label}
+              filled={filledCount}
+              total={group.slots.length}
+              collapsed={collapsed}
+              onToggle={() => toggleGroup(groupKey)}
+            />
+            {!collapsed && group.slots.map(slot => (
               <FeatureSlotRow
                 key={slot.key}
                 slot={slot}
@@ -529,6 +536,65 @@ function AssetLibraryContent({
         )
       })}
     </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GroupHeader — shared collapsible section header used by both legacy
+// asset groups and feature slot groups. Clicking the header toggles
+// expand/collapse. Count pill on the right turns green when complete.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function GroupHeader({ label, filled, total, collapsed, onToggle }: {
+  label: string; filled: number; total: number; collapsed: boolean; onToggle: () => void
+}) {
+  const allFilled = filled === total && total > 0
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        width:          '100%',
+        padding:        '8px 12px 6px',
+        background:     'transparent',
+        border:         'none',
+        borderBottom:   `1px solid ${T.border}`,
+        cursor:         'pointer',
+        textAlign:      'left',
+        fontFamily:     T.font,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        {collapsed
+          ? <ChevronRight size={12} style={{ color: T.textMuted, flexShrink: 0 }} />
+          : <ChevronDown  size={12} style={{ color: T.gold,      flexShrink: 0 }} />
+        }
+        <span style={{
+          fontSize:      12,
+          fontWeight:    700,
+          color:         T.gold,
+          letterSpacing: '.04em',
+          textTransform: 'uppercase',
+          overflow:      'hidden',
+          textOverflow:  'ellipsis',
+          whiteSpace:    'nowrap',
+        }}>
+          {label}
+        </span>
+      </div>
+      <span style={{
+        fontSize:     10,
+        fontWeight:   700,
+        fontFamily:   "'DM Mono',monospace",
+        color:        allFilled ? T.green : T.textFaint,
+        flexShrink:   0,
+        marginLeft:   8,
+      }}>
+        {filled}/{total}
+      </span>
+    </button>
   )
 }
 
@@ -602,20 +668,29 @@ function FeatureSlotRow({
       {/* Label + slot key + requirement */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 11, fontWeight: 600,
-          color: isEmpty ? T.textFaint : T.textPrimary,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontSize:     13,
+          fontWeight:   600,
+          // Keep the label legible even when empty — old style used textFaint,
+          // which rendered the name almost invisible on the dark bg.
+          color:        isEmpty ? T.textPrimary : T.textPrimary,
+          overflow:     'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace:   'nowrap',
+          lineHeight:   1.25,
         }}>
           {slot.label}
           {required && (
-            <span style={{ color: 'rgba(248,113,113,.7)', marginLeft: 4, fontSize: 10 }}>*</span>
+            <span style={{ color: 'rgba(248,113,113,.85)', marginLeft: 4, fontSize: 11 }}>*</span>
           )}
         </div>
         <div style={{
-          fontSize: 9, marginTop: 1,
-          color: T.textFaint,
-          fontFamily: "'DM Mono',monospace",
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontSize:     10,
+          marginTop:    2,
+          color:        isEmpty ? T.textMuted : T.textFaint,
+          fontFamily:   "'DM Mono',monospace",
+          overflow:     'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace:   'nowrap',
         }}>
           {slot.key}
         </div>
