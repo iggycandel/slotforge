@@ -9702,25 +9702,33 @@ window._sfBridge = (function(){
     try {
       var gf = document.getElementById('gf');
       if(!gf || typeof html2canvas !== 'function') return null;
-      var SCALE = 0.5;
+      var vp = (typeof VP !== 'undefined' && typeof P !== 'undefined') ? VP[P.viewport] : null;
+      // Render only the active viewport region of #gf at native resolution.
+      // For portrait that's 984×2000 = 2M pixels — fast enough on save and
+      // gives us ~2× oversampling vs. the 600-wide target for crisp downscale.
       var full = await html2canvas(gf, {
         useCORS:         true,
         allowTaint:      false,
         backgroundColor: '#0b0e16',
         logging:         false,
-        scale:           SCALE,
+        scale:           1,
+        x:               vp ? vp.cx : 0,
+        y:               vp ? vp.cy : 0,
+        width:           vp ? vp.cw : 2000,
+        height:          vp ? vp.ch : 2000,
       });
-      // Crop to the active viewport so portrait projects don't get the
-      // 2000×2000 work area's empty padding around them.
-      var vp = (typeof VP !== 'undefined' && typeof P !== 'undefined') ? VP[P.viewport] : null;
-      var sx = vp ? Math.round(vp.cx * SCALE) : 0;
-      var sy = vp ? Math.round(vp.cy * SCALE) : 0;
-      var sw = vp ? Math.round(vp.cw * SCALE) : full.width;
-      var sh = vp ? Math.round(vp.ch * SCALE) : full.height;
+      // High-quality downscale to ~600 px wide for a sharp ~80–120 KB JPEG.
+      var TARGET_W = 600;
+      var ratio = full.width > TARGET_W ? TARGET_W / full.width : 1;
+      var dw = Math.round(full.width  * ratio);
+      var dh = Math.round(full.height * ratio);
       var t = document.createElement('canvas');
-      t.width = sw; t.height = sh;
-      t.getContext('2d').drawImage(full, sx, sy, sw, sh, 0, 0, sw, sh);
-      return t.toDataURL('image/jpeg', 0.8);
+      t.width = dw; t.height = dh;
+      var ctx = t.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(full, 0, 0, full.width, full.height, 0, 0, dw, dh);
+      return t.toDataURL('image/jpeg', 0.88);
     } catch(e){
       console.warn('[getThumbnail]', e);
       return null;
