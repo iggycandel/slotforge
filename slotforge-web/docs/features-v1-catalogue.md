@@ -1,6 +1,17 @@
 # Features v1 — Catalogue & Data Model
 
-**Status:** Draft for review. Everything below is my best guess; flag whatever's wrong and I'll iterate.
+**Status:** Reviewed and approved 2026-04-19. See "Decisions log" below for resolutions to the open questions.
+
+## Decisions log
+
+1. **v1 picks** — confirmed: Free Spins, Buy Feature, Bonus Pick, Hold & Spin, Expanding Wild.
+2. **Settings/mechanics** — confirmed.
+3. **Asset slots** — confirmed.
+4. **Default values** — kept as drafted; revisit if real-game data shows otherwise.
+5. **Naming** — feature IDs match the existing `editor.js` `FDEFS` keys (singular: `freespin`, `holdnspin`); asset slot namespaces use the natural plural (`freespins.*`, `holdnspin.*`, `bonuspick.*`, `buy.*`, `expandwild.*`). Pragmatic hybrid — no migration of existing payload data.
+6. **Multi-screen features → feature-scoped tabs.** The current global "Pop-ups" tab gets dissolved. Each feature owns its own intro / in-round / outro screens as sub-tabs under itself. So Bonus Pick (today: 1 screen under Feature Games) becomes 3 sub-screens (intro / pick / outro) under Bonus Pick. The Pop-ups tab is retired; any non-feature-scoped popups (Big Win celebration, jackpot reveal, etc.) move into a new global "Celebrations" or similar in a follow-up. **Phase 2's Bonus Pick vertical slice will pioneer this structure.**
+
+---
 
 **Purpose:** Defines, per feature, the **settings schema**, **asset slots**, **canvas overlay**, and **simulation outline** that the registry will consume. Complements the existing [`features-panel-design-spec.md`](../../docs/features-panel-design-spec.md) which covers the Features workspace UX/layout.
 
@@ -64,10 +75,11 @@ A scatter-triggered round where N spins run at no cost, often with a multiplier 
 
 ### 1.3 Canvas overlay
 
-Two screens in the tab strip: **Free Spins (intro)**, **Free Spins (in-round)**.
+Three sub-tabs under the Free Spins feature: **Intro**, **In-round**, **Outro**.
 
-- **Intro** screen composes: `freespins.intro_banner` centered + total win amount text. Renders over a dimmed base-game capture.
-- **In-round** screen composes: `freespins.bg` (or base bg) + reel area unchanged + `freespins.spin_counter_frame` top-right + `freespins.multiplier_badge` top-left when applicable.
+- **Intro** composes: `freespins.intro_banner` centered + total win amount text. Renders over a dimmed base-game capture.
+- **In-round** composes: `freespins.bg` (or base bg) + reel area unchanged + `freespins.spin_counter_frame` top-right + `freespins.multiplier_badge` top-left when applicable.
+- **Outro** composes: `freespins.outro_banner` centered + cumulative win amount text.
 
 ### 1.4 Simulation
 
@@ -150,9 +162,11 @@ A pick-and-reveal mini-game triggered by N+ bonus symbols.
 
 ### 3.3 Canvas overlay
 
-One screen: **Bonus Pick**. Replaces the entire reel area.
+Three sub-tabs under the Bonus Pick feature: **Intro**, **Pick**, **Outro**. Replaces the entire reel area while active.
 
-Composition (top-down): `bonuspick.bg` → `bonuspick.header` → grid of `bonuspick.tile_closed` per `gridLayout` → `bonuspick.footer`. On tile click during sim: tile swaps to `tile_revealed` + prize icon.
+- **Intro** composes: dimmed base-game capture + a "Bonus!" banner using `bonuspick.header` styling + brief delay before auto-advancing to Pick.
+- **Pick** composes (top-down): `bonuspick.bg` → `bonuspick.header` → grid of `bonuspick.tile_closed` per `gridLayout` → `bonuspick.footer`. On tile click during sim: tile swaps to `tile_revealed` + prize icon.
+- **Outro** composes: `bonuspick.bg` (dimmed) + cumulative tally + "Continue" affordance back to base game.
 
 ### 3.4 Simulation
 
@@ -198,9 +212,11 @@ Special symbols (usually money/coin symbols) lock in place; reels respin until e
 
 ### 4.3 Canvas overlay
 
-Two screens: **Hold & Spin (intro)**, **Hold & Spin (in-round)**.
+Three sub-tabs under the Hold & Spin feature: **Intro**, **In-round**, **Outro**.
 
-In-round composes: `holdnspin.bg` + base reel grid + `holdnspin.coin_symbol_locked` per locked cell + `holdnspin.respin_counter_frame` top + jackpot tier badges along the side.
+- **Intro** composes: `holdnspin.intro_banner` centered over a dimmed base-game capture.
+- **In-round** composes: `holdnspin.bg` + base reel grid + `holdnspin.coin_symbol_locked` per locked cell + `holdnspin.respin_counter_frame` top + jackpot tier badges along the side.
+- **Outro** composes: `holdnspin.outro_banner` + total win + jackpot tier earned (when any).
 
 ### 4.4 Simulation
 
@@ -276,13 +292,13 @@ These apply to every feature in the registry:
 
 ---
 
-## Open questions for you
+## Phase status
 
-1. **v1 picks ok?** If you'd swap any of the 5 (e.g. drop Hold & Spin for Cascade), say so.
-2. **Settings — anything wrong with the mechanics?** Particularly the trigger counts, multiplier ranges, and Hold & Spin respin behaviour.
-3. **Asset slots — anything missing?** Especially for Bonus Pick prize variations and Hold & Spin jackpot tiers.
-4. **Default values** — these are my guesses; if you have target ranges from real games, let's use those.
-5. **Naming** — do you prefer `freespin` or `freespins`? Code currently uses `freespin` (singular). I used `freespins` in the schema for clarity; happy to align either way.
-6. **Multi-screen features** — Free Spins and Hold & Spin currently have intro/in-round/outro. Is that overkill, or should we add them?
-
-When you've reviewed and corrected, I'll move on to **Phase 1: feature registry foundation** in code.
+- [x] **Phase 0** — Catalogue (this doc).
+- [x] **Phase 1** — Feature registry foundation. See [`lib/features/registry.ts`](../lib/features/registry.ts) and [`types/features.ts`](../types/features.ts).
+- [ ] **Phase 2** — Vertical slice for Bonus Pick: replace code-rendered overlay with asset-driven layers; introduce the feature-scoped intro/pick/outro sub-tabs; add per-feature row in Assets workspace and "Assets needed" in Features panel. Pioneers the Pop-ups tab dissolution.
+- [ ] **Phase 2 cycles** — apply same template to Free Spins, Hold & Spin, Buy Feature, Expanding Wild.
+- [ ] **Phase 3** — Assets workspace integration polish.
+- [ ] **Phase 4** — Features workspace integration polish.
+- [ ] **Phase 5** — Sim hooks.
+- [ ] **Phase 6** — Migration + cleanup.

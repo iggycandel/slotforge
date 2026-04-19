@@ -53,7 +53,7 @@ const freeSpins: FeatureDef<FreeSpinsSettings> = {
     { key: 'freespins.outro_banner',          label: 'Outro banner',           requirement: 'required',
       description: '"Total win: X" end screen' },
   ],
-  screens: ['Free Spins (intro)', 'Free Spins (in-round)'],
+  screens: ['Free Spins · Intro', 'Free Spins · In-round', 'Free Spins · Outro'],
 }
 
 // ─── 2. Buy Feature ──────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ const bonusPick: FeatureDef<BonusPickSettings> = {
       description: 'A "POOPER" tile that ends the round early' },
     { key: 'bonuspick.footer',            label: '"Pick X of Y" footer',    requirement: 'required' },
   ],
-  screens: ['Bonus Pick'],
+  screens: ['Bonus Pick · Intro', 'Bonus Pick · Pick', 'Bonus Pick · Outro'],
 }
 
 // ─── 4. Hold & Spin (Lock & Win) ─────────────────────────────────────────────
@@ -170,7 +170,7 @@ const holdAndSpin: FeatureDef<HoldAndSpinSettings> = {
       isApplicable: s => s.jackpotTiers.includes('mini') },
     { key: 'holdnspin.outro_banner',          label: 'Outro banner',          requirement: 'required' },
   ],
-  screens: ['Hold & Spin (intro)', 'Hold & Spin (in-round)'],
+  screens: ['Hold & Spin · Intro', 'Hold & Spin · In-round', 'Hold & Spin · Outro'],
 }
 
 // ─── 5. Expanding Wild ───────────────────────────────────────────────────────
