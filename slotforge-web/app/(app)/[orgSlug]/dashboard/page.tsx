@@ -195,7 +195,7 @@ export default function DashboardPage() {
         ) : (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
             gap: 16,
           }}>
             {projects.map(p => (
@@ -242,8 +242,8 @@ function ProjectCard({
           boxShadow: hovered ? '0 8px 32px rgba(0,0,0,0.4)' : 'none',
         }}
       >
-        {/* Thumbnail */}
-        <div style={{ width: '100%', paddingTop: '56.25%', position: 'relative', background: '#080b12' }}>
+        {/* Thumbnail — portrait 9:16 to match the editor viewport capture */}
+        <div style={{ width: '100%', paddingTop: '177.78%', position: 'relative', background: '#080b12' }}>
           {thumb ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img

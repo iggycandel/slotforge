@@ -29,8 +29,10 @@ export function ProjectCard({ project, orgSlug }: ProjectCardProps) {
         'overflow-hidden'
       )}
     >
-      {/* Thumbnail — a JPEG data URL from the editor (240×135), so <img> not next/image */}
-      <div className="relative aspect-video bg-sf-bg overflow-hidden">
+      {/* Thumbnail — a JPEG data URL captured from the editor's portrait
+          viewport (~492×1000 for portrait projects). Plain <img>, not
+          next/image, because data URLs bypass optimisation anyway. */}
+      <div className="relative aspect-[9/16] bg-sf-bg overflow-hidden">
         {project.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

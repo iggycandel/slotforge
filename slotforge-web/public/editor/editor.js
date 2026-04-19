@@ -9693,33 +9693,34 @@ window._sfBridge = (function(){
 
   /* ─── 4. Thumbnail ─── */
   // The composite view is a DIV (#gf) with positioned <img> layers, not a
-  // real <canvas>, so we rasterize it with html2canvas. Returns a Promise.
+  // real <canvas>, so we rasterize it with html2canvas. We capture the full
+  // 2000×2000 #gf at half resolution then crop to the active viewport box
+  // (portrait 984×2000 or landscape 2000×1125) so the thumbnail matches
+  // exactly what the user sees inside #gf-outer in the editor. Returns a
+  // Promise resolving to a JPEG data URL.
   async function getThumbnail(){
     try {
       var gf = document.getElementById('gf');
       if(!gf || typeof html2canvas !== 'function') return null;
+      var SCALE = 0.5;
       var full = await html2canvas(gf, {
-        useCORS:          true,
-        allowTaint:       false,
-        backgroundColor:  '#0b0e16',
-        logging:          false,
-        // Keep the capture fast — the source is 2000×2000, we only need a preview.
-        scale:            0.1,
+        useCORS:         true,
+        allowTaint:      false,
+        backgroundColor: '#0b0e16',
+        logging:         false,
+        scale:           SCALE,
       });
-      // Downscale to a consistent 240×135 preview regardless of aspect ratio.
+      // Crop to the active viewport so portrait projects don't get the
+      // 2000×2000 work area's empty padding around them.
+      var vp = (typeof VP !== 'undefined' && typeof P !== 'undefined') ? VP[P.viewport] : null;
+      var sx = vp ? Math.round(vp.cx * SCALE) : 0;
+      var sy = vp ? Math.round(vp.cy * SCALE) : 0;
+      var sw = vp ? Math.round(vp.cw * SCALE) : full.width;
+      var sh = vp ? Math.round(vp.ch * SCALE) : full.height;
       var t = document.createElement('canvas');
-      t.width = 240; t.height = 135;
-      var ctx = t.getContext('2d');
-      ctx.fillStyle = '#0b0e16';
-      ctx.fillRect(0, 0, 240, 135);
-      // Contain-fit the full capture inside 240×135
-      var scale = Math.min(240 / full.width, 135 / full.height);
-      var dw = full.width  * scale;
-      var dh = full.height * scale;
-      var dx = (240 - dw) / 2;
-      var dy = (135 - dh) / 2;
-      ctx.drawImage(full, dx, dy, dw, dh);
-      return t.toDataURL('image/jpeg', 0.75);
+      t.width = sw; t.height = sh;
+      t.getContext('2d').drawImage(full, sx, sy, sw, sh, 0, 0, sw, sh);
+      return t.toDataURL('image/jpeg', 0.8);
     } catch(e){
       console.warn('[getThumbnail]', e);
       return null;
