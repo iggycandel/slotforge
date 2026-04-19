@@ -24,6 +24,7 @@ import type { AssetType, ProjectMeta } from '@/types/assets'
 import { getOrgPlan, canUseAI,
          getOrgCreditStatus,
          consumeCredits }       from '@/lib/billing/subscription'
+import { assertProjectAccess } from '@/lib/supabase/authz'
 
 // Extend timeout for single-asset generation (~15-30 s)
 export const maxDuration = 60
@@ -93,6 +94,10 @@ export async function POST(req: NextRequest) {
 
   const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta } = parsed.data
 
+  if (!(await assertProjectAccess(userId, project_id))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   try {
     // ── Build prompt ──────────────────────────────────────────────────────────
     // Normal path: buildPrompt assembles the full prompt from templates + style + meta.
@@ -117,8 +122,19 @@ export async function POST(req: NextRequest) {
       generated.provider
     )
 
-    // Consume 1 credit for the successfully generated image
-    consumeCredits(effectiveId, 1).catch(() => {})
+    // Consume 1 credit for the successfully generated image.
+    // If this fails (DB outage etc.) we surface the error instead of silently
+    // granting a free generation — the asset is already created, so the user
+    // sees a 500 but support can reconcile from logs.
+    try {
+      await consumeCredits(effectiveId, 1)
+    } catch (err) {
+      console.error('[ai-single] Failed to consume credit after generation:', err)
+      return NextResponse.json(
+        { error: 'credit_tracking_failed', asset, message: 'Asset generated but credit tracking failed. Contact support.' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({ asset })
 

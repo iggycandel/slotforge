@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
+import { assertProjectAccess } from '@/lib/supabase/authz'
 
 // Use the service role key so uploads bypass RLS
 const supabaseAdmin = createClient(
@@ -18,6 +19,10 @@ export async function GET(req: NextRequest) {
 
   const projectId = req.nextUrl.searchParams.get('project_id')
   if (!projectId) return NextResponse.json({ error: 'Missing project_id' }, { status: 400 })
+
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   const { data, error } = await supabaseAdmin.storage
     .from('project-assets')
@@ -48,6 +53,10 @@ export async function POST(req: NextRequest) {
 
   if (!file || !projectId || !assetKey) {
     return NextResponse.json({ error: 'Missing file, projectId or assetKey' }, { status: 400 })
+  }
+
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   // Sanitise the key so it's safe as a file path
@@ -117,6 +126,10 @@ export async function DELETE(req: NextRequest) {
 
   if (!projectId || !fileName) {
     return NextResponse.json({ error: 'Missing project_id or file_name' }, { status: 400 })
+  }
+
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   // Safety: only allow removing files within this project's folder

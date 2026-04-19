@@ -12,6 +12,7 @@ import { auth }               from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                  from 'zod'
 import { createAdminClient }  from '@/lib/supabase/admin'
+import { assertProjectAccess } from '@/lib/supabase/authz'
 
 const UpsertSchema = z.object({
   project_id: z.string().uuid(),
@@ -28,6 +29,10 @@ export async function GET(req: NextRequest) {
 
   const projectId = req.nextUrl.searchParams.get('project_id')
   if (!projectId) return NextResponse.json({ error: 'project_id required' }, { status: 400 })
+
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return NextResponse.json({ context: null })
+  }
 
   try {
     const supabase = createAdminClient()
@@ -57,6 +62,10 @@ export async function POST(req: NextRequest) {
   }
 
   const { project_id, theme, style_id, provider } = parsed.data
+
+  if (!(await assertProjectAccess(userId, project_id))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   try {
     const supabase = createAdminClient()

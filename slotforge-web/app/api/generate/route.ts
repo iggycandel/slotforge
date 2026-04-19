@@ -12,6 +12,7 @@ import type { AssetType, ProjectMeta }  from '@/types/assets'
 import { getOrgPlan, canUseAI,
          getOrgCreditStatus,
          consumeCredits }        from '@/lib/billing/subscription'
+import { assertProjectAccess, assertAssetAccess } from '@/lib/supabase/authz'
 
 // ─── Vercel function timeout ─────────────────────────────────────────────────
 // 15 assets × ~25 s each (in batches of 3) ≈ 125 s.
@@ -77,6 +78,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { theme, project_id, provider, style_id, project_meta, asset_types } = parsed.data
+
+  if (!(await assertProjectAccess(userId, project_id))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const activeTypes = asset_types?.length
     ? asset_types.filter(t => (ALL_TYPES as string[]).includes(t)) as AssetType[]
     : ALL_TYPES
@@ -109,8 +115,15 @@ export async function POST(req: NextRequest) {
             // instead of waiting for the full 'complete' event.
             onAssetComplete: (asset) => {
               emit('asset', asset)
-              // Consume 1 credit per successfully generated image
-              consumeCredits(effectiveId, 1).catch(() => {})
+              // Consume 1 credit per successfully generated image.
+              // Callback is invoked synchronously by the pipeline, so we can't
+              // block on the promise here — but we MUST surface failures instead
+              // of silently granting free generations. Emit a stream event on
+              // error; the client shows a warning and support reconciles from logs.
+              consumeCredits(effectiveId, 1).catch(err => {
+                console.error('[generate] Failed to consume credit for', asset.type, err)
+                emit('credit_error', { assetType: asset.type, message: 'Credit tracking failed' })
+              })
             },
           }
         )
@@ -155,26 +168,17 @@ export async function DELETE(req: NextRequest) {
   if (!assetId) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   try {
-    const { getProjectAssets } = await import('@/lib/storage/assets')
-    const { createAdminClient }  = await import('@/lib/supabase/admin')
-    const supabase = createAdminClient()
-
-    // Look up the record so we can find the storage path
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: asset, error: fetchErr } = await (supabase as any)
-      .from('generated_assets')
-      .select('url, project_id')
-      .eq('id', assetId)
-      .single()
-    void getProjectAssets // suppress unused import lint
-
-    if (fetchErr || !asset) {
+    const access = await assertAssetAccess(userId, assetId)
+    if (!access) {
       return NextResponse.json({ error: 'Asset not found' }, { status: 404 })
     }
 
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const supabase = createAdminClient()
+
     // Reconstruct storage path from the public URL
     // URL format: https://<ref>.supabase.co/storage/v1/object/public/project-assets/<path>
-    const pathMatch = (asset.url as string).match(/\/object\/public\/project-assets\/(.+)$/)
+    const pathMatch = access.assetUrl.match(/\/object\/public\/project-assets\/(.+)$/)
     if (pathMatch?.[1]) {
       await supabase.storage.from('project-assets').remove([pathMatch[1]])
     }
@@ -201,6 +205,10 @@ export async function GET(req: NextRequest) {
   const projectId = req.nextUrl.searchParams.get('project_id')
   if (!projectId) {
     return NextResponse.json({ error: 'project_id required' }, { status: 400 })
+  }
+
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   try {
