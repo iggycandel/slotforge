@@ -135,17 +135,21 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
+      // The editor iframe is same-origin (served from /editor/slotforge.html).
+      // Reject any message from a different origin — otherwise any page that
+      // iframes the app can forge SF_AUTOSAVE / SF_UPLOAD_ASSET / SF_AI_GENERATE.
+      if (event.origin !== window.location.origin) return
       const msg = event.data
       if (!msg?.type) return
 
       if (msg.type === 'SF_IFRAME_READY') {
         iframeRef.current?.contentWindow?.postMessage({
           type: 'SF_LOAD', payload: payloadRef.current ?? null, projectName,
-        }, '*')
-        iframeRef.current?.contentWindow?.postMessage({ type: 'SF_INJECT_CSS', css: IFRAME_CSS }, '*')
+        }, window.location.origin)
+        iframeRef.current?.contentWindow?.postMessage({ type: 'SF_INJECT_CSS', css: IFRAME_CSS }, window.location.origin)
         // Once CSS is injected, request a layers update so RightPanel populates immediately
         setTimeout(() => {
-          iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_LAYERS_UPDATE' }, '*')
+          iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_LAYERS_UPDATE' }, window.location.origin)
         }, 400)
       }
 
@@ -175,7 +179,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           .then(({ url, error }) => {
             iframeRef.current?.contentWindow?.postMessage({
               type: 'SF_UPLOAD_ASSET_RESULT', assetKey: msg.assetKey, url: url ?? null, error: error ?? null,
-            }, '*')
+            }, window.location.origin)
             if (url && payloadRef.current) {
               const assets = ((payloadRef.current.assets as Record<string, unknown>) ?? {})
               payloadRef.current = { ...payloadRef.current, assets: { ...assets, [msg.assetKey as string]: url } }
@@ -187,7 +191,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           .catch(err => {
             iframeRef.current?.contentWindow?.postMessage({
               type: 'SF_UPLOAD_ASSET_RESULT', assetKey: msg.assetKey, url: null, error: String(err),
-            }, '*')
+            }, window.location.origin)
           })
       }
 
@@ -253,7 +257,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         if (!assetType) {
           iframeRef.current?.contentWindow?.postMessage({
             type: 'SF_AI_GENERATE_RESULT', ctxKey, error: `No asset type mapped for layer "${ctxKey}"`,
-          }, '*')
+          }, window.location.origin)
           return
         }
 
@@ -273,18 +277,18 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             if (data.error) {
               iframeRef.current?.contentWindow?.postMessage({
                 type: 'SF_AI_GENERATE_RESULT', ctxKey, error: data.error,
-              }, '*')
+              }, window.location.origin)
               return
             }
             const url = data.asset?.url as string
             // Inject the image into the canvas layer
             iframeRef.current?.contentWindow?.postMessage({
               type: 'SF_INJECT_IMAGE_LAYER', assetType, url,
-            }, '*')
+            }, window.location.origin)
             // Also notify the popup so it can show success and close
             iframeRef.current?.contentWindow?.postMessage({
               type: 'SF_AI_GENERATE_RESULT', ctxKey, url,
-            }, '*')
+            }, window.location.origin)
             // Update saved payload with the new asset URL
             if (payloadRef.current) {
               const assets = ((payloadRef.current.assets as Record<string, unknown>) ?? {})
@@ -295,7 +299,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           .catch(err => {
             iframeRef.current?.contentWindow?.postMessage({
               type: 'SF_AI_GENERATE_RESULT', ctxKey, error: String(err),
-            }, '*')
+            }, window.location.origin)
           })
       }
     }
@@ -308,7 +312,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   useEffect(() => {
     const iv = setInterval(() => {
       if (saveState.status === 'dirty' || saveState.status === 'error') {
-        iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_SAVE' }, '*')
+        iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_SAVE' }, window.location.origin)
       }
     }, saveState.status === 'error' ? 15000 : 30000)
     return () => clearInterval(iv)
@@ -325,18 +329,18 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
   function triggerManualSave() {
     manualSaveFlag.current = true
-    iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_SAVE' }, '*')
+    iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_SAVE' }, window.location.origin)
   }
 
   async function handleRestore(snap: ProjectSnapshot) {
     if (!confirm('Restore this version?')) return
     await restoreSnapshot(snap.id)
-    iframeRef.current?.contentWindow?.postMessage({ type: 'SF_LOAD', payload: snap.payload }, '*')
+    iframeRef.current?.contentWindow?.postMessage({ type: 'SF_LOAD', payload: snap.payload }, window.location.origin)
     setSaveState({ status: 'saved', lastSaved: new Date() })
   }
 
   function handleAddToCanvas(assetType: AssetType, url: string) {
-    iframeRef.current?.contentWindow?.postMessage({ type: 'SF_INJECT_IMAGE_LAYER', assetType, url }, '*')
+    iframeRef.current?.contentWindow?.postMessage({ type: 'SF_INJECT_IMAGE_LAYER', assetType, url }, window.location.origin)
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -474,7 +478,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             exportsEnabled={exportsEnabled}
             onBackToCanvas={() => {
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
-              iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, '*')
+              iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)
             }}
           />
         )}

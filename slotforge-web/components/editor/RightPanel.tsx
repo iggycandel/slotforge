@@ -100,13 +100,14 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
   }
 
   const sendOp = useCallback((op: string, key?: string, extra?: Record<string, unknown>) => {
-    getIframe()?.contentWindow?.postMessage({ type: 'SF_LAYER_OP', op, key, ...extra }, '*')
+    getIframe()?.contentWindow?.postMessage({ type: 'SF_LAYER_OP', op, key, ...extra }, window.location.origin)
   }, [])
 
   // ── Listen for SF_LAYERS_UPDATE ────────────────────────────────────────────
 
   useEffect(() => {
     function onMsg(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return
       if (e.data?.type !== 'SF_LAYERS_UPDATE') return
       setLayers(e.data.layers ?? [])
       setScreen(e.data.screenLabel ?? e.data.screen ?? '')
@@ -119,7 +120,7 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
 
   useEffect(() => {
     if (activeTab === 'layers') {
-      const req = () => getIframe()?.contentWindow?.postMessage({ type: 'SF_REQUEST_LAYERS_UPDATE' }, '*')
+      const req = () => getIframe()?.contentWindow?.postMessage({ type: 'SF_REQUEST_LAYERS_UPDATE' }, window.location.origin)
       // Small delay to ensure iframe is ready
       const t = setTimeout(req, 200)
       return () => clearTimeout(t)

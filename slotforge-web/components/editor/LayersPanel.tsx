@@ -110,6 +110,7 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
   // ── Listen for SF_LAYERS_UPDATE from iframe ──────────────────────────────────
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return
       if (e.data?.type !== 'SF_LAYERS_UPDATE') return
       setLayers(e.data.layers ?? [])
       setScreen(e.data.screenLabel ?? e.data.screen ?? '')
@@ -121,7 +122,7 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
   // ── Send SF_LAYER_OP to iframe ───────────────────────────────────────────────
   const sendOp = useCallback((op: string, key?: string, extra?: Record<string, unknown>) => {
     const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="Spinative Editor"]')
-    iframe?.contentWindow?.postMessage({ type: 'SF_LAYER_OP', op, key, ...extra }, '*')
+    iframe?.contentWindow?.postMessage({ type: 'SF_LAYER_OP', op, key, ...extra }, window.location.origin)
   }, [])
 
   // ── Drag logic ──────────────────────────────────────────────────────────────
