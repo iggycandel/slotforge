@@ -1,35 +1,44 @@
-'use client'
-import { useUser } from '@clerk/nextjs'
-import { useEffect } from 'react'
+import { auth } from '@clerk/nextjs/server'
+import { redirect } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-export default function OnboardingPage() {
-  const { user, isLoaded } = useUser()
+/**
+ * Post-auth landing page. Resolves the user's actual workspace slug from the
+ * database (which may differ from userId if the user has renamed their slug)
+ * and redirects into that workspace. Falls back to creating a personal
+ * workspace on first sign-in.
+ */
+export default async function OnboardingPage() {
+  const { userId } = await auth()
+  if (!userId) redirect('/sign-in')
 
-  useEffect(() => {
-    if (isLoaded && user) {
-      window.location.href = '/' + user.id + '/dashboard'
-    } else if (isLoaded && !user) {
-      window.location.href = '/sign-in'
-    }
-  }, [isLoaded, user])
+  const supabase = createAdminClient()
 
-  return (
-    <main style={{
-      minHeight: '100vh', background: '#07080d',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', gap: 16,
-    }}>
-      {/* Spinner */}
-      <div style={{
-        width: 36, height: 36, borderRadius: '50%',
-        border: '3px solid rgba(215,168,79,0.15)',
-        borderTopColor: '#d7a84f',
-        animation: 'spin 0.8s linear infinite',
-      }} />
-      <p style={{ color: '#7d8799', fontSize: 14, fontFamily: 'Inter, sans-serif' }}>
-        Entering Spinative…
-      </p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-    </main>
-  )
+  // Look up the workspace by clerk_org_id (stable) — not by slug, because
+  // the user may have renamed their slug since their last visit.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: existing } = await (supabase as any)
+    .from('workspaces')
+    .select('slug')
+    .eq('clerk_org_id', userId)
+    .maybeSingle()
+
+  if (existing?.slug) {
+    redirect(`/${existing.slug}/dashboard`)
+  }
+
+  // First-time user — create a personal workspace with slug = userId.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: created } = await (supabase as any)
+    .from('workspaces')
+    .insert({
+      clerk_org_id: userId,
+      name:         'Personal',
+      slug:         userId,
+      plan:         'free',
+    })
+    .select('slug')
+    .single()
+
+  redirect(`/${created?.slug ?? userId}/dashboard`)
 }
