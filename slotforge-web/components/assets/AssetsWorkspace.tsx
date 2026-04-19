@@ -18,6 +18,9 @@ import {
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import { ASSET_LABELS } from '@/types/assets'
+import type { FeatureDef, FeatureId, AssetSlot } from '@/types/features'
+import { activeAssetSlots } from '@/types/features'
+import { FEATURE_REGISTRY } from '@/lib/features/registry'
 import { GRAPHIC_STYLES } from '@/lib/ai/styles'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -152,6 +155,45 @@ function buildAssetMap(
   return map
 }
 
+// ─── Feature slot key set — derived once from the registry ──────────────────
+// Used to separate feature-namespaced assets (e.g. "bonuspick.bg") from
+// legacy AssetType entries when both arrive in the same /api/generate list.
+const FEATURE_SLOT_KEYS: Set<string> = new Set(
+  Object.values(FEATURE_REGISTRY).flatMap(def => def.assetSlots.map(s => s.key))
+)
+
+/** Latest asset per feature slot key (e.g. "bonuspick.bg" → GeneratedAsset). */
+function buildFeatureAssetMap(list: GeneratedAsset[]): Record<string, GeneratedAsset> {
+  const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  const map: Record<string, GeneratedAsset> = {}
+  for (const asset of sorted) {
+    if (FEATURE_SLOT_KEYS.has(asset.type) && !map[asset.type]) {
+      map[asset.type] = asset
+    }
+  }
+  return map
+}
+
+interface FeatureSlotGroup {
+  featureId: FeatureId
+  label:     string
+  slots:     AssetSlot[]
+}
+/** Build feature slot groups for every feature enabled in projectMeta.features. */
+function buildFeatureSlotGroups(meta?: Record<string, unknown>): FeatureSlotGroup[] {
+  const features = (meta?.features as Record<string, boolean | unknown> | undefined) ?? {}
+  const groups: FeatureSlotGroup[] = []
+  for (const [id, def] of Object.entries(FEATURE_REGISTRY) as [FeatureId, FeatureDef][]) {
+    if (!features[id]) continue
+    groups.push({
+      featureId: id,
+      label:     def.label,
+      slots:     activeAssetSlots(def, def.defaultSettings),
+    })
+  }
+  return groups
+}
+
 /** Build per-type history list (newest-first, ALL versions) for version history UI. */
 function buildAssetHistory(
   list: GeneratedAsset[]
@@ -210,6 +252,11 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   )
   const [assetHistory, setAssetHistory] = useState<Partial<Record<AssetType, GeneratedAsset[]>>>(
     () => buildAssetHistory(initialAssets)
+  )
+  // Feature slot assets — parallel map keyed by namespaced slot key ("bonuspick.bg").
+  // Kept separate from `assets` so the existing AssetType-typed code paths stay intact.
+  const [featureAssets, setFeatureAssets] = useState<Record<string, GeneratedAsset>>(
+    () => buildFeatureAssetMap(initialAssets)
   )
 
   // Selection & navigation
@@ -277,6 +324,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // Recomputed whenever the editor sends updated symbol counts / names.
   const assetGroups = useMemo(() => buildDynamicGroups(projectMeta), [projectMeta])
   const shortLabels = useMemo(() => buildShortLabels(assetGroups as (AssetGroup & { _names?: string[] })[]), [assetGroups])
+  // Feature slot groups appear below the legacy AssetType groups when the
+  // corresponding feature is enabled in projectMeta.features.
+  const featureGroups = useMemo(() => buildFeatureSlotGroups(projectMeta), [projectMeta])
 
   // ─── In inline mode, pre-load existing assets from API (no server-side fetch) ─
 
@@ -289,6 +339,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         if (list.length > 0) {
           setAssets(buildAssetMap(list))
           setAssetHistory(buildAssetHistory(list))
+          setFeatureAssets(buildFeatureAssetMap(list))
         }
       })
       .catch(() => {/* non-fatal */})
@@ -511,6 +562,37 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     setAssets(prev => ({ ...prev, [assetType]: historicalAsset }))
     addLog(`↩ Reverted ${assetType} to version from ${timeAgo(historicalAsset.created_at)}`)
   }, [addLog])
+
+  // ─── Feature slot upload (namespaced keys like "bonuspick.bg") ──────────────
+  // Same endpoint as handleUpload but routes the result into featureAssets so
+  // the feature sections below the legacy grid refresh without a roundtrip.
+  const handleFeatureSlotUpload = useCallback(async (slotKey: string, file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('projectId', projectId)
+    fd.append('assetKey', slotKey)
+    fd.append('theme', theme || 'custom')
+    addLog(`Uploading ${slotKey}…`)
+    try {
+      const res  = await fetch('/api/assets/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok || json.error) { addLog(`Upload error: ${json.error ?? 'Failed'}`); return }
+      const newAsset: GeneratedAsset = json.asset ?? {
+        id:         crypto.randomUUID(),
+        project_id: projectId,
+        type:       slotKey,
+        url:        json.url,
+        prompt:     'User uploaded image',
+        theme:      theme || 'custom',
+        provider:   'upload' as const,
+        created_at: new Date().toISOString(),
+      }
+      setFeatureAssets(prev => ({ ...prev, [slotKey]: newAsset }))
+      addLog(`✓ Uploaded ${slotKey}`)
+    } catch (err) {
+      addLog(`Upload error: ${err instanceof Error ? err.message : 'Failed'}`)
+    }
+  }, [projectId, theme, addLog])
 
   // ─── Computed values ────────────────────────────────────────────────────────
 
@@ -836,6 +918,32 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 assetHistory={assetHistory}
                 isActive={activeGroup === group.id}
                 shortLabels={shortLabels}
+              />
+            ))}
+
+            {/* ── Feature slot sections ────────────────────────────────── */}
+            {featureGroups.length > 0 && (
+              <div style={{
+                margin:        '12px 0 16px',
+                paddingTop:    16,
+                borderTop:     `1px solid ${C.border}`,
+                fontSize:      11,
+                fontWeight:    700,
+                color:         C.gold,
+                letterSpacing: '.1em',
+                textTransform: 'uppercase',
+              }}>
+                ✦ Features
+              </div>
+            )}
+            {featureGroups.map(group => (
+              <FeatureSlotsSection
+                key={group.featureId}
+                featureId={group.featureId}
+                label={group.label}
+                slots={group.slots}
+                assets={featureAssets}
+                onUpload={handleFeatureSlotUpload}
               />
             ))}
           </div>
@@ -2299,6 +2407,170 @@ function FeedbackTab({ logs }: { logs: string[] }) {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feature slot section — appears below the legacy AssetGroupSections when a
+// feature is enabled. Renders one grid of asset tiles per active feature slot.
+// No generation / prompt editor / regen UI — feature assets are upload-only
+// for now (the AI generation path is the next phase for features).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FeatureSlotsSection({
+  featureId, label, slots, assets, onUpload,
+}: {
+  featureId: FeatureId
+  label:     string
+  slots:     AssetSlot[]
+  assets:    Record<string, GeneratedAsset>
+  onUpload:  (slotKey: string, file: File) => void
+}) {
+  const filledCount = slots.filter(s => !!assets[s.key]).length
+  return (
+    <div id={`feature-group-${featureId}`} style={{ marginBottom: 32 }}>
+      {/* Group header — mirrors the AssetGroupSection header style */}
+      <div style={{
+        display:       'flex',
+        alignItems:    'center',
+        gap:           10,
+        marginBottom:  12,
+      }}>
+        <div style={{
+          fontSize:      13,
+          fontWeight:    700,
+          color:         C.tx,
+          letterSpacing: '.03em',
+        }}>
+          {label}
+        </div>
+        <div style={{
+          fontSize:   10,
+          fontWeight: 700,
+          padding:    '2px 8px',
+          borderRadius: 10,
+          color:      filledCount === slots.length ? C.green : C.txMuted,
+          background: filledCount === slots.length ? 'rgba(52,211,153,.1)' : C.surfHigh,
+          border:     `1px solid ${filledCount === slots.length ? 'rgba(52,211,153,.2)' : 'transparent'}`,
+        }}>
+          {filledCount}/{slots.length}
+        </div>
+      </div>
+      <div style={{
+        display:             'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+        gap:                 10,
+      }}>
+        {slots.map(slot => (
+          <FeatureSlotTile
+            key={slot.key}
+            slot={slot}
+            asset={assets[slot.key]}
+            onUpload={onUpload}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FeatureSlotTile({
+  slot, asset, onUpload,
+}: {
+  slot:     AssetSlot
+  asset?:   GeneratedAsset
+  onUpload: (slotKey: string, file: File) => void
+}) {
+  const fileInput = useRef<HTMLInputElement>(null)
+  const isEmpty   = !asset
+  const required  = slot.requirement === 'required'
+
+  function handleClick() {
+    fileInput.current?.click()
+  }
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    onUpload(slot.key, file)
+  }
+
+  return (
+    <div
+      title={slot.description || `Upload ${slot.label}`}
+      style={{
+        display:        'flex',
+        flexDirection:  'column',
+        borderRadius:   10,
+        background:     C.surface,
+        border:         `1px solid ${isEmpty ? C.border : 'rgba(201,168,76,.3)'}`,
+        overflow:       'hidden',
+      }}
+    >
+      {/* Thumbnail / empty state */}
+      <button
+        onClick={handleClick}
+        style={{
+          aspectRatio:    '1 / 1',
+          width:          '100%',
+          border:         'none',
+          background:     isEmpty
+            ? `repeating-linear-gradient(45deg, ${C.surfHigh} 0 6px, transparent 6px 12px)`
+            : C.bg,
+          cursor:         'pointer',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'center',
+          padding:        0,
+        }}
+      >
+        {asset
+          ? <img
+              src={asset.url}
+              alt={slot.label}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: C.txMuted }}>
+              <Upload size={18} />
+              <span style={{ fontSize: 9, fontWeight: 600 }}>Click to upload</span>
+            </div>
+          )
+        }
+      </button>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+      {/* Label + slot key */}
+      <div style={{ padding: '8px 10px 10px' }}>
+        <div style={{
+          fontSize:     12,
+          fontWeight:   600,
+          color:        C.tx,
+          overflow:     'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace:   'nowrap',
+        }}>
+          {slot.label}
+          {required && <span style={{ color: 'rgba(248,113,113,.85)', marginLeft: 3 }}>*</span>}
+        </div>
+        <div style={{
+          fontSize:     10,
+          marginTop:    2,
+          fontFamily:   "'DM Mono',monospace",
+          color:        C.txFaint,
+          overflow:     'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace:   'nowrap',
+        }}>
+          {slot.key}
+        </div>
+      </div>
     </div>
   )
 }
