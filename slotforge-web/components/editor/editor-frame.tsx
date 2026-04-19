@@ -203,8 +203,15 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       }
 
       if (msg.type === 'SF_AUTOSAVE' && msg.payload) {
-        payloadRef.current = msg.payload
-        const pl = msg.payload as Record<string, unknown>
+        // editor.js sends { payload, thumbnail } at the top level of the message.
+        // Fold the thumbnail (a JPEG data URL from a canvas snapshot) into the
+        // payload under _thumbnail so autosaveProject picks it up.
+        const incoming = msg.payload as Record<string, unknown>
+        const withThumb = msg.thumbnail
+          ? { ...incoming, _thumbnail: msg.thumbnail as string }
+          : incoming
+        payloadRef.current = withThumb
+        const pl = withThumb
         const gn = pl.gameName as string | undefined
         if (gn?.trim()) setLiveProjectName(gn.trim())
         // Keep editorMeta in sync so RightPanel symbol counts stay accurate
@@ -221,7 +228,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         } as Record<string, unknown>))
         const isManual = manualSaveFlag.current
         manualSaveFlag.current = false
-        doSave(msg.payload, isManual)
+        doSave(withThumb, isManual)
       }
 
       // ── AI single-asset generation triggered from right-click context menu ──

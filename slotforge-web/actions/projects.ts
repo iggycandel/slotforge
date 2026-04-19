@@ -34,12 +34,16 @@ export async function getProjects(
   const { data, error } = await q
   if (error) { console.error('[getProjects]', error); return [] }
 
-  // Map thumbnail_path → thumbnail_url (Supabase Storage public URL)
+  // Map thumbnail_path → thumbnail_url. The editor stores JPEG data URLs
+  // directly in thumbnail_path (small enough for a 240×135 preview); legacy
+  // rows may contain a Supabase Storage path, so handle both.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   return (data ?? []).map((row) => ({
     ...row,
     thumbnail_url: row.thumbnail_path
-      ? `${supabaseUrl}/storage/v1/object/public/thumbnails/${row.thumbnail_path}`
+      ? (row.thumbnail_path.startsWith('data:')
+          ? row.thumbnail_path
+          : `${supabaseUrl}/storage/v1/object/public/thumbnails/${row.thumbnail_path}`)
       : null,
   })) as Project[]
 }

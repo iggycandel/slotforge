@@ -1,9 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { formatDistanceToNow } from 'date-fns'
-import { MoreHorizontal, Layers } from 'lucide-react'
+import { MoreHorizontal, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { Project } from '@/types'
@@ -30,20 +29,21 @@ export function ProjectCard({ project, orgSlug }: ProjectCardProps) {
         'overflow-hidden'
       )}
     >
-      {/* Thumbnail */}
+      {/* Thumbnail — a JPEG data URL from the editor (240×135), so <img> not next/image */}
       <div className="relative aspect-video bg-sf-bg overflow-hidden">
-        {(project.thumbnail_url || (project.payload as any)?._thumbnail) ? (
-          <Image
-            src={(project.thumbnail_url || (project.payload as any)?._thumbnail) as string}
+        {project.thumbnail_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={project.thumbnail_url}
             alt={project.name}
-            fill
-            className="object-cover group-hover:scale-105 transition-transform duration-300"
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-2 text-sf-subtle">
-              <Layers className="w-8 h-8" />
-              <span className="text-xs font-mono">No preview</span>
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-sf-bg to-sf-overlay">
+            <div className="flex flex-col items-center gap-2 text-center px-4">
+              <Sparkles className="w-6 h-6 text-sf-gold/70" />
+              <span className="text-xs font-semibold text-sf-text">This is your new project!</span>
+              <span className="text-[10px] text-sf-subtle">Open it to start designing</span>
             </div>
           </div>
         )}

@@ -50,12 +50,16 @@ export async function GET() {
 
   if (error) return NextResponse.json([], { status: 500 })
 
-  // Map thumbnail_path → thumbnail_url for the dashboard component
+  // Map thumbnail_path → thumbnail_url. The editor stores JPEG data URLs
+  // directly in thumbnail_path; legacy rows may still contain a Supabase
+  // Storage path, so handle both.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const projects = (data ?? []).map((row) => ({
     ...row,
     thumbnail_url: row.thumbnail_path
-      ? `${supabaseUrl}/storage/v1/object/public/thumbnails/${row.thumbnail_path}`
+      ? (row.thumbnail_path.startsWith('data:')
+          ? row.thumbnail_path
+          : `${supabaseUrl}/storage/v1/object/public/thumbnails/${row.thumbnail_path}`)
       : null,
   }))
 

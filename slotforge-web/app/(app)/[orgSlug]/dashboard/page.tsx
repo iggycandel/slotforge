@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useOrganization } from '@clerk/nextjs'
-import { Plus, Trash2, LayoutGrid, Clock, Layers } from 'lucide-react'
+import { Plus, Trash2, LayoutGrid, Clock, Sparkles } from 'lucide-react'
 
 interface Project {
   id: string
@@ -198,20 +198,15 @@ export default function DashboardPage() {
             gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
             gap: 16,
           }}>
-            {projects.map(p => {
-              const thumb = p.thumbnail_url
-                || ((p.payload as Record<string, unknown>)?._thumbnail as string | null)
-                || null
-              return (
-                <ProjectCard
-                  key={p.id}
-                  project={p}
-                  orgSlug={orgSlug}
-                  thumb={thumb}
-                  onDelete={deleteProject}
-                />
-              )
-            })}
+            {projects.map(p => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                orgSlug={orgSlug}
+                thumb={p.thumbnail_url ?? null}
+                onDelete={deleteProject}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -260,9 +255,16 @@ function ProjectCard({
             <div style={{
               position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexDirection: 'column', gap: 8,
+              flexDirection: 'column', gap: 8, textAlign: 'center', padding: '0 16px',
+              background: 'linear-gradient(135deg, #0b0e16, #141826)',
             }}>
-              <Layers style={{ width: 28, height: 28, color: 'rgba(255,255,255,0.1)' }} />
+              <Sparkles style={{ width: 22, height: 22, color: 'rgba(215,168,79,0.65)' }} />
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#f4efe4' }}>
+                This is your new project!
+              </div>
+              <div style={{ fontSize: 10, color: '#7d8799' }}>
+                Open it to start designing
+              </div>
             </div>
           )}
 
