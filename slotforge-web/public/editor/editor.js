@@ -396,6 +396,28 @@ function registerFeatureScreens(){
       featureKey:f.key,
     };
   });
+
+  // 4. Multi-screen features — intro / outro sub-screens.
+  // Per catalogue Q6: each feature owns its own intro/in-round/outro tabs.
+  // For now Bonus Pick is the first wired; others follow the same pattern.
+  if(P.features.bonus_pick){
+    SDEFS.bonus_pick_intro = {
+      label: 'Bonus Pick · Intro',
+      keys:  ['bg'],
+      dot:   '#f0a84c',
+      overlay: 'pick_intro',
+      featureKey:  'bonus_pick',
+      parentScreen:'bonus_pick',
+    };
+    SDEFS.bonus_pick_outro = {
+      label: 'Bonus Pick · Outro',
+      keys:  ['bg'],
+      dot:   '#f0a84c',
+      overlay: 'pick_outro',
+      featureKey:  'bonus_pick',
+      parentScreen:'bonus_pick',
+    };
+  }
 }
 
 // Keep old name as alias for backward compat
@@ -4528,6 +4550,22 @@ function computeTabs(){
     });
   }
 
+  // Bonus Pick — top-level nested group with intro/pick/outro sub-tabs.
+  // Pushed directly into `tabs` below so it gets its own dropdown rather than
+  // being crammed into Feature Games. Other multi-screen features (Free Spins,
+  // Hold & Spin) will follow the same pattern when they're promoted.
+  const bonusPickGroup = P.features.bonus_pick ? {
+    key:   '_bonus_pick_group',
+    label: 'Bonus Pick',
+    dot:   '#f0a84c',
+    isGroup: true,
+    children: [
+      { key: 'bonus_pick_intro', label: 'Intro', dot: '#f0a84c' },
+      { key: 'bonus_pick',       label: 'Pick',  dot: '#f0a84c' },
+      { key: 'bonus_pick_outro', label: 'Outro', dot: '#f0a84c' },
+    ],
+  } : null;
+
   // Collect all active SDEFS-registered feature screens (any feature the user enabled)
   // Group them by their feature group for clean tab organisation
   const groupedExtras = {}; // group → [{key,label,dot}]
@@ -4535,6 +4573,8 @@ function computeTabs(){
     // Skip core screens already handled above
     if(['splash','base','freespin','holdnspin','win','popup_win','popup_megawin','popup_epicwin','popup_buy','popup_fs','popup_hns','popup_jp'].includes(key)) return;
     if(key.startsWith('ew_')) return; // EW handled in featureGames
+    // Skip Bonus Pick screens — they're surfaced as the dedicated bonusPickGroup above
+    if(key==='bonus_pick'||key==='bonus_pick_intro'||key==='bonus_pick_outro') return;
     if(!def.featureKey) return;
     const fdef = FDEFS.find(f=>f.key===def.featureKey);
     const group = fdef?.group || 'Other';
@@ -4557,6 +4597,9 @@ function computeTabs(){
     const grpLabel=hasHnS&&hasEW?'Feature Games':hasHnS?'Hold & Spin':hasEW?(P.expandWild?.wildSymbol||'Expanding Wild'):'Feature Games';
     tabs.push({key:'_features_group', label:grpLabel, dot:'#f0a84c', isGroup:true, children:featureGames});
   }
+
+  // Bonus Pick as its own top-level group with intro / pick / outro sub-tabs.
+  if(bonusPickGroup) tabs.push(bonusPickGroup);
 
   return tabs;
 }
@@ -7713,6 +7756,10 @@ function buildFeatureOverlay(screenKey, def){
 
   if(type==='pick'){
     _ovPickGame(ov, cx, cy, cw, ch, c1);
+  } else if(type==='pick_intro'){
+    _ovPickIntro(ov, cx, cy, cw, ch, c1);
+  } else if(type==='pick_outro'){
+    _ovPickOutro(ov, cx, cy, cw, ch, c1);
   } else if(type==='wheel'){
     _ovWheel(ov, cx, cy, cw, ch, c1);
   } else if(type==='ladder'){
@@ -7839,6 +7886,71 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
   const footerX = cx + Math.round((cw - footerW) / 2);
   const footerY = cy + Math.round(ch * 0.86);
   ov.appendChild(_slot('bonuspick.footer', footerX, footerY, footerW, footerH, `Pick ${picks} of ${totalTiles}`, c1));
+}
+
+// ─── PICK GAME — INTRO ───
+// Semi-transparent dim over the base game with a large "Bonus Pick!" banner.
+// Uses `bonuspick.header` if uploaded (re-purposed here) so users don't need
+// a separate intro asset until we ship a dedicated slot.
+function _ovPickIntro(ov, cx, cy, cw, ch, c1){
+  // Full-viewport dim so the base-game capture behind feels pushed back.
+  const dim = document.createElement('div');
+  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.72);pointer-events:none`;
+  ov.appendChild(dim);
+
+  // Banner — large centered "BONUS PICK!" using header asset if available.
+  const bannerH = Math.round(ch * 0.12);
+  const bannerW = Math.round(cw * 0.82);
+  const bannerX = cx + Math.round((cw - bannerW) / 2);
+  const bannerY = cy + Math.round(ch * 0.32);
+  ov.appendChild(_slot('bonuspick.header', bannerX, bannerY, bannerW, bannerH, 'BONUS PICK!', c1));
+
+  // Sub-copy
+  const subY = bannerY + bannerH + Math.round(ch * 0.02);
+  const sub  = document.createElement('div');
+  sub.style.cssText = `position:absolute;left:${cx}px;top:${subY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.028)}px;font-weight:600;letter-spacing:.08em;color:${c1}cc;text-transform:uppercase;pointer-events:none`;
+  sub.textContent = 'Tap anywhere to continue';
+  ov.appendChild(sub);
+}
+
+// ─── PICK GAME — OUTRO ───
+// Dim background + total-win amount centered + "Collect" affordance.
+// Reuses `bonuspick.bg` (dimmed) so the screen feels continuous with the pick
+// screen. No new asset slots needed for the slice.
+function _ovPickOutro(ov, cx, cy, cw, ch, c1){
+  // Feature bg if present, otherwise just the dim
+  if (EL_ASSETS['bonuspick.bg']) {
+    const bgWrap = _imgSlot('bonuspick.bg', cx, cy, cw, ch, 'cover');
+    bgWrap.style.opacity = '0.35';
+    ov.appendChild(bgWrap);
+  }
+  const dim = document.createElement('div');
+  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.62);pointer-events:none`;
+  ov.appendChild(dim);
+
+  // "TOTAL WIN" label
+  const lblY = cy + Math.round(ch * 0.30);
+  const lbl  = document.createElement('div');
+  lbl.style.cssText = `position:absolute;left:${cx}px;top:${lblY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.042)}px;font-weight:700;letter-spacing:.14em;color:${c1}dd;text-transform:uppercase;pointer-events:none`;
+  lbl.textContent = 'TOTAL WIN';
+  ov.appendChild(lbl);
+
+  // Big amount (placeholder — runtime would substitute the real tally)
+  const amtY = lblY + Math.round(ch * 0.06);
+  const amt  = document.createElement('div');
+  amt.style.cssText = `position:absolute;left:${cx}px;top:${amtY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.11)}px;font-weight:800;letter-spacing:-.02em;color:#ffffff;text-shadow:0 4px 30px ${c1}88;pointer-events:none`;
+  amt.textContent = '€ 1,250';
+  ov.appendChild(amt);
+
+  // "Collect" button (visual)
+  const btnW = Math.round(cw * 0.42);
+  const btnH = Math.round(ch * 0.06);
+  const btnX = cx + Math.round((cw - btnW) / 2);
+  const btnY = cy + Math.round(ch * 0.68);
+  const btn  = document.createElement('div');
+  btn.style.cssText = `position:absolute;left:${btnX}px;top:${btnY}px;width:${btnW}px;height:${btnH}px;background:linear-gradient(135deg, ${c1}, #e8c96d);border-radius:${Math.round(btnH/2)}px;display:flex;align-items:center;justify-content:center;font-family:Space Grotesk,sans-serif;font-weight:800;font-size:${Math.round(btnH*0.4)}px;letter-spacing:.1em;color:#1a1200;text-transform:uppercase;pointer-events:none;box-shadow:0 4px 22px ${c1}66`;
+  btn.textContent = 'COLLECT';
+  ov.appendChild(btn);
 }
 
 // ─── WHEEL BONUS ───
