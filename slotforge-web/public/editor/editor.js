@@ -334,8 +334,11 @@ const WIN_KEYS = ['dimLayer', 'ov-win_title', 'ov-win_amount'];
 const SDEFS={
   splash:      {label:'Splash',         keys:SPLASH_KEYS, dot:'#7c5cbf'},
   base:        {label:'Base Game',      keys:BASE_KEYS,   dot:'#2e7d5a'},
-  freespin:    {label:'Free Spins',     keys:REEL_KEYS,   dot:'#4ac8f0'},
-  holdnspin:   {label:'Hold & Spin',    keys:REEL_KEYS,   dot:'#5eca8a'},
+  // overlay types are dispatched from buildFeatureOverlay — 'fs_round'
+  // and 'hns_round' layer feature-specific asset slots on top of the
+  // normal reel grid when the user is on the in-round sub-tab.
+  freespin:    {label:'Free Spins',     keys:REEL_KEYS,   dot:'#4ac8f0', overlay:'fs_round'},
+  holdnspin:   {label:'Hold & Spin',    keys:REEL_KEYS,   dot:'#5eca8a', overlay:'hns_round'},
   // Pop-up sub-screens — ONLY specific pop-up UI keys
   popup_win:   {label:'Big Win',        keys:['dimLayer','ov-bigwin_title','ov-bigwin_amount','ov-bigwin_btn'],    dot:'#c9a84c',  group:'popup'},
   popup_megawin:{label:'Mega Win',       keys:['dimLayer','ov-megawin_title','ov-megawin_amount','ov-megawin_btn'],    dot:'#e8c96d',  group:'popup'},
@@ -399,7 +402,6 @@ function registerFeatureScreens(){
 
   // 4. Multi-screen features — intro / outro sub-screens.
   // Per catalogue Q6: each feature owns its own intro/in-round/outro tabs.
-  // For now Bonus Pick is the first wired; others follow the same pattern.
   if(P.features.bonus_pick){
     SDEFS.bonus_pick_intro = {
       label: 'Bonus Pick · Intro',
@@ -416,6 +418,42 @@ function registerFeatureScreens(){
       overlay: 'pick_outro',
       featureKey:  'bonus_pick',
       parentScreen:'bonus_pick',
+    };
+  }
+  if(P.features.freespin){
+    SDEFS.freespin_intro = {
+      label: 'Free Spins · Intro',
+      keys:  ['bg'],
+      dot:   '#4ac8f0',
+      overlay: 'fs_intro',
+      featureKey:  'freespin',
+      parentScreen:'freespin',
+    };
+    SDEFS.freespin_outro = {
+      label: 'Free Spins · Outro',
+      keys:  ['bg'],
+      dot:   '#4ac8f0',
+      overlay: 'fs_outro',
+      featureKey:  'freespin',
+      parentScreen:'freespin',
+    };
+  }
+  if(P.features.holdnspin){
+    SDEFS.holdnspin_intro = {
+      label: 'Hold & Spin · Intro',
+      keys:  ['bg'],
+      dot:   '#5eca8a',
+      overlay: 'hns_intro',
+      featureKey:  'holdnspin',
+      parentScreen:'holdnspin',
+    };
+    SDEFS.holdnspin_outro = {
+      label: 'Hold & Spin · Outro',
+      keys:  ['bg'],
+      dot:   '#5eca8a',
+      overlay: 'hns_outro',
+      featureKey:  'holdnspin',
+      parentScreen:'holdnspin',
     };
   }
 }
@@ -4573,12 +4611,36 @@ function computeTabs(){
   if(hasJP) popups.push({key:'popup_jp', label:'Jackpot Win', dot:'#ef7a7a'});
   tabs.push({key:'_popups_group', label:'Pop-ups', dot:'#ef7a7a', isGroup:true, children:popups});
 
-  // 5. Free Spins
-  if(P.features.freespin) tabs.push({key:'freespin', label:'Free Spins', dot:'#4ac8f0'});
+  // 5. Free Spins — top-level nested group with Intro / Round / Outro sub-tabs.
+  const freeSpinsGroup = P.features.freespin ? {
+    key:   '_freespin_group',
+    label: 'Free Spins',
+    dot:   '#4ac8f0',
+    isGroup: true,
+    children: [
+      { key: 'freespin_intro', label: 'Intro',    dot: '#4ac8f0' },
+      { key: 'freespin',       label: 'In-round', dot: '#4ac8f0' },
+      { key: 'freespin_outro', label: 'Outro',    dot: '#4ac8f0' },
+    ],
+  } : null;
+  if(freeSpinsGroup) tabs.push(freeSpinsGroup);
 
-  // 6. Feature Games
+  // 6. Hold & Spin — same pattern: top-level nested group.
+  const hnsGroup = P.features.holdnspin ? {
+    key:   '_holdnspin_group',
+    label: 'Hold & Spin',
+    dot:   '#5eca8a',
+    isGroup: true,
+    children: [
+      { key: 'holdnspin_intro', label: 'Intro',    dot: '#5eca8a' },
+      { key: 'holdnspin',       label: 'In-round', dot: '#5eca8a' },
+      { key: 'holdnspin_outro', label: 'Outro',    dot: '#5eca8a' },
+    ],
+  } : null;
+  if(hnsGroup) tabs.push(hnsGroup);
+
+  // 7. Feature Games — remaining single-screen features (Wheel, EW, etc.)
   const featureGames=[];
-  if(P.features.holdnspin) featureGames.push({key:'holdnspin', label:'Hold & Spin', dot:'#5eca8a'});
 
   // Expanding Wild sub-tabs — label uses the wild symbol name
   if(P.features.expanding_wild){
@@ -4615,8 +4677,10 @@ function computeTabs(){
     // Skip core screens already handled above
     if(['splash','base','freespin','holdnspin','win','popup_win','popup_megawin','popup_epicwin','popup_buy','popup_fs','popup_hns','popup_jp'].includes(key)) return;
     if(key.startsWith('ew_')) return; // EW handled in featureGames
-    // Skip Bonus Pick screens — they're surfaced as the dedicated bonusPickGroup above
+    // Skip intro/outro screens — they're surfaced as sub-tabs inside dedicated groups
     if(key==='bonus_pick'||key==='bonus_pick_intro'||key==='bonus_pick_outro') return;
+    if(key==='freespin_intro'||key==='freespin_outro') return;
+    if(key==='holdnspin_intro'||key==='holdnspin_outro') return;
     if(!def.featureKey) return;
     const fdef = FDEFS.find(f=>f.key===def.featureKey);
     const group = fdef?.group || 'Other';
@@ -7806,6 +7870,18 @@ function buildFeatureOverlay(screenKey, def){
     _ovPickIntro(ov, cx, cy, cw, ch, c1);
   } else if(type==='pick_outro'){
     _ovPickOutro(ov, cx, cy, cw, ch, c1);
+  } else if(type==='fs_round'){
+    _ovFreeSpinRound(ov, cx, cy, cw, ch, c1);
+  } else if(type==='fs_intro'){
+    _ovFreeSpinIntro(ov, cx, cy, cw, ch, c1);
+  } else if(type==='fs_outro'){
+    _ovFreeSpinOutro(ov, cx, cy, cw, ch, c1);
+  } else if(type==='hns_round'){
+    _ovHnsRound(ov, cx, cy, cw, ch, c1);
+  } else if(type==='hns_intro'){
+    _ovHnsIntro(ov, cx, cy, cw, ch, c1);
+  } else if(type==='hns_outro'){
+    _ovHnsOutro(ov, cx, cy, cw, ch, c1);
   } else if(type==='wheel'){
     _ovWheel(ov, cx, cy, cw, ch, c1);
   } else if(type==='ladder'){
@@ -8002,6 +8078,154 @@ function _ovPickOutro(ov, cx, cy, cw, ch, c1){
   const btnY = cy + Math.round(ch * 0.68);
   const btn  = document.createElement('div');
   btn.style.cssText = `position:absolute;left:${btnX}px;top:${btnY}px;width:${btnW}px;height:${btnH}px;background:linear-gradient(135deg, ${c1}, #e8c96d);border-radius:${Math.round(btnH/2)}px;display:flex;align-items:center;justify-content:center;font-family:Space Grotesk,sans-serif;font-weight:800;font-size:${Math.round(btnH*0.4)}px;letter-spacing:.1em;color:#1a1200;text-transform:uppercase;pointer-events:none;box-shadow:0 4px 22px ${c1}66`;
+  btn.textContent = 'COLLECT';
+  ov.appendChild(btn);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FREE SPINS — feature overlays
+// Composes spin-counter frame and multiplier badge on the reel-area
+// in-round screen; full-screen banners for intro/outro.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// In-round: decorate the reel screen with counter + multiplier + retrigger hint.
+function _ovFreeSpinRound(ov, cx, cy, cw, ch, c1){
+  const fs = P.features?.freespin;
+  if (!fs) return;
+
+  // Spin counter frame — top-right corner, shows "3 / 10 spins left"
+  const counterW = Math.round(cw * 0.32);
+  const counterH = Math.round(ch * 0.07);
+  const counterX = cx + cw - counterW - Math.round(cw * 0.04);
+  const counterY = cy + Math.round(ch * 0.04);
+  ov.appendChild(_slot('freespins.spin_counter_frame', counterX, counterY, counterW, counterH, 'SPINS 3 / 10', c1));
+
+  // Multiplier badge — top-left corner (only if user hasn't disabled via settings)
+  const badgeSize = Math.round(Math.min(cw, ch) * 0.09);
+  const badgeX    = cx + Math.round(cw * 0.04);
+  const badgeY    = cy + Math.round(ch * 0.04);
+  ov.appendChild(_slot('freespins.multiplier_badge', badgeX, badgeY, badgeSize, badgeSize, '×2', c1));
+}
+
+// Intro: dim + centered banner ("Free Spins awarded!")
+function _ovFreeSpinIntro(ov, cx, cy, cw, ch, c1){
+  const dim = document.createElement('div');
+  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.72);pointer-events:none`;
+  ov.appendChild(dim);
+
+  const bannerH = Math.round(ch * 0.14);
+  const bannerW = Math.round(cw * 0.82);
+  const bannerX = cx + Math.round((cw - bannerW) / 2);
+  const bannerY = cy + Math.round(ch * 0.30);
+  ov.appendChild(_slot('freespins.intro_banner', bannerX, bannerY, bannerW, bannerH, 'FREE SPINS!', c1));
+
+  // Sub-copy
+  const subY = bannerY + bannerH + Math.round(ch * 0.02);
+  const sub  = document.createElement('div');
+  sub.style.cssText = `position:absolute;left:${cx}px;top:${subY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.032)}px;font-weight:600;letter-spacing:.1em;color:${c1}cc;text-transform:uppercase;pointer-events:none`;
+  sub.textContent = '10 spins awarded';
+  ov.appendChild(sub);
+}
+
+// Outro: dim + banner + total win + collect CTA
+function _ovFreeSpinOutro(ov, cx, cy, cw, ch, c1){
+  const dim = document.createElement('div');
+  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.70);pointer-events:none`;
+  ov.appendChild(dim);
+
+  const bannerH = Math.round(ch * 0.10);
+  const bannerW = Math.round(cw * 0.78);
+  const bannerX = cx + Math.round((cw - bannerW) / 2);
+  const bannerY = cy + Math.round(ch * 0.24);
+  ov.appendChild(_slot('freespins.outro_banner', bannerX, bannerY, bannerW, bannerH, 'TOTAL WIN', c1));
+
+  // Win amount
+  const amtY = bannerY + bannerH + Math.round(ch * 0.03);
+  const amt  = document.createElement('div');
+  amt.style.cssText = `position:absolute;left:${cx}px;top:${amtY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.11)}px;font-weight:800;letter-spacing:-.02em;color:#ffffff;text-shadow:0 4px 30px ${c1}88;pointer-events:none`;
+  amt.textContent = '€ 2,500';
+  ov.appendChild(amt);
+
+  // Collect button
+  const btnW = Math.round(cw * 0.42);
+  const btnH = Math.round(ch * 0.06);
+  const btnX = cx + Math.round((cw - btnW) / 2);
+  const btnY = cy + Math.round(ch * 0.65);
+  const btn  = document.createElement('div');
+  btn.style.cssText = `position:absolute;left:${btnX}px;top:${btnY}px;width:${btnW}px;height:${btnH}px;background:linear-gradient(135deg, ${c1}, #4ac8f0);border-radius:${Math.round(btnH/2)}px;display:flex;align-items:center;justify-content:center;font-family:Space Grotesk,sans-serif;font-weight:800;font-size:${Math.round(btnH*0.4)}px;letter-spacing:.1em;color:#0a1a2a;text-transform:uppercase;pointer-events:none;box-shadow:0 4px 22px ${c1}66`;
+  btn.textContent = 'COLLECT';
+  ov.appendChild(btn);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOLD & SPIN — feature overlays
+// In-round layers the respin counter + jackpot tier badges on top of the
+// reel grid; intro/outro mirror Free Spins pattern with HnS colour.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _ovHnsRound(ov, cx, cy, cw, ch, c1){
+  // Respin counter — top-center banner
+  const counterH = Math.round(ch * 0.07);
+  const counterW = Math.round(cw * 0.45);
+  const counterX = cx + Math.round((cw - counterW) / 2);
+  const counterY = cy + Math.round(ch * 0.04);
+  ov.appendChild(_slot('holdnspin.respin_counter_frame', counterX, counterY, counterW, counterH, 'RESPINS 3', c1));
+
+  // Jackpot tier badges stacked vertically on the right edge
+  const tiers = ['holdnspin.jackpot_grand','holdnspin.jackpot_major','holdnspin.jackpot_minor','holdnspin.jackpot_mini'];
+  const tierLabels = ['GRAND','MAJOR','MINOR','MINI'];
+  const tierW  = Math.round(cw * 0.13);
+  const tierH  = Math.round(ch * 0.08);
+  const tierX  = cx + cw - tierW - Math.round(cw * 0.025);
+  const totalStackH = tiers.length * tierH + (tiers.length - 1) * Math.round(ch * 0.015);
+  const tierY0 = cy + Math.round((ch - totalStackH) / 2);
+  tiers.forEach((key, i) => {
+    const y = tierY0 + i * (tierH + Math.round(ch * 0.015));
+    ov.appendChild(_slot(key, tierX, y, tierW, tierH, tierLabels[i], c1));
+  });
+}
+
+function _ovHnsIntro(ov, cx, cy, cw, ch, c1){
+  const dim = document.createElement('div');
+  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.72);pointer-events:none`;
+  ov.appendChild(dim);
+
+  const bannerH = Math.round(ch * 0.14);
+  const bannerW = Math.round(cw * 0.82);
+  const bannerX = cx + Math.round((cw - bannerW) / 2);
+  const bannerY = cy + Math.round(ch * 0.30);
+  ov.appendChild(_slot('holdnspin.intro_banner', bannerX, bannerY, bannerW, bannerH, 'LOCK & WIN!', c1));
+
+  const subY = bannerY + bannerH + Math.round(ch * 0.02);
+  const sub  = document.createElement('div');
+  sub.style.cssText = `position:absolute;left:${cx}px;top:${subY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.032)}px;font-weight:600;letter-spacing:.1em;color:${c1}cc;text-transform:uppercase;pointer-events:none`;
+  sub.textContent = '3 respins · collect all coins';
+  ov.appendChild(sub);
+}
+
+function _ovHnsOutro(ov, cx, cy, cw, ch, c1){
+  const dim = document.createElement('div');
+  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.70);pointer-events:none`;
+  ov.appendChild(dim);
+
+  const bannerH = Math.round(ch * 0.10);
+  const bannerW = Math.round(cw * 0.78);
+  const bannerX = cx + Math.round((cw - bannerW) / 2);
+  const bannerY = cy + Math.round(ch * 0.24);
+  ov.appendChild(_slot('holdnspin.outro_banner', bannerX, bannerY, bannerW, bannerH, 'TOTAL WIN', c1));
+
+  const amtY = bannerY + bannerH + Math.round(ch * 0.03);
+  const amt  = document.createElement('div');
+  amt.style.cssText = `position:absolute;left:${cx}px;top:${amtY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.11)}px;font-weight:800;letter-spacing:-.02em;color:#ffffff;text-shadow:0 4px 30px ${c1}88;pointer-events:none`;
+  amt.textContent = '€ 1,500';
+  ov.appendChild(amt);
+
+  const btnW = Math.round(cw * 0.42);
+  const btnH = Math.round(ch * 0.06);
+  const btnX = cx + Math.round((cw - btnW) / 2);
+  const btnY = cy + Math.round(ch * 0.65);
+  const btn  = document.createElement('div');
+  btn.style.cssText = `position:absolute;left:${btnX}px;top:${btnY}px;width:${btnW}px;height:${btnH}px;background:linear-gradient(135deg, ${c1}, #5eca8a);border-radius:${Math.round(btnH/2)}px;display:flex;align-items:center;justify-content:center;font-family:Space Grotesk,sans-serif;font-weight:800;font-size:${Math.round(btnH*0.4)}px;letter-spacing:.1em;color:#0a2a1a;text-transform:uppercase;pointer-events:none;box-shadow:0 4px 22px ${c1}66`;
   btn.textContent = 'COLLECT';
   ov.appendChild(btn);
 }
