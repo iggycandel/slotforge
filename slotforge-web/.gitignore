@@ -5,6 +5,12 @@ node_modules/
 .next/
 out/
 
+# Vercel CLI state
+.vercel/
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
 # Environment variables
 .env
 .env.local
