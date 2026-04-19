@@ -9692,24 +9692,48 @@ window._sfBridge = (function(){
   }
 
   /* ─── 4. Thumbnail ─── */
-  function getThumbnail(){
+  // The composite view is a DIV (#gf) with positioned <img> layers, not a
+  // real <canvas>, so we rasterize it with html2canvas. Returns a Promise.
+  async function getThumbnail(){
     try {
-      var canvas = document.querySelector('canvas');
-      if(!canvas) return null;
+      var gf = document.getElementById('gf');
+      if(!gf || typeof html2canvas !== 'function') return null;
+      var full = await html2canvas(gf, {
+        useCORS:          true,
+        allowTaint:       false,
+        backgroundColor:  '#0b0e16',
+        logging:          false,
+        // Keep the capture fast — the source is 2000×2000, we only need a preview.
+        scale:            0.1,
+      });
+      // Downscale to a consistent 240×135 preview regardless of aspect ratio.
       var t = document.createElement('canvas');
       t.width = 240; t.height = 135;
-      t.getContext('2d').drawImage(canvas, 0, 0, 240, 135);
-      return t.toDataURL('image/jpeg', 0.6);
-    } catch(e){ return null; }
+      var ctx = t.getContext('2d');
+      ctx.fillStyle = '#0b0e16';
+      ctx.fillRect(0, 0, 240, 135);
+      // Contain-fit the full capture inside 240×135
+      var scale = Math.min(240 / full.width, 135 / full.height);
+      var dw = full.width  * scale;
+      var dh = full.height * scale;
+      var dx = (240 - dw) / 2;
+      var dy = (135 - dh) / 2;
+      ctx.drawImage(full, dx, dy, dw, dh);
+      return t.toDataURL('image/jpeg', 0.75);
+    } catch(e){
+      console.warn('[getThumbnail]', e);
+      return null;
+    }
   }
 
   /* ─── 5. Trigger save ─── */
-  function triggerSave(){
+  async function triggerSave(){
     var p = getPayload();
+    var thumbnail = await getThumbnail();
     window.parent.postMessage({
       type: 'SF_AUTOSAVE',
       payload: p,
-      thumbnail: getThumbnail()
+      thumbnail: thumbnail
     }, '*');
   }
 
