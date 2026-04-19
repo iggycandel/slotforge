@@ -864,12 +864,15 @@ function LibraryRow({
       {/* Label + meta */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize:   11,
-          fontWeight: 600,
-          color:      isEmpty ? T.textFaint : T.textPrimary,
-          overflow:   'hidden',
-          textOverflow:'ellipsis',
-          whiteSpace: 'nowrap',
+          // Match FeatureSlotRow legibility: 13 px, stay text-primary even
+          // when empty so the slot name is always readable on the dark bg.
+          fontSize:     13,
+          fontWeight:   600,
+          color:        T.textPrimary,
+          overflow:     'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace:   'nowrap',
+          lineHeight:   1.25,
         }}>
           {ASSET_LABELS[assetType] ?? assetType}
         </div>

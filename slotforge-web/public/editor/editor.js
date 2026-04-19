@@ -1151,8 +1151,17 @@ function buildCanvas(){
     // ── RENDER BY KEY ──
     if(k==='bg'){
       el.style.overflow='hidden'; el.style.borderRadius='0'; el.style.pointerEvents='none'; el.style.cursor='default';
-      // Per-screen bg override: check 'bg_<screen>' first, fall back to global 'bg'
-      const bgKey = EL_ASSETS['bg_'+P.screen] ? 'bg_'+P.screen : (EL_ASSETS['bg'] ? 'bg' : null);
+      // Per-screen bg resolution order:
+      //   1. feature-namespaced key ("freespins.bg", "holdnspin.bg", …) —
+      //      the v1 registry's slot name, uploaded from the Assets panel's
+      //      Features section. Highest priority so per-feature bg work.
+      //   2. legacy 'bg_<screen>' override for pre-registry projects.
+      //   3. global 'bg' fallback.
+      const featureBgMap = { freespin:'freespins.bg', holdnspin:'holdnspin.bg', bonus_pick:'bonuspick.bg' };
+      const featureBg    = featureBgMap[P.screen];
+      const bgKey = (featureBg && EL_ASSETS[featureBg]) ? featureBg
+                  : EL_ASSETS['bg_'+P.screen] ? 'bg_'+P.screen
+                  : EL_ASSETS['bg'] ? 'bg' : null;
       if(bgKey){const img=document.createElement('img');img.src=EL_ASSETS[bgKey];img.style.cssText='width:100%;height:100%;object-fit:cover;pointer-events:none';el.appendChild(img);}else{el.appendChild(makeThemeBG(pos.w,pos.h));}
 
     }else if(k==='dimLayer'){
@@ -2247,6 +2256,36 @@ function _sendLayersUpdate(){
         blendMode: EL_BLEND_MODES[k]||'normal',
       });
     });
+
+    // Surface feature overlay slots (bonuspick.*, etc.) as layers so the
+    // right-side Layers panel reflects what's actually rendered on feature
+    // screens. Walks the current overlay's DOM children and dedupes by key.
+    try {
+      var overlayEl = document.getElementById('feature-screen-overlay');
+      if (overlayEl) {
+        var seen = new Set();
+        var slotEls = overlayEl.querySelectorAll('[data-asset-key]');
+        slotEls.forEach(function(node, idx){
+          var k = node.getAttribute('data-asset-key');
+          if (!k || seen.has(k)) return;
+          seen.add(k);
+          var label = node.getAttribute('data-asset-label') || k;
+          layers.push({
+            key:        k,
+            label:      label,
+            type:       'feature',
+            z:          100 + idx,
+            hasAsset:   !!EL_ASSETS[k],
+            isOff:      false,
+            isHidden:   false,
+            isLocked:   false,
+            isSelected: false,
+            blendMode:  'normal',
+          });
+        });
+      }
+    } catch(ovErr){ /* non-fatal */ }
+
     // Send highest-z first (visual Photoshop order)
     layers.sort(function(a,b){ return b.z - a.z; });
     window.parent.postMessage({
@@ -2670,6 +2709,9 @@ function switchScreen(scr){
           const gf=document.getElementById('gf');
           const ov=buildFeatureOverlay(scr, featureDef);
           if(ov) gf.appendChild(ov);
+          // Push the new feature slot layers to the Layers panel so it
+          // reflects what's actually rendered on the feature screen.
+          try { _sendLayersUpdate(); } catch(e){}
         },60);
       }
       fitZoom();
@@ -7583,7 +7625,11 @@ function renderSplitView(){
       el.style.cssText=`position:absolute;left:${pos.x}px;top:${pos.y}px;width:${pos.w}px;height:${pos.h}px;z-index:${def.z||5};border-radius:8px;overflow:hidden`;
       if(k==='bg'){
         el.style.borderRadius='0';
-        const bgKey=EL_ASSETS['bg_'+P.screen]?'bg_'+P.screen:(EL_ASSETS['bg']?'bg':null);
+        const _featureBgMap = { freespin:'freespins.bg', holdnspin:'holdnspin.bg', bonus_pick:'bonuspick.bg' };
+        const _featureBg    = _featureBgMap[P.screen];
+        const bgKey = (_featureBg && EL_ASSETS[_featureBg]) ? _featureBg
+                    : EL_ASSETS['bg_'+P.screen] ? 'bg_'+P.screen
+                    : EL_ASSETS['bg'] ? 'bg' : null;
         if(bgKey){const img=document.createElement('img');img.src=EL_ASSETS[bgKey];img.style.cssText='width:100%;height:100%;object-fit:cover';el.appendChild(img);}
         else{el.appendChild(makeThemeBG(pos.w,pos.h));}
       }else if(k==='reelArea'){
@@ -7822,10 +7868,14 @@ function _phSlot(key, x, y, w, h, label, c1){
   return d;
 }
 // Shorthand: render an uploaded asset if present, otherwise a placeholder.
+// Always tags the returned element with data-asset-label so _sendLayersUpdate
+// can surface a friendly name in the Layers panel.
 function _slot(key, x, y, w, h, label, c1, fit){
-  return EL_ASSETS[key]
+  const el = EL_ASSETS[key]
     ? _imgSlot(key, x, y, w, h, fit)
     : _phSlot(key, x, y, w, h, label, c1);
+  if (label) el.dataset.assetLabel = label;
+  return el;
 }
 
 // ─── PICK GAME (asset-driven, v1 registry: bonuspick.*) ───
@@ -7876,7 +7926,9 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
     const px       = tx + Math.round((tileSize - pSize) / 2);
     const py       = ty + Math.round((tileSize - pSize) / 2);
     if (EL_ASSETS[prizeKey]) {
-      ov.appendChild(_imgSlot(prizeKey, px, py, pSize, pSize));
+      const prizeEl = _imgSlot(prizeKey, px, py, pSize, pSize);
+      prizeEl.dataset.assetLabel = 'Prize: ' + prizeKey.replace('bonuspick.prize_', '');
+      ov.appendChild(prizeEl);
     }
   }
 
@@ -7921,6 +7973,7 @@ function _ovPickOutro(ov, cx, cy, cw, ch, c1){
   // Feature bg if present, otherwise just the dim
   if (EL_ASSETS['bonuspick.bg']) {
     const bgWrap = _imgSlot('bonuspick.bg', cx, cy, cw, ch, 'cover');
+    bgWrap.dataset.assetLabel = 'Background';
     bgWrap.style.opacity = '0.35';
     ov.appendChild(bgWrap);
   }
@@ -10117,6 +10170,8 @@ window._sfBridge = (function(){
             var _gf = document.getElementById('gf');
             var _ov = buildFeatureOverlay(P.screen, _scrDef);
             if(_ov && _gf) _gf.appendChild(_ov);
+            // Sync the Layers panel with the new overlay slot set
+            try { _sendLayersUpdate(); } catch(e){}
           }
         } catch(ovErr) { console.warn('[SF] feature overlay rebuild failed:', ovErr); }
         if(typeof renderLayers  === 'function') renderLayers();
