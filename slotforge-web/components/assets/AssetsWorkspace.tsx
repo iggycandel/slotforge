@@ -445,11 +445,19 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
       const json = await res.json()
       if (!res.ok || json.error) {
+        // Show gate modal for plan/credit errors
+        if (json.error === 'upgrade_required') { setGateModal({ type: 'upgrade' }); return }
+        if (json.error === 'credits_exhausted') { setGateModal({ type: 'credits' }); return }
         addLog(`Regen error: ${json.error ?? 'Failed'}`)
         return
       }
 
       const newAsset = json.asset as GeneratedAsset
+      // Only store the asset if it has a valid URL — never count blanks as generated
+      if (!newAsset?.url) {
+        addLog(`Regen error: no image returned for ${assetType}`)
+        return
+      }
       setAssets(prev => ({ ...prev, [assetType]: newAsset }))
       setAssetHistory(prev => ({ ...prev, [assetType]: [newAsset, ...(prev[assetType] ?? [])] }))
       setFailedTypes(prev => { const s = new Set(prev); s.delete(assetType); return s })
@@ -599,13 +607,13 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     <div style={{
       display:    'flex',
       flexDirection: 'column',
-      width:      inlineMode ? '100%' : '100vw',
-      height:     inlineMode ? '100%' : '100vh',
+      width:      '100%',
+      height:     '100%',
       background: C.bg,
       color:      C.tx,
       fontFamily: C.font,
       overflow:   'hidden',
-      flex:       inlineMode ? 1 : undefined,
+      flex:       1,
     }}>
 
       {/* ── Global CSS ─────────────────────────────────────────────────────── */}

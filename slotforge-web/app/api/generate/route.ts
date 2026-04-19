@@ -46,23 +46,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Plan gate — AI generation requires Freelancer or Studio
-  if (orgId) {
-    const plan = await getOrgPlan(orgId)
-    if (!canUseAI(plan)) {
-      return NextResponse.json(
-        { error: 'upgrade_required', plan, message: 'AI generation requires a Freelancer or Studio plan.' },
-        { status: 403 }
-      )
-    }
-    // Credit gate — check remaining credits before starting a batch
-    const credits = await getOrgCreditStatus(orgId)
-    if (!credits.canGenerate) {
-      return NextResponse.json(
-        { error: 'credits_exhausted', remaining: 0, message: 'No AI credits remaining this month. Top up from the billing page.' },
-        { status: 402 }
-      )
-    }
+  // Plan gate — AI generation requires Freelancer or Studio.
+  // NOTE: The app routes by userId (no Clerk orgs), so orgId is always null.
+  // Use effectiveId = orgId ?? userId so the gate always runs.
+  const effectiveId = orgId ?? userId
+  const plan = await getOrgPlan(effectiveId)
+  if (!canUseAI(plan)) {
+    return NextResponse.json(
+      { error: 'upgrade_required', plan, message: 'AI generation requires a Freelancer or Studio plan.' },
+      { status: 403 }
+    )
+  }
+  // Credit gate — check remaining credits before starting a batch
+  const credits = await getOrgCreditStatus(effectiveId)
+  if (!credits.canGenerate) {
+    return NextResponse.json(
+      { error: 'credits_exhausted', remaining: 0, message: 'No AI credits remaining this month. Top up from the billing page.' },
+      { status: 402 }
+    )
   }
 
   // Parse body
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
             onAssetComplete: (asset) => {
               emit('asset', asset)
               // Consume 1 credit per successfully generated image
-              if (orgId) consumeCredits(orgId, 1).catch(() => {})
+              consumeCredits(effectiveId, 1).catch(() => {})
             },
           }
         )
