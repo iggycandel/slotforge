@@ -7800,32 +7800,36 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
   const headerY = cy + Math.round(ch * 0.06);
   ov.appendChild(_slot('bonuspick.header', headerX, headerY, headerW, headerH, 'CHOOSE YOUR PRIZE', c1));
 
-  // 3. Tile grid
-  const gridY     = cy + Math.round(ch * 0.18);
-  const gridH     = Math.round(ch * 0.62);
-  const gridW     = Math.round(cw * 0.82);
-  const gridX     = cx + Math.round((cw - gridW) / 2);
-  const tileGap   = 14;
-  const tileW     = Math.round((gridW - (cols - 1) * tileGap) / cols);
-  const tileH     = Math.round((gridH - (rows - 1) * tileGap) / rows);
-  const prizeKeys = ['bonuspick.prize_coin', 'bonuspick.prize_multiplier', 'bonuspick.prize_freespin', 'bonuspick.prize_jackpot'];
+  // 3. Tile grid — tiles are square, sized to fit within the reserved area.
+  // Computing tile size from the tighter of (widthCap, heightCap) keeps every
+  // tile a clean square regardless of viewport aspect ratio or cols/rows.
+  const gridAvailH   = Math.round(ch * 0.62);
+  const gridAvailW   = Math.round(cw * 0.82);
+  const tileGap      = 14;
+  const tileByWidth  = Math.floor((gridAvailW - (cols - 1) * tileGap) / cols);
+  const tileByHeight = Math.floor((gridAvailH - (rows - 1) * tileGap) / rows);
+  const tileSize     = Math.min(tileByWidth, tileByHeight);
+  const gridW        = tileSize * cols + tileGap * (cols - 1);
+  const gridH        = tileSize * rows + tileGap * (rows - 1);
+  const gridX        = cx + Math.round((cw - gridW) / 2);
+  const gridY        = cy + Math.round(ch * 0.18) + Math.max(0, Math.round((gridAvailH - gridH) / 2));
+  const prizeKeys    = ['bonuspick.prize_coin', 'bonuspick.prize_multiplier', 'bonuspick.prize_freespin', 'bonuspick.prize_jackpot'];
 
   for (let i = 0; i < totalTiles; i++) {
     const r  = Math.floor(i / cols), c = i % cols;
-    const tx = gridX + c * (tileW + tileGap);
-    const ty = gridY + r * (tileH + tileGap);
+    const tx = gridX + c * (tileSize + tileGap);
+    const ty = gridY + r * (tileSize + tileGap);
 
     // Tile background (closed state) — same asset for every tile in the grid
-    ov.appendChild(_slot('bonuspick.tile_closed', tx, ty, tileW, tileH, '?', c1));
+    ov.appendChild(_slot('bonuspick.tile_closed', tx, ty, tileSize, tileSize, '?', c1, 'cover'));
 
     // Mini prize icon centered on the tile, cycling through prize types
     const prizeKey = prizeKeys[i % prizeKeys.length];
-    const pw = Math.round(tileW * 0.55);
-    const ph = Math.round(tileH * 0.55);
-    const px = tx + Math.round((tileW - pw) / 2);
-    const py = ty + Math.round((tileH - ph) / 2);
+    const pSize    = Math.round(tileSize * 0.58);
+    const px       = tx + Math.round((tileSize - pSize) / 2);
+    const py       = ty + Math.round((tileSize - pSize) / 2);
     if (EL_ASSETS[prizeKey]) {
-      ov.appendChild(_imgSlot(prizeKey, px, py, pw, ph));
+      ov.appendChild(_imgSlot(prizeKey, px, py, pSize, pSize));
     }
   }
 
@@ -9990,6 +9994,19 @@ window._sfBridge = (function(){
       try {
         EL_ASSETS[elKey] = msg.url;
         if(typeof buildCanvas   === 'function') buildCanvas();
+        // buildCanvas() wipes #gf innerHTML — if the current screen has a
+        // feature overlay (bonus_pick, wheel, etc.) the overlay layers also
+        // get wiped. Rebuild the overlay here so feature slots stay visible
+        // after an upload/replace, not just after a tab switch.
+        try {
+          var _scrDef = SDEFS[P.screen];
+          if(_scrDef && _scrDef.overlay && _scrDef.overlay !== 'generic'){
+            document.getElementById('feature-screen-overlay')?.remove();
+            var _gf = document.getElementById('gf');
+            var _ov = buildFeatureOverlay(P.screen, _scrDef);
+            if(_ov && _gf) _gf.appendChild(_ov);
+          }
+        } catch(ovErr) { console.warn('[SF] feature overlay rebuild failed:', ovErr); }
         if(typeof renderLayers  === 'function') renderLayers();
         if(typeof markDirty     === 'function') markDirty();
       } catch(e) { console.warn('[SF] SF_INJECT_IMAGE_LAYER failed:', e); }

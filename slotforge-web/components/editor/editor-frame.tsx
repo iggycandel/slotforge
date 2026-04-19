@@ -13,7 +13,7 @@ const TOOLBAR_H  = 44
 const PANEL_W    = 320
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v59'
+const EDITOR_VERSION = 'v60'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -80,7 +80,9 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [historyOpen,     setHistoryOpen]     = useState(false)
   const [liveProjectName, setLiveProjectName] = useState(projectName)
   const [editorWorkspace, setEditorWorkspace] = useState<string>('canvas')
-  // Initialise editorMeta from the saved payload so symbol counts are correct on first load
+  // Initialise editorMeta from the saved payload so symbol counts AND the
+  // features map are correct on first load. Without `features` here the
+  // Assets panel shows no feature groups until the first autosave fires.
   const [editorMeta, setEditorMeta] = useState<Record<string, unknown> | null>(() => {
     if (!initialPayload) return null
     const p = initialPayload
@@ -93,6 +95,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       symbolHighNames:   p.symbolHighNames,
       symbolLowNames:    p.symbolLowNames,
       symbolSpecialNames:p.symbolSpecialNames,
+      features:          p.features,
     }
   })
   // Bumped whenever an asset upload completes — propagated to RightPanel → AssetsPanel for auto-refresh
