@@ -55,11 +55,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing file, projectId or assetKey' }, { status: 400 })
   }
 
+  // Reject path-traversal attempts. assetKey may contain dots (feature slot
+  // namespacing like "bonuspick.bg") but never `..` segments or slashes.
+  if (assetKey.includes('..') || assetKey.includes('/') || assetKey.includes('\\') || assetKey.length > 80) {
+    return NextResponse.json({ error: 'Invalid assetKey' }, { status: 400 })
+  }
+
   if (!(await assertProjectAccess(userId, projectId))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  // Sanitise the key so it's safe as a file path
+  // Sanitise the key for the storage filename (no dots in filename — keeps
+  // bonuspick.bg → bonuspick_bg.png on disk). The DB record below preserves
+  // the ORIGINAL assetKey so the editor can look it up by namespaced key.
   const safeName = assetKey.replace(/[^a-zA-Z0-9_\-]/g, '_')
   const ext = file.type === 'image/webp' ? 'webp'
     : file.type === 'image/jpeg' ? 'jpg'
@@ -86,12 +94,15 @@ export async function POST(req: NextRequest) {
     .from('project-assets')
     .getPublicUrl(storagePath)
 
-  // Save asset record to generated_assets so it shows up in the asset grid
+  // Save asset record to generated_assets so it shows up in the asset grid.
+  // Use the ORIGINAL assetKey (with dots, e.g. "bonuspick.bg") as the type
+  // so feature-namespaced slots round-trip correctly. Storage filename is
+  // sanitized but the DB key is preserved.
   const theme = (formData.get('theme') as string | null) || 'custom'
   const assetRecord = {
     id:         crypto.randomUUID(),
     project_id: projectId,
-    type:       safeName,  // the asset type key (e.g. symbol_high_1)
+    type:       assetKey,  // original key — preserves feature namespace dots
     url:        publicUrl,
     prompt:     'User uploaded image',
     theme,

@@ -214,7 +214,9 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         const pl = withThumb
         const gn = pl.gameName as string | undefined
         if (gn?.trim()) setLiveProjectName(gn.trim())
-        // Keep editorMeta in sync so RightPanel symbol counts stay accurate
+        // Keep editorMeta in sync so RightPanel symbol counts stay accurate.
+        // `features` propagates the enabled-feature map (P.features) so
+        // AssetsPanel can show feature-specific slot rows (e.g. Bonus Pick).
         setEditorMeta(prev => ({
           ...prev,
           gameName:          pl.gameName,
@@ -225,6 +227,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           symbolHighNames:   pl.symbolHighNames,
           symbolLowNames:    pl.symbolLowNames,
           symbolSpecialNames:pl.symbolSpecialNames,
+          features:          pl.features,
         } as Record<string, unknown>))
         const isManual = manualSaveFlag.current
         manualSaveFlag.current = false

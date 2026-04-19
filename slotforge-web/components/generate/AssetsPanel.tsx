@@ -15,6 +15,9 @@ import {
   Loader2,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
+import type { FeatureDef, FeatureId, AssetSlot } from '@/types/features'
+import { activeAssetSlots } from '@/types/features'
+import { FEATURE_REGISTRY } from '@/lib/features/registry'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -82,6 +85,29 @@ function buildDisplayGroups(meta?: Record<string, unknown>): { label: string; ty
     { label: `Special Symbols (${specialCount})`,    types: SPECIAL_TYPE_KEYS.slice(0, specialCount) },
     { label: 'UI & Chrome',                          types: ['logo', 'character', 'reel_frame', 'spin_button', 'jackpot_label'] },
   ]
+}
+
+// ─── Feature slot groups (v1 registry) ───────────────────────────────────────
+// Returns the active asset slots for every feature enabled in projectMeta.features.
+// Uses each feature's defaultSettings to compute conditional slots; once Phase 2
+// wires real settings into the registry calls, this will react to user changes.
+interface FeatureSlotGroup {
+  featureId: FeatureId
+  label:     string
+  slots:     AssetSlot[]
+}
+function buildFeatureGroups(meta?: Record<string, unknown>): FeatureSlotGroup[] {
+  const features = (meta?.features as Record<string, boolean | unknown> | undefined) ?? {}
+  const groups: FeatureSlotGroup[] = []
+  for (const [id, def] of Object.entries(FEATURE_REGISTRY) as [FeatureId, FeatureDef][]) {
+    if (!features[id]) continue
+    groups.push({
+      featureId: id,
+      label:     def.label,
+      slots:     activeAssetSlots(def, def.defaultSettings),
+    })
+  }
+  return groups
 }
 
 type SnapEdge = 'right' | 'left' | 'free'
@@ -273,7 +299,7 @@ function snapBtnStyle(active: boolean): React.CSSProperties {
 function AssetLibraryContent({
   projectId, orgSlug, onAddToCanvas, assetRefreshTick, projectMeta,
 }: { projectId: string; orgSlug: string; onAddToCanvas: (type: AssetType, url: string) => void; assetRefreshTick?: number; projectMeta?: Record<string, unknown> }) {
-  const [assets,  setAssets]  = useState<Partial<Record<AssetType, GeneratedAsset>>>({})
+  const [assets,  setAssets]  = useState<Record<string, GeneratedAsset>>({})
   const [loading, setLoading] = useState(true)
 
   const loadAssets = useCallback(() => {
@@ -282,8 +308,10 @@ function AssetLibraryContent({
       .then(r => r.ok ? r.json() : { assets: [] })
       .then(d => {
         const list: GeneratedAsset[] = Array.isArray(d.assets) ? d.assets : []
-        // Build map: latest asset per type
-        const map: Partial<Record<AssetType, GeneratedAsset>> = {}
+        // Build map: latest asset per type. Keys are arbitrary strings —
+        // either legacy AssetType values ("symbol_high_1") or feature slot
+        // keys ("bonuspick.bg") preserved by /api/assets/upload.
+        const map: Record<string, GeneratedAsset> = {}
         const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
         for (const a of sorted) {
           if (!map[a.type]) map[a.type] = a
@@ -317,8 +345,34 @@ function AssetLibraryContent({
     }
   }, [projectId, loadAssets])
 
+  // ── Feature slot upload — same endpoint, but the slot key has a namespace
+  // (e.g. "bonuspick.bg") and the canvas position is fixed in editor.js, so
+  // we auto-inject into the iframe right after upload via onAddToCanvas.
+  const uploadFeatureSlot = useCallback(async (file: File, slotKey: string) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('projectId', projectId)
+    fd.append('assetKey', slotKey)
+    fd.append('theme', 'upload')
+    const res = await fetch('/api/assets/upload', { method: 'POST', body: fd })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      console.error('[AssetsPanel] feature slot upload failed:', err)
+      return
+    }
+    const data = await res.json().catch(() => ({}))
+    const url = data?.url as string | undefined
+    if (url) {
+      // SF_INJECT_IMAGE_LAYER falls back to the raw key when not in
+      // ASSET_KEY_MAP, so namespaced feature slots flow through unchanged.
+      onAddToCanvas(slotKey as AssetType, url)
+    }
+    loadAssets()
+  }, [projectId, loadAssets, onAddToCanvas])
+
   // Build display groups dynamically from project symbol counts
   const displayGroups = useMemo(() => buildDisplayGroups(projectMeta), [projectMeta])
+  const featureGroups = useMemo(() => buildFeatureGroups(projectMeta), [projectMeta])
 
   const totalFilled = Object.keys(assets).length
   const totalTypes  = displayGroups.reduce((n, g) => n + g.types.length, 0)
@@ -427,6 +481,173 @@ function AssetLibraryContent({
           </div>
         )
       })}
+
+      {/* ── Feature slot groups ──────────────────────────────────────────── */}
+      {!loading && featureGroups.length > 0 && (
+        <div style={{
+          margin: '14px 12px 4px',
+          padding: '4px 0 4px',
+          borderTop: `1px solid ${T.border}`,
+          fontSize: 9,
+          fontWeight: 700,
+          color: T.gold,
+          letterSpacing: '.08em',
+          textTransform: 'uppercase',
+        }}>
+          ✦ Features
+        </div>
+      )}
+      {!loading && featureGroups.map(group => {
+        const filledCount = group.slots.filter(s => !!assets[s.key]).length
+        return (
+          <div key={group.featureId} style={{ marginBottom: 4 }}>
+            <div style={{
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'space-between',
+              padding:        '6px 12px 4px',
+              fontSize:       10,
+              fontWeight:     700,
+              color:          T.textFaint,
+              letterSpacing:  '.06em',
+              textTransform:  'uppercase',
+            }}>
+              <span>{group.label}</span>
+              <span style={{ color: filledCount === group.slots.length ? T.green : T.textFaint }}>
+                {filledCount}/{group.slots.length}
+              </span>
+            </div>
+            {group.slots.map(slot => (
+              <FeatureSlotRow
+                key={slot.key}
+                slot={slot}
+                asset={assets[slot.key]}
+                onUpload={uploadFeatureSlot}
+              />
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feature Slot Row — simpler than LibraryRow because the slot's canvas
+// position is fixed in the editor (no drag, no "Place in" dropdown).
+// Upload triggers an auto-inject into the editor canvas via uploadFeatureSlot.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FeatureSlotRow({
+  slot, asset, onUpload,
+}: {
+  slot:     AssetSlot
+  asset?:   GeneratedAsset
+  onUpload: (file: File, slotKey: string) => Promise<void>
+}) {
+  const [uploading, setUploading] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  function handleUploadClick(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const inp = fileInput.current
+    if (inp) setTimeout(() => inp.click(), 0)
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploading(true)
+    try {
+      await onUpload(file, slot.key)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const isEmpty = !asset
+  const required = slot.requirement === 'required'
+
+  return (
+    <div
+      title={isEmpty ? `Upload ${slot.label}` : `${slot.label} — ${slot.key}`}
+      style={{
+        display:     'flex',
+        alignItems:  'center',
+        gap:         8,
+        padding:     '5px 12px',
+        borderBottom:`1px solid ${T.border}`,
+        opacity:     isEmpty ? 0.7 : 1,
+      }}
+    >
+      {/* Thumbnail */}
+      <div style={{
+        width:  38, height: 38, borderRadius: 6, overflow: 'hidden', flexShrink: 0,
+        background: T.surfaceHigh,
+        border: `1px solid ${isEmpty ? 'rgba(255,255,255,.04)' : T.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {asset
+          ? <img
+              src={asset.url}
+              alt={slot.label}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          : <ImageIcon size={14} style={{ color: T.textFaint, opacity: .4 }} />
+        }
+      </div>
+
+      {/* Label + slot key + requirement */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 600,
+          color: isEmpty ? T.textFaint : T.textPrimary,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {slot.label}
+          {required && (
+            <span style={{ color: 'rgba(248,113,113,.7)', marginLeft: 4, fontSize: 10 }}>*</span>
+          )}
+        </div>
+        <div style={{
+          fontSize: 9, marginTop: 1,
+          color: T.textFaint,
+          fontFamily: "'DM Mono',monospace",
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {slot.key}
+        </div>
+      </div>
+
+      {/* Upload button */}
+      <button
+        onClick={handleUploadClick}
+        title={asset ? 'Replace with upload' : 'Upload image'}
+        disabled={uploading}
+        style={{
+          width: 26, height: 26, borderRadius: 6,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: uploading ? 'rgba(96,165,250,.12)' : 'rgba(96,165,250,.06)',
+          border: `1px solid ${uploading ? 'rgba(96,165,250,.4)' : 'rgba(96,165,250,.18)'}`,
+          cursor: uploading ? 'wait' : 'pointer',
+          color: uploading ? T.blue : 'rgba(96,165,250,.6)',
+          flexShrink: 0,
+        }}
+      >
+        {uploading
+          ? <Loader2 size={11} style={{ animation: 'sf-spin 1s linear infinite' }} />
+          : <Upload  size={11} />
+        }
+      </button>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
     </div>
   )
 }
