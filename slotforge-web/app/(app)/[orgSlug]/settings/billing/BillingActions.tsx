@@ -21,7 +21,7 @@ export default function BillingActions({ mode, orgSlug, plan }: Props) {
 
     try {
       const endpoint = mode === 'checkout' ? '/api/billing/checkout' : '/api/billing/portal'
-      const body     = mode === 'checkout' ? { plan } : {}
+      const body     = mode === 'checkout' ? { plan, orgSlug } : { orgSlug }
 
       const res  = await fetch(endpoint, {
         method:  'POST',

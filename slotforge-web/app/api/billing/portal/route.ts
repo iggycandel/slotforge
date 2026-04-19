@@ -7,6 +7,7 @@ import { auth }               from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe }             from '@/lib/billing/stripe'
 import { getOrgSubscription } from '@/lib/billing/subscription'
+import { assertWorkspaceAccessBySlug } from '@/lib/supabase/authz'
 
 export async function POST(req: NextRequest) {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -25,10 +26,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No active subscription' }, { status: 400 })
   }
 
-  const origin   = req.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-  const referer  = req.headers.get('referer') ?? ''
-  const slugMatch = referer.match(/\/([^/]+)\/settings/)
-  const orgSlug   = slugMatch?.[1] ?? ''
+  const body    = await req.json().catch(() => ({}))
+  const orgSlug = (body.orgSlug as string | undefined)?.trim() ?? ''
+  if (!orgSlug || !(await assertWorkspaceAccessBySlug(userId, orgSlug))) {
+    return NextResponse.json({ error: 'Invalid workspace' }, { status: 400 })
+  }
+
+  const origin = process.env.NEXT_PUBLIC_APP_URL
+    ?? req.headers.get('origin')
+    ?? 'http://localhost:3000'
 
   const session = await stripe.billingPortal.sessions.create({
     customer:   sub.stripeCustomerId,

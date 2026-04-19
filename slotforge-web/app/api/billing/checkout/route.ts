@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { stripe }             from '@/lib/billing/stripe'
 import { PLANS }              from '@/lib/billing/plans'
 import { getOrgSubscription } from '@/lib/billing/subscription'
+import { assertWorkspaceAccessBySlug } from '@/lib/supabase/authz'
 import type { Plan }          from '@/lib/billing/plans'
 
 export async function POST(req: NextRequest) {
@@ -22,10 +23,14 @@ export async function POST(req: NextRequest) {
   // App routes by userId — orgId is always null. Use effectiveId throughout.
   const effectiveId = orgId ?? userId
 
-  const body   = await req.json().catch(() => ({}))
-  const plan   = body.plan as Plan | undefined
+  const body    = await req.json().catch(() => ({}))
+  const plan    = body.plan as Plan | undefined
+  const orgSlug = (body.orgSlug as string | undefined)?.trim() ?? ''
   if (!plan || !['freelancer', 'studio'].includes(plan)) {
     return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
+  }
+  if (!orgSlug || !(await assertWorkspaceAccessBySlug(userId, orgSlug))) {
+    return NextResponse.json({ error: 'Invalid workspace' }, { status: 400 })
   }
 
   const priceId = PLANS[plan].stripePriceId
@@ -50,12 +55,11 @@ export async function POST(req: NextRequest) {
     customerId = customer.id
   }
 
-  const origin = req.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-
-  // Extract orgSlug from referrer for redirect URL
-  const referer = req.headers.get('referer') ?? ''
-  const slugMatch = referer.match(/\/([^/]+)\/settings/)
-  const orgSlug   = slugMatch?.[1] ?? ''
+  // Prefer the configured app URL so a spoofed Origin header can't influence
+  // the Stripe redirect targets. Fall back to the request origin only in dev.
+  const origin = process.env.NEXT_PUBLIC_APP_URL
+    ?? req.headers.get('origin')
+    ?? 'http://localhost:3000'
 
   const session = await stripe.checkout.sessions.create({
     customer:             customerId,
