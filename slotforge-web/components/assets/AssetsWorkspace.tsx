@@ -188,13 +188,15 @@ interface Props {
   onBackToCanvas?: () => void
   /** Rich theme/art-direction meta forwarded from the editor's Project Settings panel */
   projectMeta?:  Record<string, unknown>
+  /** Whether the current plan allows exporting/downloading assets (default: false for safety) */
+  exportsEnabled?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta }: Props) {
+export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta, exportsEnabled = false }: Props) {
   // Route params (for billing page link)
   const params = useParams<{ orgSlug: string }>()
   const routeSlug = orgSlug ?? params?.orgSlug ?? ''
@@ -693,9 +695,14 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             </span>
           )}
 
-          <button onClick={() => {}} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 500, color: C.txMuted, background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }} className="sf-btn">
+          <button
+            onClick={() => { if (!exportsEnabled) { setGateModal({ type: 'upgrade' }) } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 500, color: exportsEnabled ? C.txMuted : C.txFaint, background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 10px', cursor: exportsEnabled ? 'pointer' : 'default', opacity: exportsEnabled ? 1 : 0.6 }}
+            className="sf-btn"
+            title={exportsEnabled ? 'Export assets' : 'Upgrade to export assets'}
+          >
             <Download size={12} />
-            Export
+            Export{!exportsEnabled && ' 🔒'}
           </button>
         </div>
       )}
@@ -847,6 +854,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           onRegen={handleRegen}
           logs={batchLogs}
           shortLabels={shortLabels}
+          exportsEnabled={exportsEnabled}
+          onUpgradeGate={() => setGateModal({ type: 'upgrade' })}
         />
       </div>
     </div>
@@ -1846,12 +1855,15 @@ interface RightPanelProps {
   onRegen:        (type: AssetType, prompt?: string) => void
   logs:           string[]
   shortLabels:    Partial<Record<AssetType, string>>
+  exportsEnabled: boolean
+  onUpgradeGate:  () => void
 }
 
 function RightInspectorPanel({
   selectedType, selectedAsset, rightTab, onTabChange,
   customPrompt, onPromptChange,
   regenTarget, theme, onRegen, logs, shortLabels,
+  exportsEnabled, onUpgradeGate,
 }: RightPanelProps) {
   const TABS: { id: RightTab; label: string; icon: React.ReactNode }[] = [
     { id: 'inspector', label: 'Inspector', icon: <Eye size={12} /> },
@@ -1916,6 +1928,8 @@ function RightInspectorPanel({
             theme={theme}
             onRegen={onRegen}
             shortLabels={shortLabels}
+            exportsEnabled={exportsEnabled}
+            onUpgradeGate={onUpgradeGate}
           />
         )}
 
@@ -1945,14 +1959,16 @@ function RightInspectorPanel({
 // ─── Inspector Tab ────────────────────────────────────────────────────────────
 
 function InspectorTab({
-  selectedType, selectedAsset, regenTarget, theme, onRegen, shortLabels,
+  selectedType, selectedAsset, regenTarget, theme, onRegen, shortLabels, exportsEnabled, onUpgradeGate,
 }: {
-  selectedType:  AssetType | null
+  selectedType:   AssetType | null
   selectedAsset?: GeneratedAsset
-  regenTarget:   AssetType | null
-  theme:         string
-  onRegen:       (type: AssetType) => void
-  shortLabels:   Partial<Record<AssetType, string>>
+  regenTarget:    AssetType | null
+  theme:          string
+  onRegen:        (type: AssetType) => void
+  shortLabels:    Partial<Record<AssetType, string>>
+  exportsEnabled: boolean
+  onUpgradeGate:  () => void
 }) {
   if (!selectedType) {
     return (
@@ -2039,29 +2055,54 @@ function InspectorTab({
         </button>
 
         {selectedAsset && (
-          <a
-            href={selectedAsset.url}
-            download={`${selectedType}.png`}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              display:        'flex',
-              alignItems:     'center',
-              justifyContent: 'center',
-              gap:            6,
-              padding:        '8px 0',
-              background:     C.surfHigh,
-              border:         `1px solid ${C.border}`,
-              borderRadius:   8,
-              color:          C.txMuted,
-              fontSize:       12,
-              fontWeight:     600,
-              textDecoration: 'none',
-            }}
-          >
-            <Download size={13} />
-            Download PNG
-          </a>
+          exportsEnabled ? (
+            <a
+              href={selectedAsset.url}
+              download={`${selectedType}.png`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: 'center',
+                gap:            6,
+                padding:        '8px 0',
+                background:     C.surfHigh,
+                border:         `1px solid ${C.border}`,
+                borderRadius:   8,
+                color:          C.txMuted,
+                fontSize:       12,
+                fontWeight:     600,
+                textDecoration: 'none',
+              }}
+            >
+              <Download size={13} />
+              Download PNG
+            </a>
+          ) : (
+            <button
+              onClick={() => onUpgradeGate()}
+              style={{
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: 'center',
+                gap:            6,
+                padding:        '8px 0',
+                background:     C.surfHigh,
+                border:         `1px solid ${C.border}`,
+                borderRadius:   8,
+                color:          C.txFaint,
+                fontSize:       12,
+                fontWeight:     600,
+                cursor:         'pointer',
+                width:          '100%',
+                opacity:        0.7,
+              }}
+              title="Upgrade to download assets"
+            >
+              🔒 Download PNG
+            </button>
+          )
         )}
       </div>
     </div>

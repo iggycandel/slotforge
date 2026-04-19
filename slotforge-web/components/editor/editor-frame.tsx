@@ -7,7 +7,7 @@ import { RightPanel } from './RightPanel'
 import { AssetsWorkspace } from '../assets/AssetsWorkspace'
 import type { AssetType } from '@/types/assets'
 
-interface EditorFrameProps { projectId: string; orgSlug: string; initialPayload: Record<string, unknown> | null; projectName: string }
+interface EditorFrameProps { projectId: string; orgSlug: string; initialPayload: Record<string, unknown> | null; projectName: string; exportsEnabled?: boolean }
 
 const TOOLBAR_H  = 44
 const PANEL_W    = 320
@@ -67,7 +67,7 @@ function SaveBadge({ state }: { state: SaveState }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function EditorFrame({ projectId, orgSlug, initialPayload, projectName }: EditorFrameProps) {
+export default function EditorFrame({ projectId, orgSlug, initialPayload, projectName, exportsEnabled = false }: EditorFrameProps) {
   const iframeRef      = useRef<HTMLIFrameElement>(null)
   const payloadRef     = useRef<Record<string, unknown> | null>(initialPayload)
   const manualSaveFlag = useRef(false)
@@ -471,6 +471,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             initialAssets={[]}
             inlineMode
             projectMeta={editorMeta ?? undefined}
+            exportsEnabled={exportsEnabled}
             onBackToCanvas={() => {
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, '*')

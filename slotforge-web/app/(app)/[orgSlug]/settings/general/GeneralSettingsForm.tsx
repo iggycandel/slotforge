@@ -43,6 +43,8 @@ export default function GeneralSettingsForm({ orgName, orgSlug, currentOrgSlug }
       </p>
 
       <form ref={formRef} onSubmit={handleSubmit}>
+        {/* Hidden field so the server action knows which workspace to update */}
+        <input type="hidden" name="currentSlug" value={currentOrgSlug} />
         <div className="space-y-4 p-5 rounded-2xl border border-sf-border bg-sf-surface">
           {/* Name */}
           <div>

@@ -1,24 +1,29 @@
-import { auth, clerkClient }  from '@clerk/nextjs/server'
-import GeneralSettingsForm     from './GeneralSettingsForm'
+import { auth }            from '@clerk/nextjs/server'
+import { createClient }    from '@/lib/supabase/server'
+import GeneralSettingsForm from './GeneralSettingsForm'
 
-interface Props { params: { orgSlug: string } }
+interface Props { params: Promise<{ orgSlug: string }> }
 
 export const metadata = { title: 'General · Settings' }
 
 export default async function GeneralSettingsPage({ params }: Props) {
-  const { orgSlug } = params
-  const { orgId }   = await auth()
-  const client      = await clerkClient()
+  const { orgSlug } = await params
+  const { userId }  = await auth()
 
-  const org = orgId
-    ? await client.organizations.getOrganization({ organizationId: orgId })
-    : null
+  // Read workspace from Supabase (the app has no Clerk orgs — routes by userId)
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('workspaces')
+    .select('name, slug')
+    .eq('slug', orgSlug)
+    .eq('clerk_org_id', userId ?? '')
+    .maybeSingle()
 
   return (
     <div className="max-w-lg space-y-8">
       <GeneralSettingsForm
-        orgName={org?.name ?? ''}
-        orgSlug={org?.slug ?? orgSlug}
+        orgName={data?.name ?? ''}
+        orgSlug={data?.slug ?? orgSlug}
         currentOrgSlug={orgSlug}
       />
 
