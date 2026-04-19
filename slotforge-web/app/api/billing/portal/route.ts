@@ -14,11 +14,13 @@ export async function POST(req: NextRequest) {
   }
 
   const { userId, orgId } = await auth()
-  if (!userId || !orgId) {
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // App routes by userId — orgId is always null. Use effectiveId throughout.
+  const effectiveId = orgId ?? userId
 
-  const sub = await getOrgSubscription(orgId)
+  const sub = await getOrgSubscription(effectiveId)
   if (!sub.stripeCustomerId) {
     return NextResponse.json({ error: 'No active subscription' }, { status: 400 })
   }

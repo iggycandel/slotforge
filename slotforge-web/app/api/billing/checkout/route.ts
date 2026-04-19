@@ -16,13 +16,15 @@ export async function POST(req: NextRequest) {
   }
 
   const { userId, orgId } = await auth()
-  if (!userId || !orgId) {
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // App routes by userId — orgId is always null. Use effectiveId throughout.
+  const effectiveId = orgId ?? userId
 
   const body   = await req.json().catch(() => ({}))
   const plan   = body.plan as Plan | undefined
-  if (!plan || !['pro', 'studio'].includes(plan)) {
+  if (!plan || !['freelancer', 'studio'].includes(plan)) {
     return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
   }
 
@@ -37,13 +39,13 @@ export async function POST(req: NextRequest) {
   const email  = user.emailAddresses[0]?.emailAddress
 
   // Reuse existing Stripe customer if we already have one
-  const existing = await getOrgSubscription(orgId)
+  const existing = await getOrgSubscription(effectiveId)
   let customerId = existing.stripeCustomerId
 
   if (!customerId) {
     const customer = await stripe.customers.create({
       email,
-      metadata: { orgId, userId },
+      metadata: { orgId: effectiveId, userId },
     })
     customerId = customer.id
   }
@@ -63,9 +65,9 @@ export async function POST(req: NextRequest) {
     success_url: `${origin}/${orgSlug}/settings/billing?upgraded=1`,
     cancel_url:  `${origin}/${orgSlug}/settings/billing?canceled=1`,
     subscription_data: {
-      metadata: { orgId, plan },
+      metadata: { orgId: effectiveId, plan },
     },
-    metadata: { orgId, plan },
+    metadata: { orgId: effectiveId, plan },
     allow_promotion_codes: true,
   })
 
