@@ -33,12 +33,30 @@ export default async function AssetsPage({ params }: Props) {
   const plan = await getOrgPlan(effectiveId)
   const exportsEnabled = canExport(plan)
 
+  // Seed projectMeta from the saved payload so feature slot groups render
+  // on first paint. Without this, buildFeatureSlotGroups() returned [] and
+  // feature assets didn't surface until an editor autosave populated meta.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload: any = project.payload ?? {}
+  const projectMeta: Record<string, unknown> = {
+    gameName:           payload.gameName,
+    themeKey:           payload.theme,
+    symbolHighCount:    payload.symbolHighCount,
+    symbolLowCount:     payload.symbolLowCount,
+    symbolSpecialCount: payload.symbolSpecialCount,
+    symbolHighNames:    payload.symbolHighNames,
+    symbolLowNames:     payload.symbolLowNames,
+    symbolSpecialNames: payload.symbolSpecialNames,
+    features:           payload.features,
+  }
+
   return (
     <AssetsWorkspace
       projectId={projectId}
       orgSlug={orgSlug}
       projectName={project.name ?? 'Untitled Project'}
       initialAssets={initialAssets}
+      projectMeta={projectMeta}
       exportsEnabled={exportsEnabled}
     />
   )

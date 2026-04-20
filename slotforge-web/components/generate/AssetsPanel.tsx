@@ -354,6 +354,37 @@ function AssetLibraryContent({
     }
   }, [projectId, loadAssets])
 
+  // AI generate for a legacy AssetType — same /api/ai-single path as the
+  // feature-slot generate, so every row in the panel offers Upload + ✨ AI.
+  const generateAsset = useCallback(async (assetType: AssetType): Promise<{ ok: boolean; error?: string }> => {
+    const theme   = (projectMeta?.themeKey as string | undefined)
+                  ?? (projectMeta?.gameName as string | undefined)
+                  ?? ''
+    const styleId = (projectMeta?.styleId as string | undefined) ?? undefined
+    const res = await fetch('/api/ai-single', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        asset_type:   assetType,
+        theme,
+        project_id:   projectId,
+        provider:     'auto',
+        style_id:     styleId,
+        project_meta: projectMeta,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || data?.error) {
+      const msg = data?.error ?? `Generation failed (${res.status})`
+      console.error('[AssetsPanel] legacy generate failed:', msg)
+      return { ok: false, error: String(msg) }
+    }
+    const url = (data?.asset?.url ?? data?.url) as string | undefined
+    if (url) onAddToCanvas(assetType, url)
+    loadAssets()
+    return { ok: true }
+  }, [projectId, projectMeta, loadAssets, onAddToCanvas])
+
   // ── Feature slot upload — same endpoint, but the slot key has a namespace
   // (e.g. "bonuspick.bg") and the canvas position is fixed in editor.js, so
   // we auto-inject into the iframe right after upload via onAddToCanvas.
@@ -522,6 +553,7 @@ function AssetLibraryContent({
                 asset={asset}
                 onAddToCanvas={onAddToCanvas}
                 onUpload={uploadAsset}
+                onGenerate={generateAsset}
               />
             ))}
           </div>
@@ -831,18 +863,35 @@ const CANVAS_SLOT_OPTIONS: { label: string; assetType: AssetType }[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 function LibraryRow({
-  assetType, asset, onAddToCanvas, onUpload,
+  assetType, asset, onAddToCanvas, onUpload, onGenerate,
 }: {
   assetType:    AssetType
   asset?:       GeneratedAsset
   onAddToCanvas:(t: AssetType, url: string) => void
   onUpload:     (file: File, type: AssetType) => Promise<void>
+  onGenerate:   (type: AssetType) => Promise<{ ok: boolean; error?: string }>
 }) {
-  const [adding,    setAdding]    = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [ddOpen,    setDdOpen]    = useState(false)
+  const [adding,     setAdding]     = useState(false)
+  const [uploading,  setUploading]  = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genError,   setGenError]   = useState<string | null>(null)
+  const [ddOpen,     setDdOpen]     = useState(false)
   const ddRef     = useRef<HTMLDivElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  async function handleGenerateClick(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (generating || uploading) return
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const res = await onGenerate(assetType)
+      if (!res.ok) setGenError(res.error ?? 'Failed')
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -980,11 +1029,40 @@ function LibraryRow({
       {/* Action buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
 
+        {/* Generate button — ✨ AI for this slot (parity with feature rows) */}
+        <button
+          onClick={handleGenerateClick}
+          title={genError ? `Retry AI generate · ${genError}` : (asset ? 'Replace with AI generate' : 'Generate with AI')}
+          disabled={generating || uploading}
+          style={{
+            width:      26,
+            height:     26,
+            borderRadius: 6,
+            display:    'flex',
+            alignItems: 'center',
+            justifyContent:'center',
+            background: generating ? 'rgba(201,168,76,.2)'
+                      : genError   ? 'rgba(248,113,113,.08)'
+                                   : 'rgba(201,168,76,.08)',
+            border:     `1px solid ${generating ? 'rgba(201,168,76,.5)'
+                                   : genError   ? 'rgba(248,113,113,.4)'
+                                                : 'rgba(201,168,76,.25)'}`,
+            cursor:     (generating || uploading) ? 'wait' : 'pointer',
+            color:      generating ? T.gold : genError ? '#f87171' : 'rgba(201,168,76,.9)',
+            flexShrink: 0,
+          }}
+        >
+          {generating
+            ? <Loader2 size={11} style={{ animation: 'sf-spin 1s linear infinite' }} />
+            : <Sparkles size={11} />
+          }
+        </button>
+
         {/* Upload button — always visible */}
         <button
           onClick={handleUploadClick}
           title={asset ? 'Replace with upload' : 'Upload image'}
-          disabled={uploading}
+          disabled={uploading || generating}
           style={{
             width:      26,
             height:     26,
@@ -994,7 +1072,7 @@ function LibraryRow({
             justifyContent:'center',
             background: uploading ? 'rgba(96,165,250,.12)' : 'rgba(96,165,250,.06)',
             border:     `1px solid ${uploading ? 'rgba(96,165,250,.4)' : 'rgba(96,165,250,.18)'}`,
-            cursor:     uploading ? 'wait' : 'pointer',
+            cursor:     (uploading || generating) ? 'wait' : 'pointer',
             color:      uploading ? T.blue : 'rgba(96,165,250,.6)',
             flexShrink: 0,
           }}
