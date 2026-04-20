@@ -50,6 +50,12 @@ body{font-family:var(--font-ui);background:var(--bg-base);color:var(--text-main)
 .dd-item.on .di-check{display:inline}
 .dd-sep{height:1px;background:#2e2e40;margin:4px 4px}
 .dd-sub{font-size:9px;color:#9898b8;padding:3px 9px 1px;letter-spacing:.09em;text-transform:uppercase}
+/* Menubar overflow ("⋯") — populated by _updateMenubarOverflow() in editor.js.
+   The dropdown is wider because it stacks every hidden menu vertically. */
+#menu-overflow-wrap .menu-btn{font-size:16px;font-weight:600;line-height:1;padding:4px 10px;color:var(--accent-gold)}
+#menu-overflow{min-width:240px;max-height:70vh;overflow-y:auto}
+#menu-overflow .ov-section{font-size:9px;color:var(--accent-gold);padding:6px 10px 2px;letter-spacing:.1em;text-transform:uppercase;font-weight:700}
+#menu-overflow .ov-section:not(:first-child){border-top:1px solid #2e2e40;margin-top:4px;padding-top:8px}
 #topbar{display:flex;align-items:center;background:var(--bg-panel-solid);border-bottom:1px solid var(--border-light);flex-shrink:0;height:44px;position:relative;z-index:400;box-shadow: 0 2px 12px rgba(0,0,0,0.2)}
 .logo{font-size:14px;font-weight:700;color:var(--accent-gold);letter-spacing:.08em;text-transform:uppercase;padding:0 18px;border-right:1px solid var(--border-light);height:100%;display:flex;align-items:center;flex-shrink:0}
 #screen-tabs{display:flex;height:100%;overflow-x:auto;flex:1}

@@ -9,11 +9,12 @@ import type { AssetType } from '@/types/assets'
 
 interface EditorFrameProps { projectId: string; orgSlug: string; initialPayload: Record<string, unknown> | null; projectName: string; exportsEnabled?: boolean }
 
-const TOOLBAR_H  = 44
-const PANEL_W    = 320
+const TOOLBAR_H         = 44
+const PANEL_W           = 320
+const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v71'
+const EDITOR_VERSION = 'v72'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -80,6 +81,20 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [historyOpen,     setHistoryOpen]     = useState(false)
   const [liveProjectName, setLiveProjectName] = useState(projectName)
   const [editorWorkspace, setEditorWorkspace] = useState<string>('canvas')
+  // Right panel (Layers/Assets) collapse state — persisted across sessions
+  // so the user's preference survives reloads and project switches.
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('sf_right_panel_collapsed') === '1'
+  })
+  const toggleRightPanel = useCallback(() => {
+    setRightPanelCollapsed(c => {
+      const next = !c
+      try { window.localStorage.setItem('sf_right_panel_collapsed', next ? '1' : '0') } catch {}
+      return next
+    })
+  }, [])
+  const effectivePanelW = rightPanelCollapsed ? PANEL_W_COLLAPSED : PANEL_W
   // Initialise editorMeta from the saved payload so symbol counts AND the
   // features map are correct on first load. Without `features` here the
   // Assets panel shows no feature groups until the first autosave fires.
@@ -509,6 +524,8 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             width={PANEL_W}
             assetRefreshTick={assetRefreshTick}
             projectMeta={editorMeta ?? undefined}
+            collapsed={rightPanelCollapsed}
+            onToggleCollapsed={toggleRightPanel}
           />
         )}
 
@@ -517,7 +534,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           <div style={{
             position:      'absolute',
             top:           TOOLBAR_H,
-            right:         editorWorkspace === 'canvas' ? PANEL_W : 0,
+            right:         editorWorkspace === 'canvas' ? effectivePanelW : 0,
             width:         260,
             height:        `calc(100% - ${TOOLBAR_H}px)`,
             background:    C.surface,

@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Eye, EyeOff, Lock, Unlock, Copy, Trash2, Plus, ChevronDown } from 'lucide-react'
+import { Eye, EyeOff, Lock, Unlock, Copy, Trash2, Plus, ChevronDown, ChevronsRight, ChevronsLeft, Layers as LayersIcon, Image as AssetsIcon } from 'lucide-react'
 import { AssetsPanel } from '../generate/AssetsPanel'
 import type { AssetType } from '@/types/assets'
 
@@ -76,9 +76,13 @@ interface Props {
   width?:           number
   assetRefreshTick?: number
   projectMeta?:     Record<string, unknown>
+  /** Controlled collapse state — when true, render a narrow icon rail. */
+  collapsed?:       boolean
+  /** Toggle requested by the chevron inside the panel. */
+  onToggleCollapsed?: () => void
 }
 
-export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, assetRefreshTick, projectMeta }: Props) {
+export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, assetRefreshTick, projectMeta, collapsed = false, onToggleCollapsed }: Props) {
   const [activeTab, setActiveTab] = useState<PanelTab>('layers')
   const [layers,    setLayers]    = useState<LayerInfo[]>([])
   const [screen,    setScreen]    = useState('')
@@ -175,6 +179,50 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
   // Render
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ── Collapsed rail ────────────────────────────────────────────────────────
+  // Narrow 36 px strip: stays visible so the user can always expand again, and
+  // offers the two tab toggles as icon shortcuts that auto-expand when clicked.
+  if (collapsed) {
+    const railBtn: React.CSSProperties = {
+      background: 'transparent', border: 'none', cursor: 'pointer',
+      width: 32, height: 32, borderRadius: 6, display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      color: T.textMuted, transition: 'background .15s, color .15s',
+    }
+    const tabBtn = (tab: PanelTab, label: string, Icon: typeof LayersIcon) => (
+      <button
+        key={tab}
+        onClick={() => { setActiveTab(tab); onToggleCollapsed?.() }}
+        title={label}
+        style={{ ...railBtn, color: activeTab === tab ? T.gold : T.textMuted }}
+      >
+        <Icon style={{ width: 16, height: 16 }} />
+      </button>
+    )
+    return (
+      <div
+        ref={panelRef}
+        style={{
+          width: 36, minWidth: 36, flexShrink: 0,
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          background: T.surface, borderLeft: `1px solid ${T.border}`,
+          height: '100%', padding: '6px 0', gap: 4, fontFamily: T.font,
+        }}
+      >
+        <button
+          onClick={onToggleCollapsed}
+          title="Expand panel"
+          style={railBtn}
+        >
+          <ChevronsLeft style={{ width: 16, height: 16 }} />
+        </button>
+        <div style={{ width: 20, height: 1, background: T.border, margin: '2px 0' }} />
+        {tabBtn('layers', 'Layers', LayersIcon)}
+        {tabBtn('assets', 'Assets', AssetsIcon)}
+      </div>
+    )
+  }
+
   return (
     <div
       ref={panelRef}
@@ -195,6 +243,7 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
       {/* ── Tab bar ── */}
       <div style={{
         display:       'flex',
+        alignItems:    'stretch',
         background:    T.bg,
         borderBottom:  `1px solid ${T.border}`,
         flexShrink:    0,
@@ -222,6 +271,21 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
             {tab === 'layers' ? 'Layers' : 'Assets'}
           </button>
         ))}
+        {onToggleCollapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            title="Collapse panel"
+            aria-label="Collapse panel"
+            style={{
+              width: 32, border: 'none', cursor: 'pointer',
+              background: 'transparent', color: T.textMuted,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderBottom: '2px solid transparent',
+            }}
+          >
+            <ChevronsRight style={{ width: 15, height: 15 }} />
+          </button>
+        )}
       </div>
 
       {/* ── Layers tab ── */}

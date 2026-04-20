@@ -3372,6 +3372,81 @@ document.querySelectorAll('[data-vp]').forEach(btn=>btn.addEventListener('click'
 // Menu bar
 document.querySelectorAll('.menu-btn').forEach(btn=>{btn.addEventListener('click',e=>{e.stopPropagation();const id='menu-'+btn.dataset.menu;const isOpen=document.getElementById(id).classList.contains('show');document.querySelectorAll('.dropdown').forEach(d=>{d.classList.remove('show');d.previousElementSibling?.classList.remove('open');});if(!isOpen){document.getElementById(id).classList.add('show');btn.classList.add('open');}});});
 document.addEventListener('click',()=>{document.querySelectorAll('.dropdown').forEach(d=>d.classList.remove('show'));document.querySelectorAll('.menu-btn').forEach(b=>b.classList.remove('open'));});
+
+// ── Menubar overflow ("⋯") ────────────────────────────────────────────────
+// When the menubar content is wider than the iframe can display, collapse
+// the seven top-level menus (File/Edit/View/Insert/Flow/Docs/Help) into a
+// single "⋯" button whose dropdown lists every hidden menu's items as a
+// stacked, sectioned panel. Clicks on the cloned items re-dispatch to the
+// originals so all existing handlers fire unchanged.
+(function _wireMenubarOverflow(){
+  const menubar = document.getElementById('menubar');
+  const ovWrap  = document.getElementById('menu-overflow-wrap');
+  const ovDd    = document.getElementById('menu-overflow');
+  if(!menubar || !ovWrap || !ovDd) return;
+
+  // Menus eligible for collapse — anything with a data-menu on its button,
+  // minus the overflow button itself and minus the viewport picker (the
+  // latter hides/shows on its own based on workspace).
+  const getCollapsible = () => [
+    ...menubar.querySelectorAll('.menu-item')
+  ].filter(el => el !== ovWrap && el.id !== 'vp-menu-item' && el.id !== 'menu-overflow-wrap');
+
+  function _populateOverflowDd(hiddenGroups){
+    ovDd.innerHTML = '';
+    hiddenGroups.forEach((g) => {
+      const label = g.querySelector('.menu-btn')?.textContent?.trim() || '';
+      const header = document.createElement('div');
+      header.className = 'ov-section';
+      header.textContent = label;
+      ovDd.appendChild(header);
+      const orig = g.querySelector('.dropdown');
+      if(!orig) return;
+      [...orig.children].forEach(child => {
+        if(child.classList.contains('dd-item') && child.id){
+          const clone = child.cloneNode(true);
+          clone.removeAttribute('id'); // avoid duplicate ids in DOM
+          clone.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            // Close the overflow first so the underlying handler's own close
+            // logic doesn't race with ours.
+            ovDd.classList.remove('show');
+            ovWrap.querySelector('.menu-btn')?.classList.remove('open');
+            document.getElementById(child.id)?.click();
+          });
+          ovDd.appendChild(clone);
+        } else if(child.classList.contains('dd-sep')){
+          ovDd.appendChild(child.cloneNode(false));
+        }
+        // skip dd-sub — the ov-section header already labels the group
+      });
+    });
+  }
+
+  let _raf = 0;
+  function _check(){
+    if(_raf) cancelAnimationFrame(_raf);
+    _raf = requestAnimationFrame(() => {
+      _raf = 0;
+      // Reset to natural state so we can re-measure correctly.
+      ovWrap.setAttribute('hidden','');
+      getCollapsible().forEach(el => { el.style.display = ''; });
+      // Measure after reset.
+      const overflowing = menubar.scrollWidth > menubar.clientWidth + 2;
+      if(!overflowing) return;
+      const groups = getCollapsible();
+      groups.forEach(el => { el.style.display = 'none'; });
+      ovWrap.removeAttribute('hidden');
+      _populateOverflowDd(groups);
+    });
+  }
+
+  // Re-run on resize and on workspace change (topbar/menubar content shifts).
+  try { new ResizeObserver(_check).observe(menubar); } catch(e){}
+  window.addEventListener('resize', _check);
+  // Initial pass after DOM settles.
+  setTimeout(_check, 50);
+})();
 const openExp=()=>document.getElementById('export-panel').classList.add('show');
 // m-project wired below with closeAllMenus() included
 // topbar-settings-btn removed; project settings now via Project workspace or ⌘,
