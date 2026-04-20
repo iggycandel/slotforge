@@ -2816,6 +2816,93 @@ document.addEventListener('click',()=>document.getElementById('ep').style.displa
 document.querySelectorAll('#logo-pg .pc').forEach(c=>{c.addEventListener('click',()=>{document.querySelectorAll('#logo-pg .pc').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');markDirty();});});
 document.querySelectorAll('.psh').forEach(h=>{h.addEventListener('click',()=>{const b=document.getElementById('s-'+h.dataset.s);if(b){b.classList.toggle('hid');h.classList.toggle('col');}});});
 
+// ─── v1 Feature slot catalogue (mirrors lib/features/registry.ts) ──────────
+// editor.js can't import TS — this list lets the Features workspace show an
+// "Assets needed" summary per feature without a round trip. Keep in sync with
+// docs/features-v1-catalogue.md when slot names change.
+const V1_FEATURE_SLOTS = {
+  freespin: [
+    { key:'freespins.intro_banner',          label:'Intro banner',           req:true  },
+    { key:'freespins.bg',                    label:'Background (in-round)',  req:false },
+    { key:'freespins.spin_counter_frame',    label:'Spin counter frame',     req:true  },
+    { key:'freespins.multiplier_badge',      label:'Multiplier badge',       req:false },
+    { key:'freespins.retrigger_celebration', label:'Retrigger celebration',  req:false },
+    { key:'freespins.outro_banner',          label:'Outro banner',           req:true  },
+  ],
+  holdnspin: [
+    { key:'holdnspin.intro_banner',         label:'Intro banner',          req:true  },
+    { key:'holdnspin.bg',                   label:'Background',            req:false },
+    { key:'holdnspin.coin_symbol_locked',   label:'Coin (locked)',         req:true  },
+    { key:'holdnspin.coin_symbol_glowing',  label:'Coin (just-landed)',    req:false },
+    { key:'holdnspin.respin_counter_frame', label:'Respin counter frame',  req:true  },
+    { key:'holdnspin.jackpot_grand',        label:'Jackpot: Grand',        req:false },
+    { key:'holdnspin.jackpot_major',        label:'Jackpot: Major',        req:false },
+    { key:'holdnspin.jackpot_minor',        label:'Jackpot: Minor',        req:false },
+    { key:'holdnspin.jackpot_mini',         label:'Jackpot: Mini',         req:false },
+    { key:'holdnspin.outro_banner',         label:'Outro banner',          req:true  },
+  ],
+  bonus_pick: [
+    { key:'bonuspick.bg',               label:'Background',             req:true  },
+    { key:'bonuspick.header',           label:'"Choose Your Prize"',    req:true  },
+    { key:'bonuspick.tile_closed',      label:'Tile (closed)',          req:true  },
+    { key:'bonuspick.tile_revealed',    label:'Tile (revealed)',        req:true  },
+    { key:'bonuspick.prize_coin',       label:'Prize: coin',            req:false },
+    { key:'bonuspick.prize_multiplier', label:'Prize: multiplier',      req:false },
+    { key:'bonuspick.prize_freespin',   label:'Prize: free-spin',       req:false },
+    { key:'bonuspick.prize_jackpot',    label:'Prize: jackpot',         req:false },
+    { key:'bonuspick.prize_pooper',     label:'Prize: end-round',       req:false },
+    { key:'bonuspick.footer',           label:'"Pick X of Y" footer',   req:true  },
+  ],
+  buy_feature: [
+    { key:'buy.button',           label:'Buy button (idle)',    req:true  },
+    { key:'buy.button_hover',     label:'Buy button (hover)',   req:false },
+    { key:'buy.confirm_panel_bg', label:'Confirm panel bg',     req:false },
+    { key:'buy.confirm_icon',     label:'Confirm icon',         req:false },
+  ],
+  expanding_wild: [
+    { key:'expandwild.symbol',           label:'Wild (un-expanded)',  req:true  },
+    { key:'expandwild.expanded_overlay', label:'Expanded overlay',    req:true  },
+    { key:'expandwild.multiplier_badge', label:'Multiplier badge',    req:false },
+  ],
+};
+
+// Render the "Assets needed" mini-list for one feature row. Returns a DOM node
+// (or null when the feature has no v1 slots). Each row shows a ✓ if the asset
+// is already uploaded, or an upload icon + "empty" label if not. Clicking a
+// row scrolls the Assets sidebar into focus so the user knows where to upload.
+function renderAssetsNeeded(featureKey){
+  const slots = V1_FEATURE_SLOTS[featureKey];
+  if(!slots || slots.length === 0) return null;
+  const filled = slots.filter(s => !!EL_ASSETS[s.key]).length;
+  const wrap = document.createElement('div');
+  wrap.className = 'ft-assets-needed';
+  wrap.style.cssText = 'margin:6px 0 4px 28px;padding:8px 10px;background:#0b0b15;border:1px solid #1a1a28;border-radius:6px;font-family:Space Grotesk,sans-serif';
+  // Header
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px';
+  hdr.innerHTML = `<span style="font-size:9px;font-weight:700;color:#8a8aaa;letter-spacing:.08em;text-transform:uppercase">Assets needed</span><span style="font-size:9px;font-weight:700;font-family:DM Mono,monospace;color:${filled===slots.length?'#34d399':'#8a8aaa'}">${filled}/${slots.length}</span>`;
+  wrap.appendChild(hdr);
+  // Rows
+  slots.forEach(s => {
+    const has = !!EL_ASSETS[s.key];
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px';
+    const dot = document.createElement('span');
+    dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${has?'#34d399':(s.req?'#f8717144':'#2a2a3a')};border:1px solid ${has?'#34d39988':(s.req?'#f87171':'#3a3a4a')}`;
+    row.appendChild(dot);
+    const label = document.createElement('span');
+    label.style.cssText = `flex:1;color:${has?'#ccc':'#8a8aaa'};${has?'':'font-style:italic'}`;
+    label.textContent = s.label + (s.req && !has ? ' *' : '');
+    row.appendChild(label);
+    const key = document.createElement('span');
+    key.style.cssText = 'font-family:DM Mono,monospace;font-size:9px;color:#4a4a5a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px';
+    key.textContent = s.key;
+    row.appendChild(key);
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
 function buildFeatures(){
   const list=document.getElementById('feat-list'); if(!list) return;
 
@@ -2884,6 +2971,12 @@ function buildFeatures(){
         cfg.style.display=isOn?'':'none';
         list.appendChild(cfg);
       }
+    }
+
+    // Assets needed mini-list — only for enabled features that have v1 slots
+    if(isOn && V1_FEATURE_SLOTS[f.key]){
+      const needed = renderAssetsNeeded(f.key);
+      if(needed) list.appendChild(needed);
     }
   });
 
