@@ -10564,41 +10564,43 @@ window._sfBridge = (function(){
   // The composite view is a DIV (#gf) with positioned <img> layers, not a
   // real <canvas>, so we rasterize it with html2canvas.
   //
-  // Two gotchas we handle here:
+  // Correct capture target: #gf-outer at ZOOM=1. In this state:
+  //   • #gf-outer has overflow:hidden and CSS size = vp.cw × vp.ch
+  //   • #gf has transform: scale(1) translate(-cx, -cy) — a pure offset
+  //     that shifts the 2000×2000 canvas so viewport content sits at the
+  //     outer container's top-left
+  // So html2canvas on #gf-outer gives us a perfect viewport-sized capture
+  // with no clip-region gymnastics needed. Earlier attempts tried to clip
+  // inside a fitZoomed #gf, which html2canvas interpreted in rendered
+  // coordinates and produced a ~1/5 size capture in the corner.
   //
-  //   1. #gf has a CSS transform applied by fitZoom/applyZoom — both a
-  //      scale() for the canvas zoom AND a translate() for the viewport
-  //      offset. html2canvas interprets its x/y/width/height clip options
-  //      in the RENDERED (post-transform) coordinate space, not the
-  //      untransformed 2000×2000 DOM coords we'd want. Result: the clip
-  //      ends up capturing a tiny slice in one corner. We clear the
-  //      transform during capture and restore it afterward, then crop in
-  //      a plain 2D canvas instead of using html2canvas's clip options.
-  //
-  //   2. Autosave can fire while the user is on a popup / feature sub-tab
-  //      (Big Win, Bonus Pick Intro, etc.) where the dim overlay covers
-  //      the viewport. That would make every thumbnail ~75% black. We
-  //      swap P.screen → 'base', rebuild, capture, then restore — all
-  //      without touching the tabs/topbar.
+  // We also swap P.screen → 'base' while capturing so thumbnails taken
+  // from a popup / feature sub-tab (dim-overlay) don't come back 75% dark.
   async function getThumbnail(){
     try {
-      var gf = document.getElementById('gf');
-      if(!gf || typeof html2canvas !== 'function') return null;
-      var hasEditor = typeof P !== 'undefined' && typeof SDEFS !== 'undefined' && typeof buildCanvas === 'function';
+      var gf      = document.getElementById('gf');
+      var gfOuter = document.getElementById('gf-outer');
+      if(!gf || !gfOuter || typeof html2canvas !== 'function') return null;
+      var hasEditor = typeof P !== 'undefined' && typeof SDEFS !== 'undefined' && typeof buildCanvas === 'function' && typeof ZOOM !== 'undefined' && typeof applyZoom === 'function';
       if(!hasEditor) return null;
 
       // ── 1. Swap to base screen if needed ──
       var savedScreen = P.screen;
       var cleanScreens = { base: 1, splash: 1 };
-      var needsSwap = !cleanScreens[savedScreen];
-      if (needsSwap) {
+      var needsScreenSwap = !cleanScreens[savedScreen];
+      if (needsScreenSwap) {
         P.screen = 'base';
         try { buildCanvas(); } catch(e) { /* non-fatal */ }
       }
 
-      // ── 2. Wait for DOM layout + pending image decodes ──
-      // buildCanvas creates fresh <img> elements; even if their src is
-      // cached, the decode into the paint tree still needs a tick.
+      // ── 2. Force ZOOM=1 so #gf-outer == viewport pixel dimensions ──
+      var savedZoom = ZOOM;
+      if (savedZoom !== 1) {
+        ZOOM = 1;
+        applyZoom();
+      }
+
+      // ── 3. Wait for layout + image decodes ──
       await new Promise(function(r){
         requestAnimationFrame(function(){ requestAnimationFrame(r); });
       });
@@ -10610,62 +10612,44 @@ window._sfBridge = (function(){
             var done = function(){ img.removeEventListener('load', done); img.removeEventListener('error', done); r(); };
             img.addEventListener('load',  done);
             img.addEventListener('error', done);
-            // Safety net: never hang the save longer than 800 ms per image.
-            setTimeout(done, 800);
+            setTimeout(done, 800); // safety cap
           });
         }));
       } catch(_) { /* best-effort */ }
 
-      // ── 3. Capture #gf with its transform cleared ──
-      // Preserve the existing transform so we can restore it exactly.
-      var savedTransform       = gf.style.transform;
-      var savedTransformOrigin = gf.style.transformOrigin;
-      gf.style.transform       = 'none';
-      gf.style.transformOrigin = '0 0';
-
-      var full;
       try {
-        full = await html2canvas(gf, {
+        // ── 4. Capture #gf-outer (already cropped to viewport at ZOOM=1) ──
+        var full = await html2canvas(gfOuter, {
           useCORS:         true,
           allowTaint:      false,
           backgroundColor: '#0b0e16',
           logging:         false,
           scale:           1,
         });
+
+        // ── 5. Downscale to ~600 px wide JPEG ──
+        var TARGET_W = 600;
+        var ratio = full.width > TARGET_W ? TARGET_W / full.width : 1;
+        var dw = Math.max(1, Math.round(full.width  * ratio));
+        var dh = Math.max(1, Math.round(full.height * ratio));
+        var t = document.createElement('canvas');
+        t.width = dw; t.height = dh;
+        var ctx = t.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(full, 0, 0, full.width, full.height, 0, 0, dw, dh);
+        return t.toDataURL('image/jpeg', 0.88);
       } finally {
-        gf.style.transform       = savedTransform;
-        gf.style.transformOrigin = savedTransformOrigin;
+        // ── 6. Restore state (zoom + screen) ──
+        if (ZOOM !== savedZoom) {
+          ZOOM = savedZoom;
+          applyZoom();
+        }
+        if (needsScreenSwap) {
+          P.screen = savedScreen;
+          try { buildCanvas(); } catch(e) { /* non-fatal */ }
+        }
       }
-
-      // ── 4. Crop the active viewport region and downscale ──
-      var vp = VP[P.viewport];
-      var cx = vp ? vp.cx : 0;
-      var cy = vp ? vp.cy : 0;
-      var cw = vp ? vp.cw : full.width;
-      var ch = vp ? vp.ch : full.height;
-      // Clamp to what the source actually provides so Canvas 2D never
-      // draws from negative or over-wide coordinates (Firefox throws).
-      cw = Math.min(cw, full.width  - cx);
-      ch = Math.min(ch, full.height - cy);
-
-      var TARGET_W = 600;
-      var ratio = cw > TARGET_W ? TARGET_W / cw : 1;
-      var dw = Math.max(1, Math.round(cw * ratio));
-      var dh = Math.max(1, Math.round(ch * ratio));
-      var t = document.createElement('canvas');
-      t.width = dw; t.height = dh;
-      var ctx = t.getContext('2d');
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(full, cx, cy, cw, ch, 0, 0, dw, dh);
-      var dataUrl = t.toDataURL('image/jpeg', 0.88);
-
-      // ── 5. Restore the screen state ──
-      if (needsSwap) {
-        P.screen = savedScreen;
-        try { buildCanvas(); } catch(e) { /* non-fatal */ }
-      }
-      return dataUrl;
     } catch(e){
       console.warn('[getThumbnail]', e);
       return null;
