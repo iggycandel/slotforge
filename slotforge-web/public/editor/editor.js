@@ -1358,7 +1358,11 @@ function buildCanvas(){
     }else if(k==='bannerBuy'){
       el.style.borderRadius='10px'; el.style.cursor='pointer';
       const inner=document.createElement('div');inner.style.cssText='position:absolute;inset:0;border-radius:10px;overflow:hidden;';
-      if(EL_ASSETS[k]){const img=document.createElement('img');img.src=EL_ASSETS[k];img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('BUY BONUS'));}
+      // Prefer the registry-namespaced Buy Feature slot (buy.button) over
+      // the legacy bannerBuy asset — so users uploading via the Features
+      // section in the Assets panel see it here.
+      const buyKey = EL_ASSETS['buy.button'] ? 'buy.button' : (EL_ASSETS[k] ? k : null);
+      if(buyKey){const img=document.createElement('img');img.src=EL_ASSETS[buyKey];img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none';inner.appendChild(img);}else{inner.appendChild(makeImgSlot('BUY BONUS'));}
       const bsz=Math.max(Math.round(pos.h*0.28),11);
       const ov=document.createElement('div');
       ov.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;pointer-events:none';
@@ -4824,6 +4828,20 @@ function buildEWOverlay(parentScr){
       // Full reel column highlighted
       highlight.style.cssText=`position:absolute;left:${cx-6}px;top:${cy-6}px;width:${CELL+12}px;height:${gridH+12}px;border:3px solid ${glow};border-radius:12px;background:${glow}14;box-shadow:0 0 30px ${glow}44;pointer-events:none`;
       overlay.appendChild(highlight);
+      // If the user uploaded expandwild.expanded_overlay, layer it on top
+      // of the highlight so the preview reflects their art instead of the
+      // default glow. Cover-fit so the uploaded art fills the column.
+      if (EL_ASSETS['expandwild.expanded_overlay']) {
+        const imgWrap = document.createElement('div');
+        imgWrap.dataset.assetKey   = 'expandwild.expanded_overlay';
+        imgWrap.dataset.assetLabel = 'Expanded reel overlay';
+        imgWrap.style.cssText = `position:absolute;left:${cx-6}px;top:${cy-6}px;width:${CELL+12}px;height:${gridH+12}px;pointer-events:none;border-radius:12px;overflow:hidden`;
+        const img = document.createElement('img');
+        img.src = EL_ASSETS['expandwild.expanded_overlay'];
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+        imgWrap.appendChild(img);
+        overlay.appendChild(imgWrap);
+      }
       // Expansion arrow
       const arrow=document.createElement('div');
       arrow.style.cssText=`position:absolute;left:${cx+CELL/2-16}px;top:${cy-44}px;width:32px;height:32px;border-radius:50%;background:${glow};display:flex;align-items:center;justify-content:center;font-size:18px;color:#1a1200;font-weight:700;box-shadow:0 0 20px ${glow}88`;
