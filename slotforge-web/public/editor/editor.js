@@ -2319,10 +2319,15 @@ function _sendLayersUpdate(){
     // Surface feature overlay slots (bonuspick.*, etc.) as layers so the
     // right-side Layers panel reflects what's actually rendered on feature
     // screens. Walks the current overlay's DOM children and dedupes by key.
+    // State flags (isHidden / isLocked / isSelected) use the same global
+    // sets as base layers so hide / lock / select ops round-trip cleanly.
     try {
       var overlayEl = document.getElementById('feature-screen-overlay');
+      // Feature slots can also be hidden when the current overlay was torn
+      // down but the hidden set still holds their keys — enumerate those
+      // too so the Layers panel can surface an "unhide" control.
+      var seen = new Set();
       if (overlayEl) {
-        var seen = new Set();
         var slotEls = overlayEl.querySelectorAll('[data-asset-key]');
         slotEls.forEach(function(node, idx){
           var k = node.getAttribute('data-asset-key');
@@ -2336,10 +2341,10 @@ function _sendLayersUpdate(){
             z:          100 + idx,
             hasAsset:   !!EL_ASSETS[k],
             isOff:      false,
-            isHidden:   false,
-            isLocked:   false,
-            isSelected: false,
-            blendMode:  'normal',
+            isHidden:   HIDDEN_LAYERS.has(k),
+            isLocked:   USER_LOCKS.has(k),
+            isSelected: SEL_KEY === k,
+            blendMode:  EL_BLEND_MODES[k] || 'normal',
           });
         });
       }
@@ -8062,19 +8067,23 @@ function _el(tag, css){const d=document.createElement(tag);d.style.cssText=css;r
 function _imgSlot(key, x, y, w, h, fit){
   const d = document.createElement('div');
   d.dataset.assetKey = key;
-  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:none`;
+  d.className = 'feat-slot' + (SEL_KEY === key ? ' selected' : '');
+  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:auto;cursor:pointer;box-sizing:border-box;${SEL_KEY===key?'outline:2px dashed #c9a84c;outline-offset:2px;':''}`;
   const img = document.createElement('img');
   img.src = EL_ASSETS[key];
   img.style.cssText = `width:100%;height:100%;object-fit:${fit||'contain'};pointer-events:none`;
   d.appendChild(img);
+  _wireSlotEvents(d, key);
   return d;
 }
 function _phSlot(key, x, y, w, h, label, c1){
   const d = document.createElement('div');
   d.dataset.assetKey = key;
   d.dataset.placeholder = '1';
+  d.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
   const fz = Math.max(10, Math.min(w, h) * 0.18);
-  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:#0a0a1a99;border:2px dashed ${c1}55;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:Space Grotesk,sans-serif;color:${c1}cc;text-align:center;padding:8px;box-sizing:border-box;pointer-events:none`;
+  const selRing = SEL_KEY === key ? 'outline:2px dashed #c9a84c;outline-offset:2px;' : '';
+  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:#0a0a1a99;border:2px dashed ${c1}55;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:Space Grotesk,sans-serif;color:${c1}cc;text-align:center;padding:8px;box-sizing:border-box;pointer-events:auto;cursor:pointer;${selRing}`;
   const big = document.createElement('div');
   big.style.cssText = `font-size:${fz}px;font-weight:700;letter-spacing:.04em`;
   big.textContent = label;
@@ -8089,17 +8098,86 @@ function _phSlot(key, x, y, w, h, label, c1){
   hint.style.cssText = `font-size:${Math.max(7, fz*0.32)}px;font-weight:500;color:${c1}55;font-family:Space Grotesk,sans-serif;letter-spacing:.14em;text-transform:uppercase;margin-top:2px`;
   hint.textContent = '⬆ upload';
   d.appendChild(hint);
+  _wireSlotEvents(d, key);
   return d;
+}
+
+// Wire click → select for a feature slot element. Also posts the selection
+// change to the Layers panel so both surfaces stay in sync. Shift-click and
+// right-click are reserved — right-click will open the inline text editor in
+// a follow-up (mirrors the Big Win popup interaction pattern).
+function _wireSlotEvents(el, key){
+  el.addEventListener('click', function(e){
+    e.stopPropagation();
+    selectFeatureSlot(key);
+  });
+  // Context-menu gesture gets swallowed for now so it doesn't fall through
+  // to the canvas-wrap handler; will be wired to the inline editor in a
+  // follow-up commit.
+  el.addEventListener('contextmenu', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    selectFeatureSlot(key);
+  });
+}
+
+// selectEl() is the base-layer selection path — it expects a DOM element
+// with id "el-<k>" to exist, which feature slots don't provide (they live
+// inside #feature-screen-overlay as [data-asset-key] children). This helper
+// bridges that gap: set SEL_KEY, update the status bars, and rebuild the
+// overlay so the selected slot gets its dashed outline.
+function selectFeatureSlot(key){
+  SEL_KEY = key;
+  SEL_KEYS = new Set();
+  // Clear any prior base-layer selection styling so the two don't compete.
+  document.querySelectorAll('.cel.selected').forEach(e => {
+    e.classList.remove('selected');
+    e.querySelectorAll('.rh').forEach(h => h.remove());
+  });
+  try { document.getElementById('sb-lyr').textContent   = key; } catch(e){}
+  try {
+    const ctx = document.getElementById('ctx-lyr');
+    if (ctx) { ctx.textContent = key; ctx.className = 'ct on'; }
+  } catch(e){}
+  // Rebuild overlay so the newly selected slot picks up its outline state,
+  // and push the layers panel so its selected-row highlight matches.
+  _rebuildFeatureOverlay();
 }
 // Shorthand: render an uploaded asset if present, otherwise a placeholder.
 // Always tags the returned element with data-asset-label so _sendLayersUpdate
-// can surface a friendly name in the Layers panel.
+// can surface a friendly name in the Layers panel. Hidden layers still emit
+// a stub so the click-catcher / data-asset-key remains enumerable for
+// _sendLayersUpdate; the stub is visually empty.
 function _slot(key, x, y, w, h, label, c1, fit){
+  if (HIDDEN_LAYERS && HIDDEN_LAYERS.has && HIDDEN_LAYERS.has(key)) {
+    const stub = document.createElement('div');
+    stub.dataset.assetKey   = key;
+    stub.dataset.assetLabel = label || key;
+    stub.dataset.hidden     = '1';
+    stub.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:none;opacity:0`;
+    return stub;
+  }
   const el = EL_ASSETS[key]
     ? _imgSlot(key, x, y, w, h, fit)
     : _phSlot(key, x, y, w, h, label, c1);
   if (label) el.dataset.assetLabel = label;
   return el;
+}
+
+// ─── Feature overlay rebuild helper ──────────────────────────────────────────
+// Centralises the "remove old overlay, build fresh one, push layers panel"
+// pattern used after any state change that affects the feature canvas
+// (uploads, hide/show, lock/unlock, settings tweaks, etc.).
+function _rebuildFeatureOverlay(){
+  try {
+    const scr = SDEFS[P.screen];
+    if (!scr || !scr.overlay || scr.overlay === 'generic') return;
+    document.getElementById('feature-screen-overlay')?.remove();
+    const gf = document.getElementById('gf');
+    const ov = buildFeatureOverlay(P.screen, scr);
+    if (ov && gf) gf.appendChild(ov);
+    _sendLayersUpdate();
+  } catch(e) { /* non-fatal */ }
 }
 
 // ─── PICK GAME (asset-driven, v1 registry: bonuspick.*) ───
@@ -10626,22 +10704,11 @@ window._sfBridge = (function(){
       var elKey = ASSET_KEY_MAP[msg.assetType] || msg.assetType;
       try {
         EL_ASSETS[elKey] = msg.url;
-        if(typeof buildCanvas   === 'function') buildCanvas();
-        // buildCanvas() wipes #gf innerHTML — if the current screen has a
-        // feature overlay (bonus_pick, wheel, etc.) the overlay layers also
-        // get wiped. Rebuild the overlay here so feature slots stay visible
-        // after an upload/replace, not just after a tab switch.
-        try {
-          var _scrDef = SDEFS[P.screen];
-          if(_scrDef && _scrDef.overlay && _scrDef.overlay !== 'generic'){
-            document.getElementById('feature-screen-overlay')?.remove();
-            var _gf = document.getElementById('gf');
-            var _ov = buildFeatureOverlay(P.screen, _scrDef);
-            if(_ov && _gf) _gf.appendChild(_ov);
-            // Sync the Layers panel with the new overlay slot set
-            try { _sendLayersUpdate(); } catch(e){}
-          }
-        } catch(ovErr) { console.warn('[SF] feature overlay rebuild failed:', ovErr); }
+        if(typeof buildCanvas === 'function') buildCanvas();
+        // buildCanvas() wipes #gf innerHTML — rebuild the feature overlay
+        // so slots stay visible after upload/replace. _rebuildFeatureOverlay
+        // is a no-op on screens without a feature overlay.
+        _rebuildFeatureOverlay();
         if(typeof renderLayers  === 'function') renderLayers();
         // Rebuild the Features workspace "Assets needed" panels so the
         // status dots flip green the moment a slot fills in.
@@ -10660,9 +10727,15 @@ window._sfBridge = (function(){
     if(msg.type === 'SF_LAYER_OP'){
       var op=msg.op, k=msg.key;
       try {
-        if(op==='select'&&k) { selectEl(k); }
-        else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas();renderLayers();markDirty(); }
-        else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers();markDirty(); }
+        if(op==='select'&&k) {
+          // Feature slot keys use "feature.slot" namespacing — not in PSD /
+          // SDEFS.keys. Route them through selectFeatureSlot; base-layer
+          // keys keep the legacy selectEl path.
+          if (k.indexOf('.') >= 0) { selectFeatureSlot(k); }
+          else { selectEl(k); _rebuildFeatureOverlay(); _sendLayersUpdate(); }
+        }
+        else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); markDirty(); }
+        else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers(); _sendLayersUpdate(); markDirty(); }
         else if(op==='delete'&&k){ deleteAnyLayer(k); }
         else if(op==='duplicate'&&k){ duplicateLayer(k); }
         else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas();markDirty(); }
