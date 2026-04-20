@@ -369,9 +369,20 @@ const FEATURE_SCREEN_DEFS={
   super_gamble: {label:'Super Gamble',     dot:'#6060df', keys:['bg'],           overlay:'gamble',    group:'gamble'},
 };
 
+// Sub-screens we add in step 4 of registerFeatureScreens (intro/outro pairs).
+// Centralised so step 1's cleanup filter removes them when the parent
+// feature is toggled off — otherwise they'd leak across toggles.
+const FEATURE_SUB_SCREENS = [
+  'bonus_pick_intro','bonus_pick_outro',
+  'freespin_intro','freespin_outro',
+  'holdnspin_intro','holdnspin_outro',
+];
+
 function registerFeatureScreens(){
   // 1. Remove all old dynamic screens
-  Object.keys(SDEFS).filter(k=>k.startsWith('ew_')||FEATURE_SCREEN_DEFS[k]).forEach(k=>delete SDEFS[k]);
+  Object.keys(SDEFS)
+    .filter(k => k.startsWith('ew_') || FEATURE_SCREEN_DEFS[k] || FEATURE_SUB_SCREENS.includes(k))
+    .forEach(k => delete SDEFS[k]);
 
   // 2. Register EW screens
   if(P.features.expanding_wild){
@@ -1195,7 +1206,13 @@ function buildCanvas(){
       //      Features section. Highest priority so per-feature bg work.
       //   2. legacy 'bg_<screen>' override for pre-registry projects.
       //   3. global 'bg' fallback.
-      const featureBgMap = { freespin:'freespins.bg', holdnspin:'holdnspin.bg', bonus_pick:'bonuspick.bg' };
+      // Intro/outro sub-tabs reuse the parent feature's bg so the dim
+      // overlays sit on the correct backdrop.
+      const featureBgMap = {
+        freespin:          'freespins.bg',  freespin_intro:   'freespins.bg',  freespin_outro:   'freespins.bg',
+        holdnspin:         'holdnspin.bg',  holdnspin_intro:  'holdnspin.bg',  holdnspin_outro:  'holdnspin.bg',
+        bonus_pick:        'bonuspick.bg',  bonus_pick_intro: 'bonuspick.bg',  bonus_pick_outro: 'bonuspick.bg',
+      };
       const featureBg    = featureBgMap[P.screen];
       const bgKey = (featureBg && EL_ASSETS[featureBg]) ? featureBg
                   : EL_ASSETS['bg_'+P.screen] ? 'bg_'+P.screen
@@ -7800,7 +7817,11 @@ function renderSplitView(){
       el.style.cssText=`position:absolute;left:${pos.x}px;top:${pos.y}px;width:${pos.w}px;height:${pos.h}px;z-index:${def.z||5};border-radius:8px;overflow:hidden`;
       if(k==='bg'){
         el.style.borderRadius='0';
-        const _featureBgMap = { freespin:'freespins.bg', holdnspin:'holdnspin.bg', bonus_pick:'bonuspick.bg' };
+        const _featureBgMap = {
+          freespin:          'freespins.bg',  freespin_intro:   'freespins.bg',  freespin_outro:   'freespins.bg',
+          holdnspin:         'holdnspin.bg',  holdnspin_intro:  'holdnspin.bg',  holdnspin_outro:  'holdnspin.bg',
+          bonus_pick:        'bonuspick.bg',  bonus_pick_intro: 'bonuspick.bg',  bonus_pick_outro: 'bonuspick.bg',
+        };
         const _featureBg    = _featureBgMap[P.screen];
         const bgKey = (_featureBg && EL_ASSETS[_featureBg]) ? _featureBg
                     : EL_ASSETS['bg_'+P.screen] ? 'bg_'+P.screen
@@ -8153,17 +8174,9 @@ function _ovPickIntro(ov, cx, cy, cw, ch, c1){
 }
 
 // ─── PICK GAME — OUTRO ───
-// Dim background + total-win amount centered + "Collect" affordance.
-// Reuses `bonuspick.bg` (dimmed) so the screen feels continuous with the pick
-// screen. No new asset slots needed for the slice.
+// Dim over the base bg (which is already `bonuspick.bg` when uploaded via
+// the feature-bg map) + total-win amount centered + "Collect" affordance.
 function _ovPickOutro(ov, cx, cy, cw, ch, c1){
-  // Feature bg if present, otherwise just the dim
-  if (EL_ASSETS['bonuspick.bg']) {
-    const bgWrap = _imgSlot('bonuspick.bg', cx, cy, cw, ch, 'cover');
-    bgWrap.dataset.assetLabel = 'Background';
-    bgWrap.style.opacity = '0.35';
-    ov.appendChild(bgWrap);
-  }
   const dim = document.createElement('div');
   dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.62);pointer-events:none`;
   ov.appendChild(dim);
