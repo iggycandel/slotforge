@@ -143,24 +143,27 @@ function buildShortLabels(groups: (AssetGroup & { _names?: string[] })[]): Parti
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Build a deduplicated asset map from a flat GeneratedAsset array (latest wins). */
-function buildAssetMap(
-  list: GeneratedAsset[]
-): Partial<Record<AssetType, GeneratedAsset>> {
-  const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
-  const map: Partial<Record<AssetType, GeneratedAsset>> = {}
-  for (const asset of sorted) {
-    if (!map[asset.type]) map[asset.type] = asset
-  }
-  return map
-}
-
 // ─── Feature slot key set — derived once from the registry ──────────────────
 // Used to separate feature-namespaced assets (e.g. "bonuspick.bg") from
 // legacy AssetType entries when both arrive in the same /api/generate list.
 const FEATURE_SLOT_KEYS: Set<string> = new Set(
   Object.values(FEATURE_REGISTRY).flatMap(def => def.assetSlots.map(s => s.key))
 )
+
+/** Build a deduplicated asset map from a flat GeneratedAsset array (latest wins).
+ *  Feature-slot assets are excluded — those are tracked separately in
+ *  `featureAssets` so the sidebar's base-type counts don't get inflated. */
+function buildAssetMap(
+  list: GeneratedAsset[]
+): Partial<Record<AssetType, GeneratedAsset>> {
+  const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  const map: Partial<Record<AssetType, GeneratedAsset>> = {}
+  for (const asset of sorted) {
+    if (FEATURE_SLOT_KEYS.has(asset.type)) continue
+    if (!map[asset.type]) map[asset.type] = asset
+  }
+  return map
+}
 
 /** Latest asset per feature slot key (e.g. "bonuspick.bg" → GeneratedAsset). */
 function buildFeatureAssetMap(list: GeneratedAsset[]): Record<string, GeneratedAsset> {
@@ -194,13 +197,15 @@ function buildFeatureSlotGroups(meta?: Record<string, unknown>): FeatureSlotGrou
   return groups
 }
 
-/** Build per-type history list (newest-first, ALL versions) for version history UI. */
+/** Build per-type history list (newest-first, ALL versions) for version history UI.
+ *  Skips feature-slot assets so the base-type history stays clean. */
 function buildAssetHistory(
   list: GeneratedAsset[]
 ): Partial<Record<AssetType, GeneratedAsset[]>> {
   const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const hist: Partial<Record<AssetType, GeneratedAsset[]>> = {}
   for (const asset of sorted) {
+    if (FEATURE_SLOT_KEYS.has(asset.type)) continue
     if (!hist[asset.type]) hist[asset.type] = []
     hist[asset.type]!.push(asset)
   }
@@ -633,9 +638,17 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
   // ─── Computed values ────────────────────────────────────────────────────────
 
-  const totalGenerated = Object.keys(assets).length
-  const totalTypes     = assetGroups.reduce((acc, g) => acc + g.types.length, 0)
-  const selectedAsset  = selected ? assets[selected] : null
+  // Totals combine base-type slots and every enabled feature's slots so the
+  // header + inline readouts match the left-sidebar progress pill.
+  const baseGeneratedCount    = Object.keys(assets).length
+  const baseTypesCount        = assetGroups.reduce((acc, g) => acc + g.types.length, 0)
+  const featureGeneratedCount = featureGroups.reduce(
+    (acc, g) => acc + g.slots.filter(s => !!featureAssets[s.key]).length, 0
+  )
+  const featureTypesCount     = featureGroups.reduce((acc, g) => acc + g.slots.length, 0)
+  const totalGenerated        = baseGeneratedCount + featureGeneratedCount
+  const totalTypes            = baseTypesCount + featureTypesCount
+  const selectedAsset         = selected ? assets[selected] : null
 
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -883,9 +896,16 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       }}>
 
         {/* ── LEFT SIDEBAR ────────────────────────────────────────────────── */}
+        {/* missingCount stays restricted to base-type gaps — the "Fill gaps"
+            and "Generate All" buttons only batch-generate base assets;
+            feature slots are created one at a time from the tile Generate
+            action. The progress pill inside LeftSidebar uses the combined
+            totals (base + feature) so the user sees the whole picture. */}
         <LeftSidebar
           groups={assetGroups}
+          featureGroups={featureGroups}
           assets={assets}
+          featureAssets={featureAssets}
           activeGroup={activeGroup}
           onSelectGroup={setActiveGroup}
           batchRunning={batchRunning}
@@ -1015,7 +1035,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
 interface LeftSidebarProps {
   groups:               AssetGroup[]
+  featureGroups:        FeatureSlotGroup[]
   assets:               Partial<Record<AssetType, GeneratedAsset>>
+  featureAssets:        Record<string, GeneratedAsset>
   activeGroup:          string | null
   onSelectGroup:        (id: string | null) => void
   batchRunning:         boolean
@@ -1025,10 +1047,20 @@ interface LeftSidebarProps {
 }
 
 function LeftSidebar({
-  groups, assets, activeGroup, onSelectGroup, batchRunning, onGenerateAll, onGenerateMissing, missingCount,
+  groups, featureGroups, assets, featureAssets, activeGroup, onSelectGroup, batchRunning, onGenerateAll, onGenerateMissing, missingCount,
 }: LeftSidebarProps) {
-  const totalGenerated = Object.keys(assets).length
-  const totalTypes     = groups.reduce((acc, g) => acc + g.types.length, 0)
+  // Counts include BOTH base asset types AND the feature slots for every
+  // enabled feature — so the progress readout reflects what the main grid
+  // actually renders. Without feature slots, the numerator stays flat even
+  // after uploading/generating feature assets.
+  const baseGenerated    = Object.keys(assets).length
+  const baseTypes        = groups.reduce((acc, g) => acc + g.types.length, 0)
+  const featureGenerated = featureGroups.reduce(
+    (acc, g) => acc + g.slots.filter(s => !!featureAssets[s.key]).length, 0
+  )
+  const featureTypes     = featureGroups.reduce((acc, g) => acc + g.slots.length, 0)
+  const totalGenerated   = baseGenerated + featureGenerated
+  const totalTypes       = baseTypes + featureTypes
 
   return (
     <aside style={{
@@ -1113,6 +1145,74 @@ function LeftSidebar({
                 textAlign:   'center',
               }}>
                 {filled}/{group.types.length}
+              </span>
+            </button>
+          )
+        })}
+
+        {/* Feature groups — shown below the base-type groups so the nav
+            mirrors the main grid layout (features appear after UI & Chrome).
+            Clicking a feature group scrolls the grid to its section; it
+            shares the activeGroup state with base groups so only one can
+            be highlighted at a time. */}
+        {featureGroups.length > 0 && (
+          <div style={{
+            fontSize:      9,
+            fontWeight:    700,
+            color:         C.gold,
+            padding:       '12px 10px 4px',
+            letterSpacing: '.12em',
+            textTransform: 'uppercase',
+          }}>
+            ✦ Features
+          </div>
+        )}
+        {featureGroups.map(group => {
+          const filled   = group.slots.filter(s => !!featureAssets[s.key]).length
+          const total    = group.slots.length
+          const groupId  = `feature:${group.featureId}`
+          const isActive = activeGroup === groupId
+          const complete = filled === total && total > 0
+          return (
+            <button
+              key={groupId}
+              onClick={() => onSelectGroup(isActive ? null : groupId)}
+              className={`sf-nav-item${isActive ? ' active' : ''}`}
+              style={{
+                width:       '100%',
+                display:     'flex',
+                alignItems:  'center',
+                gap:         10,
+                padding:     '8px 10px',
+                background:  isActive ? 'rgba(201,168,76,.1)' : 'transparent',
+                border:      'none',
+                borderRadius: 8,
+                cursor:      'pointer',
+                marginBottom: 2,
+                color:       C.tx,
+              }}
+            >
+              <Sparkles
+                size={14}
+                style={{ color: isActive ? C.gold : C.txMuted, flexShrink: 0 }}
+              />
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: isActive ? C.gold : C.tx }}>
+                  {group.label}
+                </div>
+              </div>
+              <span style={{
+                fontSize:    10,
+                fontWeight:  600,
+                color:       complete ? C.green : C.txMuted,
+                background:  complete ? 'rgba(52,211,153,.1)' : C.surfHigh,
+                border:      `1px solid ${complete ? 'rgba(52,211,153,.2)' : 'transparent'}`,
+                borderRadius: 10,
+                padding:     '1px 6px',
+                minWidth:    32,
+                textAlign:   'center',
+              }}>
+                {filled}/{total}
               </span>
             </button>
           )
