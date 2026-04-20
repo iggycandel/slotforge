@@ -8070,9 +8070,15 @@ function _phSlot(key, x, y, w, h, label, c1){
   big.textContent = label;
   d.appendChild(big);
   const tag = document.createElement('div');
-  tag.style.cssText = `font-size:${Math.max(8, fz*0.42)}px;font-weight:500;color:${c1}77;font-family:DM Mono,monospace;opacity:.85`;
+  tag.style.cssText = `font-size:${Math.max(8, fz*0.42)}px;font-weight:500;color:${c1}77;font-family:DM Mono,monospace;opacity:.85;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`;
   tag.textContent = key;
   d.appendChild(tag);
+  // Subtle "Upload" affordance at the bottom so the dashed box reads as
+  // "this slot needs content" rather than "this slot is broken".
+  const hint = document.createElement('div');
+  hint.style.cssText = `font-size:${Math.max(7, fz*0.32)}px;font-weight:500;color:${c1}55;font-family:Space Grotesk,sans-serif;letter-spacing:.14em;text-transform:uppercase;margin-top:2px`;
+  hint.textContent = '⬆ upload';
+  d.appendChild(hint);
   return d;
 }
 // Shorthand: render an uploaded asset if present, otherwise a placeholder.
@@ -10523,6 +10529,11 @@ window._sfBridge = (function(){
           }
         } catch(ovErr) { console.warn('[SF] feature overlay rebuild failed:', ovErr); }
         if(typeof renderLayers  === 'function') renderLayers();
+        // Rebuild the Features workspace "Assets needed" panels so the
+        // status dots flip green the moment a slot fills in.
+        if(typeof buildFeatures === 'function') {
+          try { buildFeatures(); } catch(e) { /* non-fatal */ }
+        }
         if(typeof markDirty     === 'function') markDirty();
       } catch(e) { console.warn('[SF] SF_INJECT_IMAGE_LAYER failed:', e); }
     }
