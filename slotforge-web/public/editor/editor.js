@@ -344,9 +344,10 @@ const SDEFS={
   popup_megawin:{label:'Mega Win',       keys:['dimLayer','ov-megawin_title','ov-megawin_amount','ov-megawin_btn'],    dot:'#e8c96d',  group:'popup'},
   popup_epicwin:{label:'Epic Win',       keys:['dimLayer','ov-epicwin_title','ov-epicwin_amount','ov_epicwin_btn'],    dot:'#ff7060',  group:'popup'},
   popup_buy:   {label:'Buy Bonus',      keys:['dimLayer','ov-buypopup_title','ov-buypopup_desc','ov-buypopup_btnCancel','ov-buypopup_btnBuy'],  dot:'#ef7a7a',  group:'popup', requires:'buy_feature'},
-  popup_fs:    {label:'FS Trigger',     keys:['dimLayer','ov-fstrigger_title','ov-fstrigger_count','ov-fstrigger_sub','ov-fstrigger_btn'],  dot:'#4ac8f0',  group:'popup', requires:'freespin'},
-  popup_hns:   {label:'HnS Trigger',   keys:['dimLayer','ov-hnstrigger_title','ov-hnstrigger_count','ov-hnstrigger_sub','ov-hnstrigger_btn'],  dot:'#5eca8a',  group:'popup', requires:'holdnspin'},
-  popup_jp:    {label:'Jackpot Win',    keys:['dimLayer','ov-jpwin_title','ov-jpwin_type','ov-jpwin_amount','ov_jpwin_btn'], dot:'#ef7a7a', group:'popup'},
+  // popup_fs / popup_hns / popup_jp were removed — Free Spins, Hold & Spin
+  // and Jackpot intros now live as sub-tabs inside each feature's own tab
+  // group (see registerFeatureScreens). Left here as a comment so anyone
+  // grepping for the old keys understands the migration.
   win:         {label:'Win',            keys:['dimLayer','ov-win_title','ov-win_amount'],  dot:'#c9a84c'},
 };
 // Register dynamically-generated SDEFS entries (EW screens)
@@ -471,7 +472,7 @@ function registerFeatureScreens(){
 
 // Keep old name as alias for backward compat
 function registerEWScreens(){ registerFeatureScreens(); }
-const OVS={splash:['ov-splash'],base:[],freespin:[],holdnspin:[],win:['ov-win'],popup_win:['ov-bigwin'],popup_megawin:['ov-megawin'],popup_epicwin:['ov-epicwin'],popup_buy:['ov-buypopup'],popup_fs:['ov-fstrigger'],popup_hns:['ov-hnstrigger'],popup_jp:['ov-jpwin']};
+const OVS={splash:['ov-splash'],base:[],freespin:[],holdnspin:[],win:['ov-win'],popup_win:['ov-bigwin'],popup_megawin:['ov-megawin'],popup_epicwin:['ov-epicwin'],popup_buy:['ov-buypopup']};
 const ALL_OVS=['ov-splash','ov-fs','ov-hns','ov-win','ov-popup','ov-bigwin','ov-megawin','ov-epicwin','ov-buypopup','ov-fstrigger','ov-hnstrigger','ov-jpwin'];
 
 // ── OVERLAY SUB-ELEMENT DEFINITIONS ──
@@ -1081,6 +1082,47 @@ function openOvPropsPanel(ov,sub){
   if(!isBtn) sizeInp.value=getOvProp(ov,sub,'dSize')||subDef.dSize||40;
   panel.dataset.ov=ov; panel.dataset.sub=sub;
   panel.classList.add('show');
+  // Position the panel beside the selected element rather than center-right
+  // so it doesn't obscure the asset being edited. Prefers right-of; flips
+  // to left-of when close to the viewport edge. Requires classList.add
+  // above to run first so we can measure the panel's rendered size.
+  try { _positionOvPanelNear(ov, sub); } catch(e){}
+}
+
+// Snap #ov-props-panel next to the element being edited. Called after
+// classList.add('show') so getBoundingClientRect can measure the panel.
+function _positionOvPanelNear(ov, sub){
+  const panel = document.getElementById('ov-props-panel');
+  if (!panel) return;
+  // PSD id format for css_ov layers is "<ovId>_<subId>" (see PSD definitions).
+  // The canvas element id mirrors that with an "el-" prefix.
+  const targetEl = document.getElementById(`el-${ov}_${sub}`);
+  if (!targetEl) {
+    // No bbox to anchor to — fall back to the static CSS position.
+    panel.style.left = ''; panel.style.right = ''; panel.style.top = '';
+    panel.style.transform = '';
+    return;
+  }
+  const rect = targetEl.getBoundingClientRect();
+  const pw   = panel.offsetWidth  || 240;
+  const ph   = panel.offsetHeight || 220;
+  const gap  = 20;
+  // Prefer placing the panel to the right of the target; if that would
+  // overflow the viewport, flip to the left side.
+  let left = rect.right + gap;
+  if (left + pw > window.innerWidth - 20) left = rect.left - pw - gap;
+  // If still off-screen (very narrow window), centre vertically below.
+  if (left < 20) {
+    left = Math.max(20, rect.left + rect.width / 2 - pw / 2);
+  }
+  // Vertically centre against the target, then clamp to the viewport so
+  // the whole panel stays visible even for elements near the top / bottom.
+  let top = rect.top + rect.height / 2 - ph / 2;
+  top = Math.max(60, Math.min(top, window.innerHeight - ph - 20));
+  panel.style.left      = left + 'px';
+  panel.style.top       = top + 'px';
+  panel.style.right     = 'auto';
+  panel.style.transform = 'none';
 }
 function applyOvProps(){
   const panel=document.getElementById('ov-props-panel'); if(!panel?.classList.contains('show')) return;
@@ -4727,18 +4769,15 @@ function computeTabs(){
   // 2. Base Game
   tabs.push({key:'base', label:'Base Game', dot:'#2e7d5a'});
 
-  // 4. Pop-ups — group header + sub-tabs
+  // 4. Win Sequence — the global win celebrations (Big/Mega/Epic) + the
+  // Buy Bonus purchase confirm. Feature-specific intros (FS Trigger, HnS
+  // Trigger, Jackpot Win) have moved inside each feature's own tab group.
   const popups=[];
-  popups.push({key:'popup_win', label:'Big Win', dot:'#c9a84c'});
+  popups.push({key:'popup_win',     label:'Big Win',  dot:'#c9a84c'});
   popups.push({key:'popup_megawin', label:'Mega Win', dot:'#e8c96d'});
   popups.push({key:'popup_epicwin', label:'Epic Win', dot:'#ff7060'});
   if(P.features.buy_feature) popups.push({key:'popup_buy', label:'Buy Bonus', dot:'#ef7a7a'});
-  if(P.features.freespin) popups.push({key:'popup_fs', label:'FS Trigger', dot:'#4ac8f0'});
-  if(P.features.holdnspin) popups.push({key:'popup_hns', label:'HnS Trigger', dot:'#5eca8a'});
-  // Jackpot popup if any jackpot is enabled
-  const hasJP=Object.values(P.jackpots).some(j=>j.on);
-  if(hasJP) popups.push({key:'popup_jp', label:'Jackpot Win', dot:'#ef7a7a'});
-  tabs.push({key:'_popups_group', label:'Pop-ups', dot:'#ef7a7a', isGroup:true, children:popups});
+  tabs.push({key:'_popups_group', label:'Win Sequence', dot:'#ef7a7a', isGroup:true, children:popups});
 
   // 5. Free Spins — top-level nested group with Intro / Round / Outro sub-tabs.
   const freeSpinsGroup = P.features.freespin ? {
@@ -4804,7 +4843,7 @@ function computeTabs(){
   const groupedExtras = {}; // group → [{key,label,dot}]
   Object.entries(SDEFS).forEach(([key,def])=>{
     // Skip core screens already handled above
-    if(['splash','base','freespin','holdnspin','win','popup_win','popup_megawin','popup_epicwin','popup_buy','popup_fs','popup_hns','popup_jp'].includes(key)) return;
+    if(['splash','base','freespin','holdnspin','win','popup_win','popup_megawin','popup_epicwin','popup_buy'].includes(key)) return;
     if(key.startsWith('ew_')) return; // EW handled in featureGames
     // Skip intro/outro screens — they're surfaced as sub-tabs inside dedicated groups
     if(key==='bonus_pick'||key==='bonus_pick_intro'||key==='bonus_pick_outro') return;
