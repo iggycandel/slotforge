@@ -452,7 +452,7 @@ function AssetLibraryContent({
   return (
     <div style={{ padding: '0 0 24px' }}>
 
-      {/* ── "Go to ASSETS Workspace" CTA ─────────────────────────────────── */}
+      {/* ── "Go to ART Workspace" CTA ────────────────────────────────────── */}
       <div style={{
         margin:     '12px 12px 8px',
         padding:    '10px 12px',
@@ -472,7 +472,7 @@ function AssetLibraryContent({
           <span style={{ fontSize: 14 }}>✦</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.gold }}>
-              Open ASSETS Workspace
+              Open ART Workspace
             </div>
             <div style={{ fontSize: 10, color: T.textMuted, marginTop: 1 }}>
               Generate, style and manage all project assets

@@ -19,16 +19,19 @@
   <div class="logo-mark"><img src="spinative-logo.png" alt="Spinative" style="height:22px;width:auto;display:block;image-rendering:crisp-edges;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))"></div>
 
   <!-- ── Workspace Switcher ── -->
+  <!-- data-ws values are internal workspace keys — DO NOT rename (routing,
+       postMessage contracts and the Assets integration use them). Only the
+       visible labels changed: Assets→Art, Canvas→Flow, Flow→Logic. -->
   <div id="ws-switcher">
     <button class="ws-tab" data-ws="project">Project</button>
     <div class="ws-sep"></div>
     <button class="ws-tab" data-ws="features">Features</button>
     <div class="ws-sep"></div>
-    <button class="ws-tab ws-tab--assets" data-ws="assets" title="Open ASSETS workspace">Assets</button>
+    <button class="ws-tab ws-tab--assets" data-ws="assets" title="Open Art workspace">Art</button>
     <div class="ws-sep"></div>
-    <button class="ws-tab ws-active" data-ws="canvas">Canvas</button>
+    <button class="ws-tab ws-active" data-ws="canvas">Flow</button>
     <div class="ws-sep"></div>
-    <button class="ws-tab" data-ws="flow">Flow</button>
+    <button class="ws-tab" data-ws="flow">Logic</button>
     <div class="ws-sep"></div>
     <button class="ws-tab" data-ws="marketing">Marketing</button>
   </div>
@@ -185,9 +188,9 @@
   <div id="topbar-canvas">
     <div id="screen-tabs"><!-- built by rebuildTabs() --></div>
   </div>
-  <!-- Flow workspace topbar -->
+  <!-- Logic workspace topbar (internal key: "flow") -->
   <div id="topbar-flow">
-    <span class="tb-ws-label">Game Flow Designer</span>
+    <span class="tb-ws-label">Game Logic Designer</span>
   </div>
   <!-- Project workspace topbar -->
   <div id="topbar-project">
@@ -206,9 +209,9 @@
     <span class="tb-ws-label">Marketing Assets</span>
     <button class="tb-ws-action primary" style="margin-left:auto" id="mkt-new-btn">+ New Asset</button>
   </div>
-  <!-- Assets workspace topbar -->
+  <!-- Art workspace topbar (internal key: "assets") -->
   <div id="topbar-assets">
-    <span class="tb-ws-label">Assets</span>
+    <span class="tb-ws-label">Art</span>
   </div>
 
   <div id="topbar-right">

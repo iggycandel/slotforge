@@ -9437,10 +9437,10 @@ function _feTabScreens(key,f,cfg){
 
 function _feTabFlow(key,f,cfg){
   const tmpl=FE_FLOW_TEMPLATES[key];
-  if(!tmpl) return `<div style="font-size:11px;color:#3e3e4e;padding:16px 0">No flow template for this feature type. Flow connections must be created manually in the Flow Designer.</div>`;
+  if(!tmpl) return `<div style="font-size:11px;color:#3e3e4e;padding:16px 0">No flow template for this feature type. Flow connections must be created manually in the Logic Designer.</div>`;
   const nodes=tmpl(cfg, 'BASE_GAME');
-  let html=`<div class="fe-section-title">Flow Module</div>
-  <div style="font-size:9px;color:#5a5a7a;font-family:'Inter',system-ui,sans-serif;margin:-6px 0 14px">This is the flow subgraph that will be added to the Game Flow Designer when this feature is synced. Nodes are managed automatically.</div>
+  let html=`<div class="fe-section-title">Logic Module</div>
+  <div style="font-size:9px;color:#5a5a7a;font-family:'Inter',system-ui,sans-serif;margin:-6px 0 14px">This is the logic subgraph that will be added to the Game Logic Designer when this feature is synced. Nodes are managed automatically.</div>
   <div style="display:flex;flex-direction:column;gap:3px">
     <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;background:#13131a;border:1px solid rgba(255,255,255,.05)">
       <span style="font-size:10px">⚙</span>
@@ -10563,41 +10563,63 @@ window._sfBridge = (function(){
   /* ─── 4. Thumbnail ─── */
   // The composite view is a DIV (#gf) with positioned <img> layers, not a
   // real <canvas>, so we rasterize it with html2canvas. We capture the full
-  // 2000×2000 #gf at half resolution then crop to the active viewport box
+  // 2000×2000 #gf at native resolution then crop to the active viewport box
   // (portrait 984×2000 or landscape 2000×1125) so the thumbnail matches
   // exactly what the user sees inside #gf-outer in the editor. Returns a
   // Promise resolving to a JPEG data URL.
+  //
+  // We always capture from the **base game screen** — without this, users
+  // who autosave while on a dim-overlay screen (Big Win, Bonus Pick Intro,
+  // etc.) end up with a thumbnail that's ~75% dark because the dim layer
+  // covers the viewport. We swap P.screen, rebuild #gf, capture, then
+  // restore — all without touching the tabs/topbar state.
   async function getThumbnail(){
     try {
       var gf = document.getElementById('gf');
       if(!gf || typeof html2canvas !== 'function') return null;
-      var vp = (typeof VP !== 'undefined' && typeof P !== 'undefined') ? VP[P.viewport] : null;
-      // Render only the active viewport region of #gf at native resolution.
-      // For portrait that's 984×2000 = 2M pixels — fast enough on save and
-      // gives us ~2× oversampling vs. the 600-wide target for crisp downscale.
-      var full = await html2canvas(gf, {
-        useCORS:         true,
-        allowTaint:      false,
-        backgroundColor: '#0b0e16',
-        logging:         false,
-        scale:           1,
-        x:               vp ? vp.cx : 0,
-        y:               vp ? vp.cy : 0,
-        width:           vp ? vp.cw : 2000,
-        height:          vp ? vp.ch : 2000,
-      });
-      // High-quality downscale to ~600 px wide for a sharp ~80–120 KB JPEG.
-      var TARGET_W = 600;
-      var ratio = full.width > TARGET_W ? TARGET_W / full.width : 1;
-      var dw = Math.round(full.width  * ratio);
-      var dh = Math.round(full.height * ratio);
-      var t = document.createElement('canvas');
-      t.width = dw; t.height = dh;
-      var ctx = t.getContext('2d');
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(full, 0, 0, full.width, full.height, 0, 0, dw, dh);
-      return t.toDataURL('image/jpeg', 0.88);
+      var hasEditor = typeof P !== 'undefined' && typeof SDEFS !== 'undefined' && typeof buildCanvas === 'function';
+      var savedScreen = hasEditor ? P.screen : null;
+      var cleanScreens = { base: 1, splash: 1 };
+      var needsSwap = hasEditor && !cleanScreens[savedScreen];
+      if (needsSwap) {
+        P.screen = 'base';
+        try { buildCanvas(); } catch(e) { /* non-fatal */ }
+        // Two rAFs: first lets style apply, second lets images paint.
+        await new Promise(function(r){
+          requestAnimationFrame(function(){ requestAnimationFrame(r); });
+        });
+      }
+      try {
+        var vp = (typeof VP !== 'undefined' && typeof P !== 'undefined') ? VP[P.viewport] : null;
+        var full = await html2canvas(gf, {
+          useCORS:         true,
+          allowTaint:      false,
+          backgroundColor: '#0b0e16',
+          logging:         false,
+          scale:           1,
+          x:               vp ? vp.cx : 0,
+          y:               vp ? vp.cy : 0,
+          width:           vp ? vp.cw : 2000,
+          height:          vp ? vp.ch : 2000,
+        });
+        // High-quality downscale to ~600 px wide for a sharp ~80–120 KB JPEG.
+        var TARGET_W = 600;
+        var ratio = full.width > TARGET_W ? TARGET_W / full.width : 1;
+        var dw = Math.round(full.width  * ratio);
+        var dh = Math.round(full.height * ratio);
+        var t = document.createElement('canvas');
+        t.width = dw; t.height = dh;
+        var ctx = t.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(full, 0, 0, full.width, full.height, 0, 0, dw, dh);
+        return t.toDataURL('image/jpeg', 0.88);
+      } finally {
+        if (needsSwap) {
+          P.screen = savedScreen;
+          try { buildCanvas(); } catch(e) { /* non-fatal */ }
+        }
+      }
     } catch(e){
       console.warn('[getThumbnail]', e);
       return null;

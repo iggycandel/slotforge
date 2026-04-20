@@ -265,7 +265,10 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   )
 
   // Selection & navigation
-  const [selected,    setSelected]    = useState<AssetType | null>(null)
+  // `selected` stores either a base AssetType (e.g. "bg_splash") or a
+  // feature-slot key (e.g. "freespins.bg"). Inspector + Prompt tabs detect
+  // which by checking FEATURE_SLOT_KEYS and route label/regen accordingly.
+  const [selected,    setSelected]    = useState<string | null>(null)
   const [activeGroup, setActiveGroup] = useState<string | null>(null)
   const [rightTab,    setRightTab]    = useState<'inspector' | 'prompt' | 'feedback'>('inspector')
 
@@ -648,7 +651,14 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const featureTypesCount     = featureGroups.reduce((acc, g) => acc + g.slots.length, 0)
   const totalGenerated        = baseGeneratedCount + featureGeneratedCount
   const totalTypes            = baseTypesCount + featureTypesCount
-  const selectedAsset         = selected ? assets[selected] : null
+  // Routing: feature-slot keys look up in featureAssets; everything else
+  // falls through to the base AssetType-keyed map.
+  const selectedIsFeature     = !!selected && FEATURE_SLOT_KEYS.has(selected)
+  const selectedAsset         = !selected
+    ? null
+    : selectedIsFeature
+      ? (featureAssets[selected] ?? null)
+      : ((assets as Record<string, GeneratedAsset | undefined>)[selected] ?? null)
 
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -785,7 +795,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           position:    'relative',
           zIndex:      10,
         }}>
-          {/* Back to Canvas */}
+          {/* Back to Flow (canvas workspace) */}
           <Link href={`/${orgSlug}/projects/${projectId}`} style={{
             display:    'flex',
             alignItems: 'center',
@@ -802,7 +812,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             className="sf-btn"
           >
             <ChevronLeft size={13} />
-            Canvas
+            Flow
           </Link>
 
           <div style={{ width: 1, height: 20, background: C.border }} />
@@ -812,7 +822,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           </span>
           <span style={{ fontSize: 12, color: C.txFaint }}>·</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: C.txMuted, letterSpacing: '.08em', textTransform: 'uppercase' }}>
-            Assets
+            Art
           </span>
 
           <div style={{ flex: 1 }} />
@@ -875,7 +885,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
           <span style={{ fontSize: 11, color: C.txFaint }}>·</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: C.gold, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-            Assets Workspace
+            Art Workspace
           </span>
 
           <div style={{ flex: 1 }} />
@@ -1002,6 +1012,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 assets={featureAssets}
                 onUpload={handleFeatureSlotUpload}
                 onGenerate={handleFeatureSlotGenerate}
+                selectedKey={selectedIsFeature ? selected : null}
+                onSelect={(slotKey) => setSelected(slotKey)}
               />
             ))}
           </div>
@@ -1009,7 +1021,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
         {/* ── RIGHT PANEL ─────────────────────────────────────────────────── */}
         <RightInspectorPanel
-          selectedType={selected}
+          selectedKey={selected}
+          selectedIsFeature={selectedIsFeature}
           selectedAsset={selectedAsset ?? undefined}
           rightTab={rightTab}
           onTabChange={setRightTab}
@@ -1017,7 +1030,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           onPromptChange={setCustomPrompt}
           regenTarget={regenTarget}
           theme={theme}
-          onRegen={handleRegen}
+          onRegenBase={handleRegen}
+          onGenerateFeature={handleFeatureSlotGenerate}
           logs={batchLogs}
           shortLabels={shortLabels}
           exportsEnabled={exportsEnabled}
@@ -1579,7 +1593,8 @@ interface AssetGroupSectionProps {
   assets:          Partial<Record<AssetType, GeneratedAsset>>
   failedTypes:     Set<AssetType>
   assetHistory:    Partial<Record<AssetType, GeneratedAsset[]>>
-  selectedType:    AssetType | null
+  /** Widened to string so feature-slot selections don't un-highlight on type mismatch. */
+  selectedType:    string | null
   regenTarget:     AssetType | null
   onSelect:        (type: AssetType) => void
   onRegen:         (type: AssetType) => void
@@ -2090,25 +2105,31 @@ function FailedTilePlaceholder({ label, onRetry }: { label: string; onRetry: (e:
 type RightTab = 'inspector' | 'prompt' | 'feedback'
 
 interface RightPanelProps {
-  selectedType?:  AssetType | null
-  selectedAsset?: GeneratedAsset
-  rightTab:       RightTab
-  onTabChange:    (tab: RightTab) => void
-  customPrompt:   string
-  onPromptChange: (v: string) => void
-  regenTarget:    AssetType | null
-  theme:          string
-  onRegen:        (type: AssetType, prompt?: string) => void
-  logs:           string[]
-  shortLabels:    Partial<Record<AssetType, string>>
-  exportsEnabled: boolean
-  onUpgradeGate:  () => void
+  /** The currently selected key — either a base AssetType or a feature-slot key. */
+  selectedKey?:       string | null
+  /** True when the selection is a feature-slot key (drives regen routing). */
+  selectedIsFeature: boolean
+  selectedAsset?:    GeneratedAsset
+  rightTab:          RightTab
+  onTabChange:       (tab: RightTab) => void
+  customPrompt:      string
+  onPromptChange:    (v: string) => void
+  regenTarget:       AssetType | null
+  theme:             string
+  /** Regenerate a base asset type (existing batch/single flow). */
+  onRegenBase:       (type: AssetType, prompt?: string) => void
+  /** Generate a single feature slot (wired from handleFeatureSlotGenerate). */
+  onGenerateFeature: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
+  logs:              string[]
+  shortLabels:       Partial<Record<AssetType, string>>
+  exportsEnabled:    boolean
+  onUpgradeGate:     () => void
 }
 
 function RightInspectorPanel({
-  selectedType, selectedAsset, rightTab, onTabChange,
+  selectedKey, selectedIsFeature, selectedAsset, rightTab, onTabChange,
   customPrompt, onPromptChange,
-  regenTarget, theme, onRegen, logs, shortLabels,
+  regenTarget, theme, onRegenBase, onGenerateFeature, logs, shortLabels,
   exportsEnabled, onUpgradeGate,
 }: RightPanelProps) {
   const TABS: { id: RightTab; label: string; icon: React.ReactNode }[] = [
@@ -2168,11 +2189,13 @@ function RightInspectorPanel({
         {/* Inspector Tab */}
         {rightTab === 'inspector' && (
           <InspectorTab
-            selectedType={selectedType ?? null}
+            selectedKey={selectedKey ?? null}
+            selectedIsFeature={selectedIsFeature}
             selectedAsset={selectedAsset}
             regenTarget={regenTarget}
             theme={theme}
-            onRegen={onRegen}
+            onRegenBase={onRegenBase}
+            onGenerateFeature={onGenerateFeature}
             shortLabels={shortLabels}
             exportsEnabled={exportsEnabled}
             onUpgradeGate={onUpgradeGate}
@@ -2182,13 +2205,15 @@ function RightInspectorPanel({
         {/* Prompt Editor Tab */}
         {rightTab === 'prompt' && (
           <PromptTab
-            selectedType={selectedType ?? null}
+            selectedKey={selectedKey ?? null}
+            selectedIsFeature={selectedIsFeature}
             selectedAsset={selectedAsset}
             customPrompt={customPrompt}
             onPromptChange={onPromptChange}
             regenTarget={regenTarget}
             theme={theme}
-            onRegen={onRegen}
+            onRegenBase={onRegenBase}
+            onGenerateFeature={onGenerateFeature}
             shortLabels={shortLabels}
           />
         )}
@@ -2204,19 +2229,44 @@ function RightInspectorPanel({
 
 // ─── Inspector Tab ────────────────────────────────────────────────────────────
 
+/** Resolve a human label for any selected key (base AssetType or feature slot). */
+function resolveLabel(
+  key: string,
+  isFeature: boolean,
+  shortLabels: Partial<Record<AssetType, string>>
+): string {
+  if (!isFeature) {
+    return shortLabels[key as AssetType] ?? ASSET_LABELS[key as AssetType] ?? key
+  }
+  for (const def of Object.values(FEATURE_REGISTRY)) {
+    const slot = def.assetSlots.find(s => s.key === key)
+    if (slot) return `${def.label} — ${slot.label}`
+  }
+  return key
+}
+
 function InspectorTab({
-  selectedType, selectedAsset, regenTarget, theme, onRegen, shortLabels, exportsEnabled, onUpgradeGate,
+  selectedKey, selectedIsFeature, selectedAsset,
+  regenTarget, theme, onRegenBase, onGenerateFeature,
+  shortLabels, exportsEnabled, onUpgradeGate,
 }: {
-  selectedType:   AssetType | null
-  selectedAsset?: GeneratedAsset
-  regenTarget:    AssetType | null
-  theme:          string
-  onRegen:        (type: AssetType) => void
-  shortLabels:    Partial<Record<AssetType, string>>
-  exportsEnabled: boolean
-  onUpgradeGate:  () => void
+  selectedKey:      string | null
+  selectedIsFeature: boolean
+  selectedAsset?:   GeneratedAsset
+  regenTarget:      AssetType | null
+  theme:            string
+  onRegenBase:      (type: AssetType) => void
+  onGenerateFeature: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
+  shortLabels:      Partial<Record<AssetType, string>>
+  exportsEnabled:   boolean
+  onUpgradeGate:    () => void
 }) {
-  if (!selectedType) {
+  // Local feature-generation state — base-asset regen uses the shared
+  // regenTarget prop, but feature slots are generated via a Promise-returning
+  // callback so we track the in-flight state here.
+  const [featGenerating, setFeatGenerating] = useState(false)
+
+  if (!selectedKey) {
     return (
       <div style={{
         display:  'flex', flexDirection: 'column', alignItems: 'center',
@@ -2232,8 +2282,21 @@ function InspectorTab({
     )
   }
 
-  const label = shortLabels[selectedType] ?? ASSET_LABELS[selectedType] ?? selectedType
-  const isRegen = regenTarget === selectedType
+  const label = resolveLabel(selectedKey, selectedIsFeature, shortLabels)
+  const isRegen = selectedIsFeature
+    ? featGenerating
+    : (regenTarget === selectedKey)
+
+  async function handleRegenClick() {
+    if (isRegen) return
+    if (selectedIsFeature) {
+      setFeatGenerating(true)
+      try { await onGenerateFeature(selectedKey!) }
+      finally { setFeatGenerating(false) }
+    } else {
+      onRegenBase(selectedKey as AssetType)
+    }
+  }
 
   return (
     <div style={{ padding: 16 }}>
@@ -2263,7 +2326,7 @@ function InspectorTab({
         </h3>
         {selectedAsset ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <MetaRow label="Type"     value={selectedType} />
+            <MetaRow label="Type"     value={selectedKey} />
             <MetaRow label="Provider" value={selectedAsset.provider} accent />
             <MetaRow label="Theme"    value={selectedAsset.theme} />
             <MetaRow label={selectedAsset.provider === 'upload' ? 'Uploaded' : 'Generated'} value={timeAgo(selectedAsset.created_at)} />
@@ -2276,7 +2339,7 @@ function InspectorTab({
       {/* Actions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button
-          onClick={() => onRegen(selectedType)}
+          onClick={handleRegenClick}
           disabled={isRegen}
           className="sf-btn"
           style={{
@@ -2304,7 +2367,7 @@ function InspectorTab({
           exportsEnabled ? (
             <a
               href={selectedAsset.url}
-              download={`${selectedType}.png`}
+              download={`${selectedKey}.png`}
               target="_blank"
               rel="noreferrer"
               style={{
@@ -2381,19 +2444,23 @@ function MetaRow({ label, value, accent }: { label: string; value: string; accen
 // ─── Prompt Tab ───────────────────────────────────────────────────────────────
 
 function PromptTab({
-  selectedType, selectedAsset, customPrompt, onPromptChange,
-  regenTarget, theme, onRegen, shortLabels,
+  selectedKey, selectedIsFeature, selectedAsset, customPrompt, onPromptChange,
+  regenTarget, theme, onRegenBase, onGenerateFeature, shortLabels,
 }: {
-  selectedType:  AssetType | null
-  selectedAsset?: GeneratedAsset
-  customPrompt:  string
-  onPromptChange:(v: string) => void
-  regenTarget:   AssetType | null
-  theme:         string
-  onRegen:       (type: AssetType, prompt?: string) => void
-  shortLabels:   Partial<Record<AssetType, string>>
+  selectedKey:       string | null
+  selectedIsFeature: boolean
+  selectedAsset?:    GeneratedAsset
+  customPrompt:      string
+  onPromptChange:    (v: string) => void
+  regenTarget:       AssetType | null
+  theme:             string
+  onRegenBase:       (type: AssetType, prompt?: string) => void
+  onGenerateFeature: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
+  shortLabels:       Partial<Record<AssetType, string>>
 }) {
-  if (!selectedType) {
+  const [featGenerating, setFeatGenerating] = useState(false)
+
+  if (!selectedKey) {
     return (
       <div style={{
         display:  'flex', flexDirection: 'column', alignItems: 'center',
@@ -2406,8 +2473,23 @@ function PromptTab({
     )
   }
 
-  const isRegen = regenTarget === selectedType
-  const label   = shortLabels[selectedType] ?? ASSET_LABELS[selectedType] ?? selectedType
+  const isRegen = selectedIsFeature ? featGenerating : (regenTarget === selectedKey)
+  const label   = resolveLabel(selectedKey, selectedIsFeature, shortLabels)
+
+  async function handleGenerate() {
+    if (isRegen) return
+    if (selectedIsFeature) {
+      setFeatGenerating(true)
+      // Feature slots don't yet accept a custom prompt override — the custom
+      // prompt textarea stays editable but is ignored for feature slots in
+      // this iteration. (buildFeatureSlotPrompt in promptBuilder.ts uses its
+      // own per-slot template.) TODO: plumb customPrompt into /api/ai-single.
+      try { await onGenerateFeature(selectedKey!) }
+      finally { setFeatGenerating(false) }
+    } else {
+      onRegenBase(selectedKey as AssetType, customPrompt || undefined)
+    }
+  }
 
   return (
     <div style={{ padding: 16 }}>
@@ -2469,7 +2551,7 @@ function PromptTab({
       </div>
 
       <button
-        onClick={() => onRegen(selectedType, customPrompt || undefined)}
+        onClick={handleGenerate}
         disabled={isRegen}
         className="sf-btn"
         style={{
@@ -2490,7 +2572,7 @@ function PromptTab({
       >
         {isRegen
           ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</>
-          : <><Wand2 size={13} /> {customPrompt ? 'Generate with custom prompt' : 'Generate'}</>
+          : <><Wand2 size={13} /> {(!selectedIsFeature && customPrompt) ? 'Generate with custom prompt' : 'Generate'}</>
         }
       </button>
     </div>
@@ -2558,6 +2640,7 @@ function FeedbackTab({ logs }: { logs: string[] }) {
 
 function FeatureSlotsSection({
   featureId, label, slots, assets, onUpload, onGenerate,
+  selectedKey, onSelect,
 }: {
   featureId:  FeatureId
   label:      string
@@ -2565,6 +2648,8 @@ function FeatureSlotsSection({
   assets:     Record<string, GeneratedAsset>
   onUpload:   (slotKey: string, file: File) => void
   onGenerate: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
+  selectedKey: string | null
+  onSelect:   (slotKey: string) => void
 }) {
   const filledCount = slots.filter(s => !!assets[s.key]).length
   return (
@@ -2608,6 +2693,8 @@ function FeatureSlotsSection({
             asset={assets[slot.key]}
             onUpload={onUpload}
             onGenerate={onGenerate}
+            isSelected={selectedKey === slot.key}
+            onSelect={onSelect}
           />
         ))}
       </div>
@@ -2616,12 +2703,14 @@ function FeatureSlotsSection({
 }
 
 function FeatureSlotTile({
-  slot, asset, onUpload, onGenerate,
+  slot, asset, onUpload, onGenerate, isSelected, onSelect,
 }: {
   slot:       AssetSlot
   asset?:     GeneratedAsset
   onUpload:   (slotKey: string, file: File) => void
   onGenerate: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
+  isSelected: boolean
+  onSelect:   (slotKey: string) => void
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [generating, setGenerating] = useState(false)
@@ -2643,7 +2732,8 @@ function FeatureSlotTile({
     }
   }
 
-  function handleClick() {
+  function handleUploadClick(e: React.MouseEvent) {
+    e.stopPropagation()
     fileInput.current?.click()
   }
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -2653,34 +2743,38 @@ function FeatureSlotTile({
     onUpload(slot.key, file)
   }
 
+  // Tile click → select (opens Inspector in the right panel). Dedicated
+  // buttons handle upload / generate so those actions aren't lost.
+  const borderColor = isSelected ? C.gold : isEmpty ? C.border : 'rgba(201,168,76,.3)'
+
   return (
     <div
-      title={slot.description || `Upload ${slot.label}`}
+      onClick={() => onSelect(slot.key)}
+      title={slot.description || slot.label}
       style={{
         display:        'flex',
         flexDirection:  'column',
         borderRadius:   10,
         background:     C.surface,
-        border:         `1px solid ${isEmpty ? C.border : 'rgba(201,168,76,.3)'}`,
+        border:         `1px solid ${borderColor}`,
         overflow:       'hidden',
         position:       'relative',
+        cursor:         'pointer',
+        transition:     'border-color .15s',
+        boxShadow:      isSelected ? `0 0 0 1px ${C.gold}40` : 'none',
       }}
     >
       {/* Thumbnail / empty state */}
-      <button
-        onClick={handleClick}
+      <div
         style={{
           aspectRatio:    '1 / 1',
           width:          '100%',
-          border:         'none',
           background:     isEmpty
             ? `repeating-linear-gradient(45deg, ${C.surfHigh} 0 6px, transparent 6px 12px)`
             : C.bg,
-          cursor:         'pointer',
           display:        'flex',
           alignItems:     'center',
           justifyContent: 'center',
-          padding:        0,
         }}
       >
         {generating ? (
@@ -2696,12 +2790,12 @@ function FeatureSlotTile({
             />
           : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: C.txMuted }}>
-              <Upload size={18} />
-              <span style={{ fontSize: 9, fontWeight: 600 }}>Click to upload</span>
+              <Sparkles size={18} style={{ opacity: 0.6 }} />
+              <span style={{ fontSize: 9, fontWeight: 600 }}>Hover to generate</span>
             </div>
           )
         }
-      </button>
+      </div>
       <input
         ref={fileInput}
         type="file"
@@ -2710,37 +2804,59 @@ function FeatureSlotTile({
         onChange={handleFileChange}
       />
 
-      {/* AI generate button — small gold overlay top-right of the thumbnail */}
-      <button
-        onClick={handleGenerate}
-        disabled={generating}
-        title={genError ? `Retry AI generate · ${genError}` : (asset ? 'Replace with AI generate' : 'Generate with AI')}
-        style={{
-          position:       'absolute',
-          top:            8,
-          right:          8,
-          width:          28,
-          height:         28,
-          borderRadius:   8,
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'center',
-          background:     generating ? 'rgba(201,168,76,.35)'
-                        : genError   ? 'rgba(248,113,113,.15)'
-                                     : 'rgba(201,168,76,.2)',
-          border:         `1px solid ${generating ? 'rgba(201,168,76,.8)'
-                                     : genError   ? 'rgba(248,113,113,.5)'
-                                                  : 'rgba(201,168,76,.45)'}`,
-          color:          generating ? C.gold : genError ? C.red : C.gold,
-          cursor:         generating ? 'wait' : 'pointer',
-          backdropFilter: 'blur(6px)',
-        }}
-      >
-        {generating
-          ? <Loader2 size={13} style={{ animation: 'sf-spin 1s linear infinite' }} />
-          : <Sparkles size={13} />
-        }
-      </button>
+      {/* Action buttons — Upload + AI generate, same positioning as the
+          base-asset tiles so the two types feel uniform. */}
+      <div style={{
+        position: 'absolute', top: 8, right: 8,
+        display: 'flex', gap: 6,
+      }}>
+        <button
+          onClick={handleUploadClick}
+          title={asset ? 'Replace by upload' : 'Upload image'}
+          style={{
+            width:          26,
+            height:         26,
+            borderRadius:   7,
+            display:        'flex',
+            alignItems:     'center',
+            justifyContent: 'center',
+            background:     'rgba(0,0,0,0.55)',
+            border:         `1px solid ${C.border}`,
+            color:          C.txMuted,
+            cursor:         'pointer',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <Upload size={12} />
+        </button>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          title={genError ? `Retry AI generate · ${genError}` : (asset ? 'Replace with AI generate' : 'Generate with AI')}
+          style={{
+            width:          26,
+            height:         26,
+            borderRadius:   7,
+            display:        'flex',
+            alignItems:     'center',
+            justifyContent: 'center',
+            background:     generating ? 'rgba(201,168,76,.35)'
+                          : genError   ? 'rgba(248,113,113,.15)'
+                                       : 'rgba(201,168,76,.2)',
+            border:         `1px solid ${generating ? 'rgba(201,168,76,.8)'
+                                       : genError   ? 'rgba(248,113,113,.5)'
+                                                    : 'rgba(201,168,76,.45)'}`,
+            color:          generating ? C.gold : genError ? C.red : C.gold,
+            cursor:         generating ? 'wait' : 'pointer',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          {generating
+            ? <Loader2 size={12} style={{ animation: 'sf-spin 1s linear infinite' }} />
+            : <Sparkles size={12} />
+          }
+        </button>
+      </div>
 
       {/* Label + slot key */}
       <div style={{ padding: '8px 10px 10px' }}>
