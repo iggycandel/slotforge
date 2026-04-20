@@ -342,7 +342,7 @@ const SDEFS={
   // Pop-up sub-screens — ONLY specific pop-up UI keys
   popup_win:   {label:'Big Win',        keys:['dimLayer','ov-bigwin_title','ov-bigwin_amount','ov-bigwin_btn'],    dot:'#c9a84c',  group:'popup'},
   popup_megawin:{label:'Mega Win',       keys:['dimLayer','ov-megawin_title','ov-megawin_amount','ov-megawin_btn'],    dot:'#e8c96d',  group:'popup'},
-  popup_epicwin:{label:'Epic Win',       keys:['dimLayer','ov-epicwin_title','ov-epicwin_amount','ov_epicwin_btn'],    dot:'#ff7060',  group:'popup'},
+  popup_epicwin:{label:'Epic Win',       keys:['dimLayer','ov-epicwin_title','ov-epicwin_amount','ov-epicwin_btn'],    dot:'#ff7060',  group:'popup'},
   popup_buy:   {label:'Buy Bonus',      keys:['dimLayer','ov-buypopup_title','ov-buypopup_desc','ov-buypopup_btnCancel','ov-buypopup_btnBuy'],  dot:'#ef7a7a',  group:'popup', requires:'buy_feature'},
   // popup_fs / popup_hns / popup_jp were removed — Free Spins, Hold & Spin
   // and Jackpot intros now live as sub-tabs inside each feature's own tab
@@ -529,7 +529,10 @@ const OV_SUBS={
   // Mirrors the Big Win / Mega Win pattern so the user can drag + resize
   // + right-click-edit these elements just like any other css_ov layer.
   'ov-bp-intro':[
-    {id:'banner', label:'Banner',     type:'text',   dText:'BONUS PICK!',            dColor:'#c9a84c', dSize:140, dWeight:800, dSpacing:'.06em'},
+    // Default banner sizing tuned so "BONUS PICK!" / "FREE SPINS!" / "LOCK & WIN!"
+    // fit within the 984-wide portrait viewport without overflow. Users can
+    // still scale up via the resize handles if they want a fatter title.
+    {id:'banner', label:'Banner',     type:'text',   dText:'BONUS PICK!',            dColor:'#c9a84c', dSize:110, dWeight:800, dSpacing:'.04em'},
     {id:'sub',    label:'Sub-copy',   type:'text',   dText:'Tap anywhere to continue', dColor:'#c9a84ccc', dSize:34, dWeight:600, dSpacing:'.12em'},
   ],
   'ov-bp-outro':[
@@ -538,7 +541,7 @@ const OV_SUBS={
     {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#1a1200'},
   ],
   'ov-fs-intro':[
-    {id:'banner', label:'Banner',     type:'text',   dText:'FREE SPINS!',            dColor:'#4ac8f0', dSize:150, dWeight:800, dSpacing:'.08em'},
+    {id:'banner', label:'Banner',     type:'text',   dText:'FREE SPINS!',            dColor:'#4ac8f0', dSize:120, dWeight:800, dSpacing:'.06em'},
     {id:'sub',    label:'Sub-copy',   type:'text',   dText:'10 spins awarded',       dColor:'#4ac8f0cc', dSize:38, dWeight:600, dSpacing:'.12em'},
   ],
   'ov-fs-outro':[
@@ -547,7 +550,7 @@ const OV_SUBS={
     {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#0a1a2a'},
   ],
   'ov-hns-intro':[
-    {id:'banner', label:'Banner',     type:'text',   dText:'LOCK & WIN!',            dColor:'#5eca8a', dSize:140, dWeight:800, dSpacing:'.06em'},
+    {id:'banner', label:'Banner',     type:'text',   dText:'LOCK & WIN!',            dColor:'#5eca8a', dSize:120, dWeight:800, dSpacing:'.04em'},
     {id:'sub',    label:'Sub-copy',   type:'text',   dText:'3 respins — collect all coins', dColor:'#5eca8acc', dSize:34, dWeight:600, dSpacing:'.1em'},
   ],
   'ov-hns-outro':[
@@ -594,7 +597,15 @@ Object.keys(OV_SUBS).forEach((ovId, i) => {
     };
   });
 });
-PSD['dimLayer'] = { label: 'Dim Overlay', type: 'dimLayer', locked: true, z: 499 };
+// Fix B: seed portrait/landscape dimensions that match the actual viewport
+// the dim fills in buildCanvas. Without these the footer Size readout falls
+// back to the 100×100 getPos() placeholder, and canvasAutoSelect uses a
+// broken bbox that never matches real clicks.
+PSD['dimLayer'] = {
+  label: 'Dim Overlay', type: 'dimLayer', locked: true, z: 499,
+  portrait:  { x: 441, y: 0, w: 984,  h: 2000 },
+  landscape: { x: 0,   y: 0, w: 2000, h: 1125 },
+};
 
 // ─── Feature intro/outro layout overrides ──────────────────────────────────
 // Auto-registered PSD entries use a generic "stacked rows" default (y=700,
@@ -1056,7 +1067,11 @@ function _buildOvSubEl(ovId,sub,c1,c3){
     }
   } else {
     el=document.createElement('div');
-    el.style.cssText=`font-size:${size}px;color:${color};font-weight:${weight};letter-spacing:${spacing};font-family:Space Grotesk,sans-serif;text-align:center;line-height:1.1`;
+    // white-space:nowrap keeps banner/title text on a single line so flexbox
+    // centering stays symmetric even when the user scales the font up. With
+    // default wrapping, "BONUS PICK!" at 140px would wrap inside the 984px
+    // portrait viewport and appear cut off on one side.
+    el.style.cssText=`font-size:${size}px;color:${color};font-weight:${weight};letter-spacing:${spacing};font-family:Space Grotesk,sans-serif;text-align:center;line-height:1.1;white-space:nowrap`;
     // Special text-shadows for epic win
     if(ovId==='ov-epicwin'&&sub.id==='title') el.style.textShadow='0 0 120px #ff706088,0 0 60px #ff300066';
     if(ovId==='ov-bigwin'&&sub.id==='title') el.style.textShadow=`0 0 80px ${color}88`;
@@ -1587,11 +1602,19 @@ function buildCanvas(){
           }
         });
       } else if(k!=='bg'){
-        // Locked non-bg layers: selectable but not moveable
+        // Locked non-bg layers: selectable but not moveable.
+        // Fix A: dimLayer covers the whole viewport and sits behind overlay
+        // text/buttons — selecting it directly on every click would shadow
+        // the element the user actually clicked. Route through the shared
+        // hit-tester so the highest-z bbox containing the click wins.
         el.addEventListener('click', e=>{
           e.stopPropagation();
           if(TOOL==='pan') return;
-          selectEl(k);
+          if(k==='dimLayer' && TOOL==='select'){
+            canvasAutoSelect(e.clientX, e.clientY);
+          } else {
+            selectEl(k);
+          }
         });
       }
       // bg: no click/mousedown handlers — pointer-events:none ensures clicks pass through for rubber-band select
@@ -1670,18 +1693,12 @@ function selectEl(k){
     });
   }
   
-  // Specific handler for old css overlays: Hook up text editing properties sync
-  if(PSD[k]?.type === 'css_ov' || PSD[k]?.type === 'dimLayer') {
-     if(PSD[k].type === 'dimLayer') {
-         openDimPropsPanel();
-     } else {
-         openOvPropsPanel(PSD[k].ovId, PSD[k].subId);
-     }
-  } else {
-     document.getElementById('ov-props-panel')?.classList.remove('show');
-     // Wait, dim props might have another panel, hide that too
-     document.getElementById('dim-props-panel')?.classList.remove('show');
-  }
+  // Selecting a layer should NOT auto-open its properties popup. Panels open
+  // via right-click (openCtxPanel → openDim/OvPropsPanel) or double-click
+  // (inline text edit). Close any stale panel from a previous selection so
+  // the surface stays clean.
+  document.getElementById('ov-props-panel')?.classList.remove('show');
+  document.getElementById('dim-props-panel')?.classList.remove('show');
 
   const keys=SDEFS[P.screen]?.keys||[];
   const idx=keys.indexOf(k);if(idx>=0){P.activeLayer=idx;renderLayers();}
@@ -2839,7 +2856,17 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 function switchScreen(scr){
   const isProj=scr==='project';
   if(isProj && P.screen!=='project') P._prevScreen=P.screen;
-  P.screen=scr; P.activeLayer=null; SEL_KEY=null;
+  P.screen=scr; P.activeLayer=null; SEL_KEY=null; SEL_KEYS=new Set();
+  // Fix C: clear footer selection bars so "Layer: Win Title" doesn't persist
+  // across screen switches until a new element is clicked.
+  try {
+    const sbLyr  = document.getElementById('sb-lyr');  if(sbLyr)  sbLyr.textContent  = '—';
+    const ctxLyr = document.getElementById('ctx-lyr'); if(ctxLyr){ ctxLyr.textContent = 'No layer'; ctxLyr.className = 'ct'; }
+    const selInfo= document.getElementById('sel-info'); if(selInfo) selInfo.style.display = 'none';
+  } catch(e){}
+  // Hide any open properties panels tied to the previous selection.
+  document.getElementById('ov-props-panel')?.classList.remove('show');
+  document.getElementById('dim-props-panel')?.classList.remove('show');
   const projFs=document.getElementById('proj-fs');
   if(isProj){
     const menuH=document.getElementById('menubar').offsetHeight;
@@ -2863,28 +2890,27 @@ function switchScreen(scr){
   if(!isProj){
     requestAnimationFrame(()=>{
       buildCanvas();
-      // If this is an EW screen, append the EW overlay after canvas builds
+      // Fix E: always tear down the previous feature overlay before deciding
+      // whether to build a new one, so switching between sub-tabs (In-round →
+      // Outro / Intro) never leaks layers from the prior screen.
+      document.getElementById('feature-screen-overlay')?.remove();
+      document.getElementById('ew-canvas-overlay')?.remove();
+      const gf = document.getElementById('gf');
+      // Fix H: build overlays synchronously inside the rAF callback (after
+      // buildCanvas) instead of via a 60ms setTimeout. Eliminates the
+      // per-tab-switch flicker where the canvas was briefly empty.
       if(scr.startsWith('ew_')){
         const parentScr=scr.replace('ew_','');
-        setTimeout(()=>{
-          const gf=document.getElementById('gf');
-          document.getElementById('ew-canvas-overlay')?.remove();
-          gf.appendChild(buildEWOverlay(parentScr));
-        },50);
+        if(gf) gf.appendChild(buildEWOverlay(parentScr));
       }
-      // Feature screen overlays
       const featureDef=SDEFS[scr];
       if(featureDef?.overlay && featureDef.overlay!=='generic'){
-        setTimeout(()=>{
-          document.getElementById('feature-screen-overlay')?.remove();
-          const gf=document.getElementById('gf');
-          const ov=buildFeatureOverlay(scr, featureDef);
-          if(ov) gf.appendChild(ov);
-          // Push the new feature slot layers to the Layers panel so it
-          // reflects what's actually rendered on the feature screen.
-          try { _sendLayersUpdate(); } catch(e){}
-        },60);
+        const ov=buildFeatureOverlay(scr, featureDef);
+        if(ov && gf) gf.appendChild(ov);
       }
+      // Push layers update unconditionally — screens without a feature
+      // overlay still need the Layers panel refreshed (empty feature-slot set).
+      try { _sendLayersUpdate(); } catch(e){}
       fitZoom();
     });
   }
@@ -4354,12 +4380,30 @@ function openCtxPanel(k, clientX, clientY){
 
 function closeCtxPanel(){ document.getElementById('el-ctx-panel').classList.remove('show'); CTX_KEY=null; }
 
-// Close on outside click
+// Close on outside click — applies to every floating popup/panel. User ask:
+// popups should dismiss whenever the click lands outside them (and outside a
+// canvas layer, since clicking layers is what OPENS these panels).
 document.addEventListener('click', e=>{
-  const panel = document.getElementById('el-ctx-panel');
-  const popup = document.getElementById('ai-gen-popup');
-  if(panel.classList.contains('show') && !panel.contains(e.target) && !e.target.closest('.cel')){
+  const hitCel = e.target.closest && e.target.closest('.cel');
+  // Right-click context panel (adjustments, mask, copy/paste)
+  const ctx = document.getElementById('el-ctx-panel');
+  if(ctx && ctx.classList.contains('show') && !ctx.contains(e.target) && !hitCel){
     closeCtxPanel();
+  }
+  // css_ov text-properties panel (font size / color / text)
+  const ovp = document.getElementById('ov-props-panel');
+  if(ovp && ovp.classList.contains('show') && !ovp.contains(e.target) && !hitCel){
+    ovp.classList.remove('show');
+  }
+  // Dim-layer opacity panel (uses inline display:block instead of .show class)
+  const dimP = document.getElementById('dim-props-panel');
+  if(dimP && dimP.style.display === 'block' && !dimP.contains(e.target) && !hitCel){
+    dimP.style.display = 'none';
+  }
+  // Bonus-pick grid settings popover (cols/rows/gap)
+  const bpP = document.getElementById('bp-settings-popover');
+  if(bpP && !bpP.contains(e.target) && !hitCel){
+    bpP.remove();
   }
 });
 
@@ -8331,13 +8375,13 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
     // Tile background (closed state) — same asset for every tile in the grid
     ov.appendChild(_slot('bonuspick.tile_closed', tx, ty, tileSize, tileSize, '?', c1, 'cover'));
 
-    // Mini prize icon centered on the tile, cycling through prize types
+    // Prize icon — render at full tile size with object-fit:cover so the
+    // uploaded asset fills the slot edge-to-edge. Previously the prize was
+    // inset to 58% of the tile and centered, which made uploaded images
+    // look like a small badge floating in the middle of a placeholder.
     const prizeKey = prizeKeys[i % prizeKeys.length];
-    const pSize    = Math.round(tileSize * 0.58);
-    const px       = tx + Math.round((tileSize - pSize) / 2);
-    const py       = ty + Math.round((tileSize - pSize) / 2);
     if (EL_ASSETS[prizeKey]) {
-      const prizeEl = _imgSlot(prizeKey, px, py, pSize, pSize);
+      const prizeEl = _imgSlot(prizeKey, tx, ty, tileSize, tileSize, 'cover');
       prizeEl.dataset.assetLabel = 'Prize: ' + prizeKey.replace('bonuspick.prize_', '');
       ov.appendChild(prizeEl);
     }
@@ -8877,6 +8921,10 @@ function collectMeta(){
     symbolHighNames:    highSymbols.map(s=>s.name),
     symbolLowNames:     lowSymbols.map(s=>s.name),
     symbolSpecialNames: specialSymbols.map(s=>s.name),
+    // Enabled-feature map — drives the "✦ Features" section in AssetsWorkspace.
+    // Must be a fresh plain object; the shell replaces editorMeta wholesale when
+    // workspace changes, so any omitted field gets lost on switch.
+    features:           { ...(P.features||{}) },
   };
 }
 

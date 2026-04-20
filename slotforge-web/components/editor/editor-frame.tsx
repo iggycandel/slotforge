@@ -158,8 +158,12 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
       if (msg.type === 'SF_WORKSPACE_CHANGED' && msg.workspace) {
         setEditorWorkspace(msg.workspace as string)
-        // Capture rich theme/art-direction meta when switching to assets workspace
-        if (msg.meta) setEditorMeta(msg.meta as Record<string, unknown>)
+        // Merge (not replace) so any field the editor omits from collectMeta
+        // — e.g. features in an older editor build — survives from the SSR
+        // initialPayload seed and the Assets workspace stays populated.
+        if (msg.meta) {
+          setEditorMeta(prev => ({ ...(prev ?? {}), ...(msg.meta as Record<string, unknown>) }))
+        }
       }
 
 
