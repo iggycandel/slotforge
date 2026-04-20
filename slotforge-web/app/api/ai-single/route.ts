@@ -17,7 +17,7 @@
 import { auth }               from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                  from 'zod'
-import { buildPrompt }        from '@/lib/ai/promptBuilder'
+import { buildPrompt, buildFeatureSlotPrompt, isFeatureSlotKey } from '@/lib/ai/promptBuilder'
 import { generateImage }      from '@/lib/ai'
 import { uploadGeneratedAsset } from '@/lib/storage/assets'
 import type { AssetType, ProjectMeta } from '@/types/assets'
@@ -41,9 +41,18 @@ const VALID_ASSET_TYPES: AssetType[] = [
 ]
 
 // ─── Request schema ──────────────────────────────────────────────────────────
+// asset_type accepts either:
+//   - a legacy AssetType (symbol_high_1, background_base, etc.)
+//   - a feature slot key like "bonuspick.bg" / "freespins.intro_banner"
+// The prompt path branches on isFeatureSlotKey().
+
+const VALID_ASSET_TYPE_SET = new Set<string>(VALID_ASSET_TYPES as string[])
 
 const RequestSchema = z.object({
-  asset_type:    z.enum(VALID_ASSET_TYPES as [AssetType, ...AssetType[]]),
+  asset_type:    z.string().refine(
+    v => VALID_ASSET_TYPE_SET.has(v) || isFeatureSlotKey(v),
+    { message: 'Unknown asset_type (not a legacy AssetType or registry feature slot)' }
+  ),
   theme:         z.string().max(200).trim().default(''),
   project_id:    z.string().uuid(),
   provider:      z.enum(['runway', 'openai', 'auto']).optional().default('auto'),
@@ -100,8 +109,13 @@ export async function POST(req: NextRequest) {
 
   try {
     // ── Build prompt ──────────────────────────────────────────────────────────
-    // Normal path: buildPrompt assembles the full prompt from templates + style + meta.
-    const built = buildPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined)
+    // Branches on asset_type: legacy AssetType → buildPrompt; feature slot
+    // key ("bonuspick.bg") → buildFeatureSlotPrompt which reuses the same
+    // identity anchor + style + meta helpers so feature art stays consistent.
+    const isFeature = isFeatureSlotKey(asset_type)
+    const built = isFeature
+      ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined)
+      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined)
     if (custom_prompt) {
       // Replace the template portion with the user's custom prompt while still
       // applying the master quality requirements (handled inside buildPrompt).
@@ -110,12 +124,15 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Generate image ────────────────────────────────────────────────────────
-    const generated = await generateImage(asset_type, built, provider)
+    // generateImage / uploadGeneratedAsset both type their asset-key param as
+    // AssetType, but they operate on the string underneath. Cast is safe for
+    // feature slot keys — the storage layer preserves whatever key we pass.
+    const generated = await generateImage(asset_type as AssetType, built, provider)
 
     // ── Upload to Supabase Storage + insert DB record ─────────────────────────
     const asset = await uploadGeneratedAsset(
       project_id,
-      asset_type,
+      asset_type as AssetType,
       generated.url,
       theme,
       built.prompt,

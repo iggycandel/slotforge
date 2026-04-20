@@ -594,6 +594,43 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     }
   }, [projectId, theme, addLog])
 
+  // AI generate for a feature slot via /api/ai-single. Same endpoint as legacy
+  // regens — route now accepts namespaced slot keys and dispatches to
+  // buildFeatureSlotPrompt internally.
+  const handleFeatureSlotGenerate = useCallback(async (slotKey: string): Promise<{ ok: boolean; error?: string }> => {
+    addLog(`✦ Generating ${slotKey}…`)
+    try {
+      const res = await fetch('/api/ai-single', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          asset_type:   slotKey,
+          theme:        theme || '',
+          project_id:   projectId,
+          provider:     provider === 'mock' ? 'auto' : 'auto',
+          style_id:     styleId || undefined,
+          project_meta: projectMeta,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        const msg = json.error ?? `Generation failed (${res.status})`
+        addLog(`✗ ${slotKey} — ${msg}`)
+        return { ok: false, error: String(msg) }
+      }
+      const newAsset: GeneratedAsset = json.asset
+      if (newAsset) {
+        setFeatureAssets(prev => ({ ...prev, [slotKey]: newAsset }))
+      }
+      addLog(`✓ Generated ${slotKey}`)
+      return { ok: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error'
+      addLog(`✗ ${slotKey} — ${msg}`)
+      return { ok: false, error: msg }
+    }
+  }, [projectId, theme, styleId, projectMeta, addLog])
+
   // ─── Computed values ────────────────────────────────────────────────────────
 
   const totalGenerated = Object.keys(assets).length
@@ -944,6 +981,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 slots={group.slots}
                 assets={featureAssets}
                 onUpload={handleFeatureSlotUpload}
+                onGenerate={handleFeatureSlotGenerate}
               />
             ))}
           </div>
@@ -2414,18 +2452,19 @@ function FeedbackTab({ logs }: { logs: string[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Feature slot section — appears below the legacy AssetGroupSections when a
 // feature is enabled. Renders one grid of asset tiles per active feature slot.
-// No generation / prompt editor / regen UI — feature assets are upload-only
-// for now (the AI generation path is the next phase for features).
+// Each tile supports upload and AI generate (✦) — generate routes through
+// /api/ai-single with the namespaced slot key.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FeatureSlotsSection({
-  featureId, label, slots, assets, onUpload,
+  featureId, label, slots, assets, onUpload, onGenerate,
 }: {
-  featureId: FeatureId
-  label:     string
-  slots:     AssetSlot[]
-  assets:    Record<string, GeneratedAsset>
-  onUpload:  (slotKey: string, file: File) => void
+  featureId:  FeatureId
+  label:      string
+  slots:      AssetSlot[]
+  assets:     Record<string, GeneratedAsset>
+  onUpload:   (slotKey: string, file: File) => void
+  onGenerate: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
 }) {
   const filledCount = slots.filter(s => !!assets[s.key]).length
   return (
@@ -2468,6 +2507,7 @@ function FeatureSlotsSection({
             slot={slot}
             asset={assets[slot.key]}
             onUpload={onUpload}
+            onGenerate={onGenerate}
           />
         ))}
       </div>
@@ -2476,15 +2516,32 @@ function FeatureSlotsSection({
 }
 
 function FeatureSlotTile({
-  slot, asset, onUpload,
+  slot, asset, onUpload, onGenerate,
 }: {
-  slot:     AssetSlot
-  asset?:   GeneratedAsset
-  onUpload: (slotKey: string, file: File) => void
+  slot:       AssetSlot
+  asset?:     GeneratedAsset
+  onUpload:   (slotKey: string, file: File) => void
+  onGenerate: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
+  const [generating, setGenerating] = useState(false)
+  const [genError,   setGenError]   = useState<string | null>(null)
   const isEmpty   = !asset
   const required  = slot.requirement === 'required'
+
+  async function handleGenerate(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (generating) return
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const res = await onGenerate(slot.key)
+      if (!res.ok) setGenError(res.error ?? 'Failed')
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   function handleClick() {
     fileInput.current?.click()
@@ -2506,6 +2563,7 @@ function FeatureSlotTile({
         background:     C.surface,
         border:         `1px solid ${isEmpty ? C.border : 'rgba(201,168,76,.3)'}`,
         overflow:       'hidden',
+        position:       'relative',
       }}
     >
       {/* Thumbnail / empty state */}
@@ -2525,7 +2583,12 @@ function FeatureSlotTile({
           padding:        0,
         }}
       >
-        {asset
+        {generating ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, color: C.gold }}>
+            <Loader2 size={22} style={{ animation: 'sf-spin 1s linear infinite' }} />
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.08em' }}>GENERATING…</span>
+          </div>
+        ) : asset
           ? <img
               src={asset.url}
               alt={slot.label}
@@ -2546,6 +2609,39 @@ function FeatureSlotTile({
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
+
+      {/* AI generate button — small gold overlay top-right of the thumbnail */}
+      <button
+        onClick={handleGenerate}
+        disabled={generating}
+        title={genError ? `Retry AI generate · ${genError}` : (asset ? 'Replace with AI generate' : 'Generate with AI')}
+        style={{
+          position:       'absolute',
+          top:            8,
+          right:          8,
+          width:          28,
+          height:         28,
+          borderRadius:   8,
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'center',
+          background:     generating ? 'rgba(201,168,76,.35)'
+                        : genError   ? 'rgba(248,113,113,.15)'
+                                     : 'rgba(201,168,76,.2)',
+          border:         `1px solid ${generating ? 'rgba(201,168,76,.8)'
+                                     : genError   ? 'rgba(248,113,113,.5)'
+                                                  : 'rgba(201,168,76,.45)'}`,
+          color:          generating ? C.gold : genError ? C.red : C.gold,
+          cursor:         generating ? 'wait' : 'pointer',
+          backdropFilter: 'blur(6px)',
+        }}
+      >
+        {generating
+          ? <Loader2 size={13} style={{ animation: 'sf-spin 1s linear infinite' }} />
+          : <Sparkles size={13} />
+        }
+      </button>
+
       {/* Label + slot key */}
       <div style={{ padding: '8px 10px 10px' }}>
         <div style={{
@@ -2570,6 +2666,18 @@ function FeatureSlotTile({
         }}>
           {slot.key}
         </div>
+        {genError && (
+          <div style={{
+            fontSize:  9,
+            marginTop: 4,
+            color:     C.red,
+            overflow:  'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            ⚠ {genError}
+          </div>
+        )}
       </div>
     </div>
   )

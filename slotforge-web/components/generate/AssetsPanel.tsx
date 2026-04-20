@@ -12,7 +12,7 @@ import Link from 'next/link'
 import {
   ImageIcon, CheckCircle2, Plus,
   Minus, GripVertical, ChevronDown, ChevronRight, ExternalLink, RefreshCw, Upload,
-  Loader2,
+  Loader2, Sparkles,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import type { FeatureDef, FeatureId, AssetSlot } from '@/types/features'
@@ -379,6 +379,38 @@ function AssetLibraryContent({
     loadAssets()
   }, [projectId, loadAssets, onAddToCanvas])
 
+  // Generate a feature slot asset via AI. Uses the same /api/ai-single path
+  // as legacy regens — route now accepts namespaced slot keys. On success the
+  // generated URL is auto-injected into the canvas (same flow as upload).
+  const generateFeatureSlot = useCallback(async (slotKey: string): Promise<{ ok: boolean; error?: string }> => {
+    const theme    = (projectMeta?.themeKey as string | undefined)
+                   ?? (projectMeta?.gameName as string | undefined)
+                   ?? ''
+    const styleId  = (projectMeta?.styleId as string | undefined) ?? undefined
+    const res = await fetch('/api/ai-single', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        asset_type:   slotKey,
+        theme,
+        project_id:   projectId,
+        provider:     'auto',
+        style_id:     styleId,
+        project_meta: projectMeta,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || data?.error) {
+      const msg = data?.error ?? `Generation failed (${res.status})`
+      console.error('[AssetsPanel] feature slot generate failed:', msg)
+      return { ok: false, error: String(msg) }
+    }
+    const url = (data?.asset?.url ?? data?.url) as string | undefined
+    if (url) onAddToCanvas(slotKey as AssetType, url)
+    loadAssets()
+    return { ok: true }
+  }, [projectId, projectMeta, loadAssets, onAddToCanvas])
+
   // Build display groups dynamically from project symbol counts
   const displayGroups = useMemo(() => buildDisplayGroups(projectMeta), [projectMeta])
   const featureGroups = useMemo(() => buildFeatureGroups(projectMeta), [projectMeta])
@@ -530,6 +562,7 @@ function AssetLibraryContent({
                 slot={slot}
                 asset={assets[slot.key]}
                 onUpload={uploadFeatureSlot}
+                onGenerate={generateFeatureSlot}
               />
             ))}
           </div>
@@ -605,13 +638,16 @@ function GroupHeader({ label, filled, total, collapsed, onToggle }: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FeatureSlotRow({
-  slot, asset, onUpload,
+  slot, asset, onUpload, onGenerate,
 }: {
-  slot:     AssetSlot
-  asset?:   GeneratedAsset
-  onUpload: (file: File, slotKey: string) => Promise<void>
+  slot:       AssetSlot
+  asset?:     GeneratedAsset
+  onUpload:   (file: File, slotKey: string) => Promise<void>
+  onGenerate: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
 }) {
-  const [uploading, setUploading] = useState(false)
+  const [uploading,   setUploading]   = useState(false)
+  const [generating,  setGenerating]  = useState(false)
+  const [genError,    setGenError]    = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   function handleUploadClick(e: React.MouseEvent) {
@@ -633,8 +669,23 @@ function FeatureSlotRow({
     }
   }
 
-  const isEmpty = !asset
+  async function handleGenerateClick(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (generating || uploading) return
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const res = await onGenerate(slot.key)
+      if (!res.ok) setGenError(res.error ?? 'Failed')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const isEmpty  = !asset
   const required = slot.requirement === 'required'
+  const busy     = uploading || generating
 
   return (
     <div
@@ -696,17 +747,42 @@ function FeatureSlotRow({
         </div>
       </div>
 
+      {/* Generate button — ✨ AI asset for this slot (if registry-catalogued) */}
+      <button
+        onClick={handleGenerateClick}
+        title={genError ? `Retry AI generate · ${genError}` : (asset ? 'Replace with AI generate' : 'Generate with AI')}
+        disabled={busy}
+        style={{
+          width: 26, height: 26, borderRadius: 6,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: generating ? 'rgba(201,168,76,.20)'
+                    : genError   ? 'rgba(248,113,113,.08)'
+                                 : 'rgba(201,168,76,.08)',
+          border: `1px solid ${generating ? 'rgba(201,168,76,.5)'
+                             : genError   ? 'rgba(248,113,113,.4)'
+                                          : 'rgba(201,168,76,.25)'}`,
+          cursor: busy ? 'wait' : 'pointer',
+          color:  generating ? T.gold : genError ? '#f87171' : 'rgba(201,168,76,.9)',
+          flexShrink: 0,
+        }}
+      >
+        {generating
+          ? <Loader2 size={11} style={{ animation: 'sf-spin 1s linear infinite' }} />
+          : <Sparkles size={11} />
+        }
+      </button>
+
       {/* Upload button */}
       <button
         onClick={handleUploadClick}
         title={asset ? 'Replace with upload' : 'Upload image'}
-        disabled={uploading}
+        disabled={busy}
         style={{
           width: 26, height: 26, borderRadius: 6,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: uploading ? 'rgba(96,165,250,.12)' : 'rgba(96,165,250,.06)',
           border: `1px solid ${uploading ? 'rgba(96,165,250,.4)' : 'rgba(96,165,250,.18)'}`,
-          cursor: uploading ? 'wait' : 'pointer',
+          cursor: busy ? 'wait' : 'pointer',
           color: uploading ? T.blue : 'rgba(96,165,250,.6)',
           flexShrink: 0,
         }}
