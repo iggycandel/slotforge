@@ -4449,6 +4449,16 @@ P.reelSettings = {
   overlap: { id: null, amount: 0 }  // which symbol id overlaps neighbours + by how much (0–100%)
 };
 
+// ═══ BONUS PICK SETTINGS ═══
+// Config for the pick-game grid. Editable via click-to-configure on canvas
+// (see _openBonusPickSettingsPopover) or directly from the Features panel.
+// Persists inside the project payload via getPayload() → P.bonusPickSettings.
+P.bonusPickSettings = P.bonusPickSettings || {
+  cols: 4,   // 3..6
+  rows: 3,   // 2..5
+  gap:  14,  // 4..32 px, in canvas space
+};
+
 // ─── Load default symbol assets via fetch → base64 dataURL ──────────────────
 // fetch() resolves correctly inside iframes; dataURLs work everywhere.
 // Default symbol loader — only fills slots that have NO asset yet.
@@ -8099,7 +8109,12 @@ function _slot(key, x, y, w, h, label, c1, fit){
 // render as labelled dashed boxes so the user can see what to upload next.
 function _ovPickGame(ov, cx, cy, cw, ch, c1){
   const picks = parseInt(document.getElementById('pick-picks-inp')?.value) || 3;
-  const cols = 4, rows = 3, totalTiles = cols * rows;
+  // Grid shape reads from P.bonusPickSettings — editable via the on-canvas
+  // settings popover (click the grid) or the Features panel.
+  const bps  = P.bonusPickSettings || { cols: 4, rows: 3, gap: 14 };
+  const cols = Math.max(2, Math.min(6, Number(bps.cols) || 4));
+  const rows = Math.max(2, Math.min(5, Number(bps.rows) || 3));
+  const totalTiles = cols * rows;
 
   // 1. Background — full viewport region (cover-fit)
   ov.appendChild(_slot('bonuspick.bg', cx, cy, cw, ch, 'BG', c1, 'cover'));
@@ -8116,7 +8131,7 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
   // tile a clean square regardless of viewport aspect ratio or cols/rows.
   const gridAvailH   = Math.round(ch * 0.62);
   const gridAvailW   = Math.round(cw * 0.82);
-  const tileGap      = 14;
+  const tileGap      = Math.max(4, Math.min(32, Number(bps.gap) || 14));
   const tileByWidth  = Math.floor((gridAvailW - (cols - 1) * tileGap) / cols);
   const tileByHeight = Math.floor((gridAvailH - (rows - 1) * tileGap) / rows);
   const tileSize     = Math.min(tileByWidth, tileByHeight);
@@ -8152,6 +8167,102 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
   const footerX = cx + Math.round((cw - footerW) / 2);
   const footerY = cy + Math.round(ch * 0.86);
   ov.appendChild(_slot('bonuspick.footer', footerX, footerY, footerW, footerH, `Pick ${picks} of ${totalTiles}`, c1));
+
+  // 5. Click-catcher over the grid — double-click opens the settings popover
+  // so the user can tweak cols / rows / gap without leaving the canvas.
+  const catcher = document.createElement('div');
+  catcher.dataset.clickCatcher = '1';
+  catcher.style.cssText = `position:absolute;left:${gridX - tileGap}px;top:${gridY - tileGap}px;width:${gridW + tileGap*2}px;height:${gridH + tileGap*2}px;pointer-events:auto;cursor:zoom-in`;
+  catcher.title = 'Double-click to configure the grid (cols / rows / gap)';
+  catcher.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    _openBonusPickSettingsPopover();
+  });
+  ov.appendChild(catcher);
+}
+
+// ─── Bonus Pick settings popover (on-canvas config) ───
+// Opens a floating panel that edits P.bonusPickSettings live. Anchored to the
+// body (not the overlay) so buildCanvas rebuilds don't destroy it. Closes on
+// outside-click or pressing Escape.
+function _openBonusPickSettingsPopover(){
+  // Re-open idempotently — close any existing one first
+  document.getElementById('bp-settings-popover')?.remove();
+  const pop = document.createElement('div');
+  pop.id = 'bp-settings-popover';
+  pop.style.cssText = 'position:fixed;top:80px;right:340px;width:240px;background:#0b0b15;border:1px solid rgba(201,168,76,.35);border-radius:10px;padding:14px;box-shadow:0 12px 40px rgba(0,0,0,.6);font-family:Space Grotesk,sans-serif;color:#eeede6;z-index:10000;backdrop-filter:blur(10px)';
+  pop.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#c9a84c">Bonus Pick · Grid</div>
+      <button id="bp-pop-close" style="background:transparent;border:none;color:#8a8aaa;cursor:pointer;font-size:16px;line-height:1">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px 10px;align-items:center;font-size:11px">
+      <label for="bp-cols" style="color:#8a8aaa">Cols</label>
+      <input id="bp-cols" type="range" min="3" max="6" step="1" value="${P.bonusPickSettings.cols}" style="accent-color:#c9a84c">
+      <span id="bp-cols-v" style="font-family:DM Mono,monospace;color:#c9a84c;min-width:18px;text-align:right">${P.bonusPickSettings.cols}</span>
+
+      <label for="bp-rows" style="color:#8a8aaa">Rows</label>
+      <input id="bp-rows" type="range" min="2" max="5" step="1" value="${P.bonusPickSettings.rows}" style="accent-color:#c9a84c">
+      <span id="bp-rows-v" style="font-family:DM Mono,monospace;color:#c9a84c;min-width:18px;text-align:right">${P.bonusPickSettings.rows}</span>
+
+      <label for="bp-gap"  style="color:#8a8aaa">Gap</label>
+      <input id="bp-gap"  type="range" min="4"  max="32" step="1" value="${P.bonusPickSettings.gap}" style="accent-color:#c9a84c">
+      <span id="bp-gap-v"  style="font-family:DM Mono,monospace;color:#c9a84c;min-width:28px;text-align:right">${P.bonusPickSettings.gap}px</span>
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:#8a8aaa;line-height:1.4">Changes apply live — saved automatically with the project.</div>
+  `;
+  document.body.appendChild(pop);
+
+  const colsEl = document.getElementById('bp-cols');
+  const rowsEl = document.getElementById('bp-rows');
+  const gapEl  = document.getElementById('bp-gap');
+  const colsV  = document.getElementById('bp-cols-v');
+  const rowsV  = document.getElementById('bp-rows-v');
+  const gapV   = document.getElementById('bp-gap-v');
+
+  function apply(){
+    P.bonusPickSettings.cols = parseInt(colsEl.value) || 4;
+    P.bonusPickSettings.rows = parseInt(rowsEl.value) || 3;
+    P.bonusPickSettings.gap  = parseInt(gapEl.value)  || 14;
+    colsV.textContent = P.bonusPickSettings.cols;
+    rowsV.textContent = P.bonusPickSettings.rows;
+    gapV.textContent  = P.bonusPickSettings.gap + 'px';
+    // Rebuild canvas + overlay + layers panel so the change shows live.
+    try { buildCanvas(); } catch(e){}
+    try {
+      const scr = SDEFS[P.screen];
+      if (scr?.overlay && scr.overlay !== 'generic'){
+        document.getElementById('feature-screen-overlay')?.remove();
+        const gf = document.getElementById('gf');
+        const ov = buildFeatureOverlay(P.screen, scr);
+        if (ov && gf) gf.appendChild(ov);
+        _sendLayersUpdate();
+      }
+    } catch(e){}
+    try { markDirty(); } catch(e){}
+  }
+  colsEl.addEventListener('input', apply);
+  rowsEl.addEventListener('input', apply);
+  gapEl.addEventListener('input',  apply);
+
+  function close(){
+    pop.remove();
+    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('mousedown', onOutside, true);
+  }
+  document.getElementById('bp-pop-close').addEventListener('click', close);
+  function onKey(e){ if (e.key === 'Escape') close(); }
+  function onOutside(e){
+    // Ignore clicks inside the popover itself OR inside the grid click-catcher
+    // (so the user can double-click the grid again without closing).
+    const t = e.target;
+    if (pop.contains(t)) return;
+    if (t && (t.dataset?.clickCatcher || t.closest?.('[data-click-catcher]'))) return;
+    close();
+  }
+  document.addEventListener('keydown', onKey);
+  // defer one tick so the opening dblclick doesn't immediately close us
+  setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 }
 
 // ─── PICK GAME — INTRO ───
@@ -10112,6 +10223,7 @@ window._sfApplyPayload = function(payload){
   try { if(s.library  !== undefined) P.library  = s.library;  } catch(e){}
   try { if(s.expandWild) Object.assign(P.expandWild, s.expandWild); } catch(e){}
   try { if(s.reelSettings) Object.assign(P.reelSettings, s.reelSettings); } catch(e){}
+  try { if(s.bonusPickSettings) Object.assign(P.bonusPickSettings, s.bonusPickSettings); } catch(e){}
   // Restore character, ante, and other settings missing from earlier versions
   // Use explicit property assignment for boolean flags to avoid Object.assign edge-cases
   try {
@@ -10242,8 +10354,9 @@ window._sfBridge = (function(){
       elVP:        JSON.parse(JSON.stringify(typeof EL_VP     !== 'undefined' ? EL_VP     : {})),
       symbols:     JSON.parse(JSON.stringify(P.symbols  || [])),
       expandWild:  JSON.parse(JSON.stringify(P.expandWild || {})),
-      reelSettings:JSON.parse(JSON.stringify(P.reelSettings || {})),
-      assets:      JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
+      reelSettings:     JSON.parse(JSON.stringify(P.reelSettings || {})),
+      bonusPickSettings:JSON.parse(JSON.stringify(P.bonusPickSettings || {})),
+      assets:           JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
       library:     JSON.parse(JSON.stringify(P.library  || [])),
       adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ    !== 'undefined' ? EL_ADJ    : {})),
       masks:       JSON.parse(JSON.stringify(typeof EL_MASKS  !== 'undefined' ? EL_MASKS  : {})),
@@ -10433,8 +10546,9 @@ window._sfBridge = (function(){
         holdnspin:      p.holdnspin,
         symbols:        p.symbols,
         expandWild:     p.expandWild,
-        reelSettings:   p.reelSettings,
-        ovProps:        p.ovProps,
+        reelSettings:      p.reelSettings,
+        bonusPickSettings: p.bonusPickSettings,
+        ovProps:           p.ovProps,
         ovPos:          p.ovPos,
         elVP:           p.elVP,
         userLocks:      p.userLocks,
