@@ -414,20 +414,22 @@ function registerFeatureScreens(){
 
   // 4. Multi-screen features — intro / outro sub-screens.
   // Per catalogue Q6: each feature owns its own intro/in-round/outro tabs.
+  // Intro/outro screens pull their text from editable css_ov layers (the
+  // banner/sub/label/amount/btn sub-elements auto-registered in PSD above).
+  // dimLayer handles the dark backdrop via buildCanvas so the feature
+  // overlay function (if any) stays dead-simple.
   if(P.features.bonus_pick){
     SDEFS.bonus_pick_intro = {
       label: 'Bonus Pick · Intro',
-      keys:  ['bg'],
+      keys:  ['bg', 'dimLayer', 'ov-bp-intro_banner', 'ov-bp-intro_sub'],
       dot:   '#f0a84c',
-      overlay: 'pick_intro',
       featureKey:  'bonus_pick',
       parentScreen:'bonus_pick',
     };
     SDEFS.bonus_pick_outro = {
       label: 'Bonus Pick · Outro',
-      keys:  ['bg'],
+      keys:  ['bg', 'dimLayer', 'ov-bp-outro_label', 'ov-bp-outro_amount', 'ov-bp-outro_btn'],
       dot:   '#f0a84c',
-      overlay: 'pick_outro',
       featureKey:  'bonus_pick',
       parentScreen:'bonus_pick',
     };
@@ -435,17 +437,15 @@ function registerFeatureScreens(){
   if(P.features.freespin){
     SDEFS.freespin_intro = {
       label: 'Free Spins · Intro',
-      keys:  ['bg'],
+      keys:  ['bg', 'dimLayer', 'ov-fs-intro_banner', 'ov-fs-intro_sub'],
       dot:   '#4ac8f0',
-      overlay: 'fs_intro',
       featureKey:  'freespin',
       parentScreen:'freespin',
     };
     SDEFS.freespin_outro = {
       label: 'Free Spins · Outro',
-      keys:  ['bg'],
+      keys:  ['bg', 'dimLayer', 'ov-fs-outro_label', 'ov-fs-outro_amount', 'ov-fs-outro_btn'],
       dot:   '#4ac8f0',
-      overlay: 'fs_outro',
       featureKey:  'freespin',
       parentScreen:'freespin',
     };
@@ -453,17 +453,15 @@ function registerFeatureScreens(){
   if(P.features.holdnspin){
     SDEFS.holdnspin_intro = {
       label: 'Hold & Spin · Intro',
-      keys:  ['bg'],
+      keys:  ['bg', 'dimLayer', 'ov-hns-intro_banner', 'ov-hns-intro_sub'],
       dot:   '#5eca8a',
-      overlay: 'hns_intro',
       featureKey:  'holdnspin',
       parentScreen:'holdnspin',
     };
     SDEFS.holdnspin_outro = {
       label: 'Hold & Spin · Outro',
-      keys:  ['bg'],
+      keys:  ['bg', 'dimLayer', 'ov-hns-outro_label', 'ov-hns-outro_amount', 'ov-hns-outro_btn'],
       dot:   '#5eca8a',
-      overlay: 'hns_outro',
       featureKey:  'holdnspin',
       parentScreen:'holdnspin',
     };
@@ -527,6 +525,36 @@ const OV_SUBS={
     {id:'title', label:'Title',       type:'text',   dText:'BIG WIN!',     dColor:'#c9a84c', dSize:120,dWeight:600, dSpacing:'0'},
     {id:'amount',label:'Amount',      type:'text',   dText:'€250',         dColor:'#ffffff', dSize:170,dWeight:600, dSpacing:'0'},
   ],
+  // ─── Feature intro / outro text — editable, movable, scalable ──────────
+  // Mirrors the Big Win / Mega Win pattern so the user can drag + resize
+  // + right-click-edit these elements just like any other css_ov layer.
+  'ov-bp-intro':[
+    {id:'banner', label:'Banner',     type:'text',   dText:'BONUS PICK!',            dColor:'#c9a84c', dSize:140, dWeight:800, dSpacing:'.06em'},
+    {id:'sub',    label:'Sub-copy',   type:'text',   dText:'Tap anywhere to continue', dColor:'#c9a84ccc', dSize:34, dWeight:600, dSpacing:'.12em'},
+  ],
+  'ov-bp-outro':[
+    {id:'label',  label:'"Total Win"',type:'text',   dText:'TOTAL WIN',              dColor:'#c9a84c', dSize:56,  dWeight:700, dSpacing:'.14em'},
+    {id:'amount', label:'Amount',     type:'text',   dText:'€ 1,250',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
+    {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#1a1200'},
+  ],
+  'ov-fs-intro':[
+    {id:'banner', label:'Banner',     type:'text',   dText:'FREE SPINS!',            dColor:'#4ac8f0', dSize:150, dWeight:800, dSpacing:'.08em'},
+    {id:'sub',    label:'Sub-copy',   type:'text',   dText:'10 spins awarded',       dColor:'#4ac8f0cc', dSize:38, dWeight:600, dSpacing:'.12em'},
+  ],
+  'ov-fs-outro':[
+    {id:'label',  label:'"Total Win"',type:'text',   dText:'TOTAL WIN',              dColor:'#4ac8f0', dSize:56,  dWeight:700, dSpacing:'.14em'},
+    {id:'amount', label:'Amount',     type:'text',   dText:'€ 2,500',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
+    {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#0a1a2a'},
+  ],
+  'ov-hns-intro':[
+    {id:'banner', label:'Banner',     type:'text',   dText:'LOCK & WIN!',            dColor:'#5eca8a', dSize:140, dWeight:800, dSpacing:'.06em'},
+    {id:'sub',    label:'Sub-copy',   type:'text',   dText:'3 respins — collect all coins', dColor:'#5eca8acc', dSize:34, dWeight:600, dSpacing:'.1em'},
+  ],
+  'ov-hns-outro':[
+    {id:'label',  label:'"Total Win"',type:'text',   dText:'TOTAL WIN',              dColor:'#5eca8a', dSize:56,  dWeight:700, dSpacing:'.14em'},
+    {id:'amount', label:'Amount',     type:'text',   dText:'€ 1,500',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
+    {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#0a2a1a'},
+  ],
 };
 // Overlay backdrop colors and layout styles
 const OV_META={
@@ -539,6 +567,15 @@ const OV_META={
   'ov-buypopup': {bg:'#00000077', layout:'popup'},
   'ov-splash':   {bg:null,        layout:'col'}, // radial gradient built at render time
   'ov-win':      {bg:'#000000aa', layout:'col'},
+  // Feature intro/outro overlays — transparent bg (the dimLayer that lives
+  // in SDEFS.keys draws the backdrop separately, so these overlays only
+  // contribute the movable text + button layers).
+  'ov-bp-intro': {bg:null, layout:'col'},
+  'ov-bp-outro': {bg:null, layout:'col'},
+  'ov-fs-intro': {bg:null, layout:'col'},
+  'ov-fs-outro': {bg:null, layout:'col'},
+  'ov-hns-intro':{bg:null, layout:'col'},
+  'ov-hns-outro':{bg:null, layout:'col'},
 };
 
 // Map ALL OV_SUBS seamlessly into the PSD layer structure
@@ -558,6 +595,34 @@ Object.keys(OV_SUBS).forEach((ovId, i) => {
   });
 });
 PSD['dimLayer'] = { label: 'Dim Overlay', type: 'dimLayer', locked: true, z: 499 };
+
+// ─── Feature intro/outro layout overrides ──────────────────────────────────
+// Auto-registered PSD entries use a generic "stacked rows" default (y=700,
+// 130 px apart). Override with bespoke positions tuned to the catalogue's
+// intro/outro compositions so they land in sensible spots on first paint.
+// Portrait viewport: cx=441, cy=0, cw=984, ch=2000 — so "centered 984 wide"
+// means x=441, w=984. Landscape: cx=0, cy=0, cw=2000, ch=1125.
+(function _layoutFeatureOvs(){
+  const portraitBanner = { x:441, w:984 };
+  const landscapeBanner= { x:0,   w:2000 };
+  // Intro: banner at top-center, sub-copy below
+  ['ov-bp-intro','ov-fs-intro','ov-hns-intro'].forEach(ov => {
+    PSD[`${ov}_banner`].portrait  = { ...portraitBanner,  y: 620, h: 200 };
+    PSD[`${ov}_banner`].landscape = { ...landscapeBanner, y: 260, h: 160 };
+    PSD[`${ov}_sub`].portrait     = { ...portraitBanner,  y: 840, h: 80 };
+    PSD[`${ov}_sub`].landscape    = { ...landscapeBanner, y: 440, h: 60 };
+  });
+  // Outro: "TOTAL WIN" label, then big amount, then COLLECT button
+  ['ov-bp-outro','ov-fs-outro','ov-hns-outro'].forEach(ov => {
+    PSD[`${ov}_label`].portrait  = { ...portraitBanner,  y: 500, h: 110 };
+    PSD[`${ov}_label`].landscape = { ...landscapeBanner, y: 220, h: 80 };
+    PSD[`${ov}_amount`].portrait = { ...portraitBanner,  y: 620, h: 260 };
+    PSD[`${ov}_amount`].landscape= { ...landscapeBanner, y: 320, h: 200 };
+    // Button defaults to 400×140 centred horizontally in portrait, 480×120 in landscape
+    PSD[`${ov}_btn`].portrait    = { x: 441 + (984-500)/2, y: 1360, w: 500, h: 140 };
+    PSD[`${ov}_btn`].landscape   = { x:       (2000-560)/2, y: 780,  w: 560, h: 120 };
+  });
+})();
 
 // State: currently selected overlay sub-element
 let SEL_OV_KEY=null; // {ov:'ov-bigwin',sub:'title'}
@@ -8382,63 +8447,14 @@ function _openBonusPickSettingsPopover(){
   setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
 }
 
-// ─── PICK GAME — INTRO ───
-// Semi-transparent dim over the base game with a large "Bonus Pick!" banner.
-// Uses `bonuspick.header` if uploaded (re-purposed here) so users don't need
-// a separate intro asset until we ship a dedicated slot.
-function _ovPickIntro(ov, cx, cy, cw, ch, c1){
-  // Full-viewport dim so the base-game capture behind feels pushed back.
-  const dim = document.createElement('div');
-  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.72);pointer-events:none`;
-  ov.appendChild(dim);
-
-  // Banner — large centered "BONUS PICK!" using header asset if available.
-  const bannerH = Math.round(ch * 0.12);
-  const bannerW = Math.round(cw * 0.82);
-  const bannerX = cx + Math.round((cw - bannerW) / 2);
-  const bannerY = cy + Math.round(ch * 0.32);
-  ov.appendChild(_slot('bonuspick.header', bannerX, bannerY, bannerW, bannerH, 'BONUS PICK!', c1));
-
-  // Sub-copy
-  const subY = bannerY + bannerH + Math.round(ch * 0.02);
-  const sub  = document.createElement('div');
-  sub.style.cssText = `position:absolute;left:${cx}px;top:${subY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.028)}px;font-weight:600;letter-spacing:.08em;color:${c1}cc;text-transform:uppercase;pointer-events:none`;
-  sub.textContent = 'Tap anywhere to continue';
-  ov.appendChild(sub);
-}
-
-// ─── PICK GAME — OUTRO ───
-// Dim over the base bg (which is already `bonuspick.bg` when uploaded via
-// the feature-bg map) + total-win amount centered + "Collect" affordance.
-function _ovPickOutro(ov, cx, cy, cw, ch, c1){
-  const dim = document.createElement('div');
-  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.62);pointer-events:none`;
-  ov.appendChild(dim);
-
-  // "TOTAL WIN" label
-  const lblY = cy + Math.round(ch * 0.30);
-  const lbl  = document.createElement('div');
-  lbl.style.cssText = `position:absolute;left:${cx}px;top:${lblY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.042)}px;font-weight:700;letter-spacing:.14em;color:${c1}dd;text-transform:uppercase;pointer-events:none`;
-  lbl.textContent = 'TOTAL WIN';
-  ov.appendChild(lbl);
-
-  // Big amount (placeholder — runtime would substitute the real tally)
-  const amtY = lblY + Math.round(ch * 0.06);
-  const amt  = document.createElement('div');
-  amt.style.cssText = `position:absolute;left:${cx}px;top:${amtY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.11)}px;font-weight:800;letter-spacing:-.02em;color:#ffffff;text-shadow:0 4px 30px ${c1}88;pointer-events:none`;
-  amt.textContent = '€ 1,250';
-  ov.appendChild(amt);
-
-  // "Collect" button (visual)
-  const btnW = Math.round(cw * 0.42);
-  const btnH = Math.round(ch * 0.06);
-  const btnX = cx + Math.round((cw - btnW) / 2);
-  const btnY = cy + Math.round(ch * 0.68);
-  const btn  = document.createElement('div');
-  btn.style.cssText = `position:absolute;left:${btnX}px;top:${btnY}px;width:${btnW}px;height:${btnH}px;background:linear-gradient(135deg, ${c1}, #e8c96d);border-radius:${Math.round(btnH/2)}px;display:flex;align-items:center;justify-content:center;font-family:Space Grotesk,sans-serif;font-weight:800;font-size:${Math.round(btnH*0.4)}px;letter-spacing:.1em;color:#1a1200;text-transform:uppercase;pointer-events:none;box-shadow:0 4px 22px ${c1}66`;
-  btn.textContent = 'COLLECT';
-  ov.appendChild(btn);
-}
+// ─── Feature intro / outro overlays are now no-ops ───
+// Text + buttons live as css_ov layers registered in OV_SUBS (ov-bp-intro,
+// ov-bp-outro, ov-fs-intro, etc.). The dim backdrop comes from dimLayer in
+// SDEFS.keys. buildCanvas handles both, so these overlay functions have
+// nothing to add. Kept as no-ops so the buildFeatureOverlay dispatch switch
+// doesn't need surgery.
+function _ovPickIntro (){ /* text/dim handled by SDEFS css_ov + dimLayer */ }
+function _ovPickOutro (){ /* text/dim handled by SDEFS css_ov + dimLayer */ }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FREE SPINS — feature overlays
@@ -8465,55 +8481,9 @@ function _ovFreeSpinRound(ov, cx, cy, cw, ch, c1){
   ov.appendChild(_slot('freespins.multiplier_badge', badgeX, badgeY, badgeSize, badgeSize, '×2', c1));
 }
 
-// Intro: dim + centered banner ("Free Spins awarded!")
-function _ovFreeSpinIntro(ov, cx, cy, cw, ch, c1){
-  const dim = document.createElement('div');
-  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.72);pointer-events:none`;
-  ov.appendChild(dim);
-
-  const bannerH = Math.round(ch * 0.14);
-  const bannerW = Math.round(cw * 0.82);
-  const bannerX = cx + Math.round((cw - bannerW) / 2);
-  const bannerY = cy + Math.round(ch * 0.30);
-  ov.appendChild(_slot('freespins.intro_banner', bannerX, bannerY, bannerW, bannerH, 'FREE SPINS!', c1));
-
-  // Sub-copy
-  const subY = bannerY + bannerH + Math.round(ch * 0.02);
-  const sub  = document.createElement('div');
-  sub.style.cssText = `position:absolute;left:${cx}px;top:${subY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.032)}px;font-weight:600;letter-spacing:.1em;color:${c1}cc;text-transform:uppercase;pointer-events:none`;
-  sub.textContent = '10 spins awarded';
-  ov.appendChild(sub);
-}
-
-// Outro: dim + banner + total win + collect CTA
-function _ovFreeSpinOutro(ov, cx, cy, cw, ch, c1){
-  const dim = document.createElement('div');
-  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.70);pointer-events:none`;
-  ov.appendChild(dim);
-
-  const bannerH = Math.round(ch * 0.10);
-  const bannerW = Math.round(cw * 0.78);
-  const bannerX = cx + Math.round((cw - bannerW) / 2);
-  const bannerY = cy + Math.round(ch * 0.24);
-  ov.appendChild(_slot('freespins.outro_banner', bannerX, bannerY, bannerW, bannerH, 'TOTAL WIN', c1));
-
-  // Win amount
-  const amtY = bannerY + bannerH + Math.round(ch * 0.03);
-  const amt  = document.createElement('div');
-  amt.style.cssText = `position:absolute;left:${cx}px;top:${amtY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.11)}px;font-weight:800;letter-spacing:-.02em;color:#ffffff;text-shadow:0 4px 30px ${c1}88;pointer-events:none`;
-  amt.textContent = '€ 2,500';
-  ov.appendChild(amt);
-
-  // Collect button
-  const btnW = Math.round(cw * 0.42);
-  const btnH = Math.round(ch * 0.06);
-  const btnX = cx + Math.round((cw - btnW) / 2);
-  const btnY = cy + Math.round(ch * 0.65);
-  const btn  = document.createElement('div');
-  btn.style.cssText = `position:absolute;left:${btnX}px;top:${btnY}px;width:${btnW}px;height:${btnH}px;background:linear-gradient(135deg, ${c1}, #4ac8f0);border-radius:${Math.round(btnH/2)}px;display:flex;align-items:center;justify-content:center;font-family:Space Grotesk,sans-serif;font-weight:800;font-size:${Math.round(btnH*0.4)}px;letter-spacing:.1em;color:#0a1a2a;text-transform:uppercase;pointer-events:none;box-shadow:0 4px 22px ${c1}66`;
-  btn.textContent = 'COLLECT';
-  ov.appendChild(btn);
-}
+// Intro / outro handled by SDEFS css_ov + dimLayer (see promotion above).
+function _ovFreeSpinIntro(){ /* no-op */ }
+function _ovFreeSpinOutro(){ /* no-op */ }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HOLD & SPIN — feature overlays
@@ -8543,50 +8513,9 @@ function _ovHnsRound(ov, cx, cy, cw, ch, c1){
   });
 }
 
-function _ovHnsIntro(ov, cx, cy, cw, ch, c1){
-  const dim = document.createElement('div');
-  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.72);pointer-events:none`;
-  ov.appendChild(dim);
-
-  const bannerH = Math.round(ch * 0.14);
-  const bannerW = Math.round(cw * 0.82);
-  const bannerX = cx + Math.round((cw - bannerW) / 2);
-  const bannerY = cy + Math.round(ch * 0.30);
-  ov.appendChild(_slot('holdnspin.intro_banner', bannerX, bannerY, bannerW, bannerH, 'LOCK & WIN!', c1));
-
-  const subY = bannerY + bannerH + Math.round(ch * 0.02);
-  const sub  = document.createElement('div');
-  sub.style.cssText = `position:absolute;left:${cx}px;top:${subY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.032)}px;font-weight:600;letter-spacing:.1em;color:${c1}cc;text-transform:uppercase;pointer-events:none`;
-  sub.textContent = '3 respins · collect all coins';
-  ov.appendChild(sub);
-}
-
-function _ovHnsOutro(ov, cx, cy, cw, ch, c1){
-  const dim = document.createElement('div');
-  dim.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${cw}px;height:${ch}px;background:rgba(6,8,15,0.70);pointer-events:none`;
-  ov.appendChild(dim);
-
-  const bannerH = Math.round(ch * 0.10);
-  const bannerW = Math.round(cw * 0.78);
-  const bannerX = cx + Math.round((cw - bannerW) / 2);
-  const bannerY = cy + Math.round(ch * 0.24);
-  ov.appendChild(_slot('holdnspin.outro_banner', bannerX, bannerY, bannerW, bannerH, 'TOTAL WIN', c1));
-
-  const amtY = bannerY + bannerH + Math.round(ch * 0.03);
-  const amt  = document.createElement('div');
-  amt.style.cssText = `position:absolute;left:${cx}px;top:${amtY}px;width:${cw}px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:${Math.round(cw*0.11)}px;font-weight:800;letter-spacing:-.02em;color:#ffffff;text-shadow:0 4px 30px ${c1}88;pointer-events:none`;
-  amt.textContent = '€ 1,500';
-  ov.appendChild(amt);
-
-  const btnW = Math.round(cw * 0.42);
-  const btnH = Math.round(ch * 0.06);
-  const btnX = cx + Math.round((cw - btnW) / 2);
-  const btnY = cy + Math.round(ch * 0.65);
-  const btn  = document.createElement('div');
-  btn.style.cssText = `position:absolute;left:${btnX}px;top:${btnY}px;width:${btnW}px;height:${btnH}px;background:linear-gradient(135deg, ${c1}, #5eca8a);border-radius:${Math.round(btnH/2)}px;display:flex;align-items:center;justify-content:center;font-family:Space Grotesk,sans-serif;font-weight:800;font-size:${Math.round(btnH*0.4)}px;letter-spacing:.1em;color:#0a2a1a;text-transform:uppercase;pointer-events:none;box-shadow:0 4px 22px ${c1}66`;
-  btn.textContent = 'COLLECT';
-  ov.appendChild(btn);
-}
+// Intro / outro handled by SDEFS css_ov + dimLayer (see promotion above).
+function _ovHnsIntro(){ /* no-op */ }
+function _ovHnsOutro(){ /* no-op */ }
 
 // ─── WHEEL BONUS ───
 function _ovWheel(ov, cx, cy, cw, ch, c1){
