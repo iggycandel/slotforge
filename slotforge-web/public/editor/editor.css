@@ -509,7 +509,11 @@ option{background:#1e1e2e;color:#d8d6d1}
 .ov-sub-sel:hover{outline-color:#c9a84c!important}
 .ov-sub-edit{outline:2px solid #4ac8f0!important;outline-offset:3px;cursor:text!important;user-select:text}
 /* ── OVERLAY PROPERTIES PANEL ── */
-#ov-props-panel{display:none;position:fixed;right:280px;top:50%;transform:translateY(-50%);background:#22222e;border:1px solid #3a3a52;border-radius:14px;padding:14px 16px;z-index:9998;min-width:220px;box-shadow:0 4px 24px rgba(0,0,0,.6)}
+#ov-props-panel{display:none;position:fixed;right:280px;top:50%;transform:translateY(-50%);background:#22222e;border:1px solid #3a3a52;border-radius:14px;padding:14px 16px;z-index:9998;min-width:240px;max-height:80vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,.6)}
+/* Text-only vs button-only sections toggle via openOvPropsPanel() */
+#ov-props-panel[data-mode="btn"]  .ovp-text-only{display:none}
+#ov-props-panel[data-mode="text"] .ovp-btn-only {display:none}
+.ovp-align-btn.active{background:#c9a84c18!important;border-color:#c9a84c55!important;color:#c9a84c!important}
 #ov-props-panel.show{display:block}
 .ovp-title{font-size:10px;font-weight:700;color:#c9a84c;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #2a2a3a}
 .ovp-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}

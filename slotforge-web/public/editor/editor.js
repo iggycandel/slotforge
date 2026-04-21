@@ -581,7 +581,11 @@ const OV_META={
   'ov-hns-outro':{bg:null, layout:'col'},
 };
 
-// Map ALL OV_SUBS seamlessly into the PSD layer structure
+// Map ALL OV_SUBS seamlessly into the PSD layer structure.
+// Defaults span the active VIEWPORT in each orientation (not the full 2000×2000
+// canvas) so flex-centred text lands on the viewport midline — otherwise a
+// portrait css_ov layer at x:0 w:2000 centres around x=1000 instead of the
+// portrait viewport's midline at x=933, looking ~50 px off.
 Object.keys(OV_SUBS).forEach((ovId, i) => {
   OV_SUBS[ovId].forEach((sub, j) => {
     PSD[`${ovId}_${sub.id}`] = {
@@ -591,20 +595,22 @@ Object.keys(OV_SUBS).forEach((ovId, i) => {
       subId: sub.id,
       locked: false,
       z: 500 + i * 10 + j,
-      // Provide default fallback positioning spanning full-width to perfectly preserve flex-centered text sizing!
-      portrait: {x: 0, y: 700 + j*130, w: 2000, h: 120},
-      landscape:{x: 0, y: 300 + j*130, w: 2000, h: 120}
+      // Portrait viewport: cx=441, cw=984 → centred
+      // Landscape viewport: cx=0, cw=2000 → centred
+      portrait: { x: 441, y: 700 + j * 130, w: 984,  h: 120 },
+      landscape:{ x: 0,   y: 300 + j * 130, w: 2000, h: 120 },
     };
   });
 });
-// Fix B: seed portrait/landscape dimensions that match the actual viewport
-// the dim fills in buildCanvas. Without these the footer Size readout falls
-// back to the 100×100 getPos() placeholder, and canvasAutoSelect uses a
-// broken bbox that never matches real clicks.
+// Dim Overlay now spans the full 2000×2000 canvas in both viewports —
+// previous crop-to-viewport sizing made the bbox change shape on viewport
+// switch, and the footer size readout flipped between 984×2000 and
+// 2000×1125. A single universal rect keeps the layer predictable, and
+// overflow:hidden on the viewport clip already prevents visible bleed.
 PSD['dimLayer'] = {
   label: 'Dim Overlay', type: 'dimLayer', locked: true, z: 499,
-  portrait:  { x: 441, y: 0, w: 984,  h: 2000 },
-  landscape: { x: 0,   y: 0, w: 2000, h: 1125 },
+  portrait:  { x: 0, y: 0, w: 2000, h: 2000 },
+  landscape: { x: 0, y: 0, w: 2000, h: 2000 },
 };
 
 // ─── Feature intro/outro layout overrides ──────────────────────────────────
@@ -1056,23 +1062,26 @@ function _buildOvSubEl(ovId,sub,c1,c3){
   const size=getOvProp(ovId,sub.id,'dSize')||sub.dSize||40;
   const weight=getOvProp(ovId,sub.id,'dWeight')||sub.dWeight||600;
   const spacing=getOvProp(ovId,sub.id,'dSpacing')||sub.dSpacing||'0';
+  // New css_ov props surfaced through the right-click properties panel.
+  const font    = getOvProp(ovId,sub.id,'dFont')   || '';
+  const align   = getOvProp(ovId,sub.id,'dAlign')  || 'center';
+  const bg1     = getOvProp(ovId,sub.id,'dBg1')    || c1;
+  const bg2     = getOvProp(ovId,sub.id,'dBg2')    || c3;
+  const radius  = getOvProp(ovId,sub.id,'dRadius');
+  const family  = font ? font : 'Space Grotesk,sans-serif';
   let el;
   if(sub.type==='button'||sub.id==='btnCancel'||sub.id==='btnBuy'){
     el=document.createElement('button');
+    const rdEff = (radius !== undefined && radius !== null) ? radius : (sub.id==='btnCancel' || sub.id==='btnBuy' ? 12 : 40);
     if(sub.id==='btnCancel'){
-      el.style.cssText=`padding:18px 44px;border-radius:12px;border:2px solid #2e2e44;background:#1e1e30;color:${color};font-size:28px;cursor:default;font-family:Space Grotesk,sans-serif`;
+      el.style.cssText=`padding:18px 44px;border-radius:${rdEff}px;border:2px solid #2e2e44;background:#1e1e30;color:${color};font-size:28px;cursor:default;font-family:${family}`;
     } else {
-      el.style.cssText=`padding:20px 80px;border-radius:40px;font-size:32px;font-weight:600;border:none;cursor:default;color:${color};background:linear-gradient(135deg,${c1},${c3});font-family:Space Grotesk,sans-serif`;
-      if(sub.id==='btnBuy') el.style.cssText=`padding:18px 44px;border-radius:12px;border:none;color:${color};font-size:28px;font-weight:700;cursor:default;background:linear-gradient(135deg,${c1},${c3});font-family:Space Grotesk,sans-serif`;
+      el.style.cssText=`padding:20px 80px;border-radius:${rdEff}px;font-size:32px;font-weight:600;border:none;cursor:default;color:${color};background:linear-gradient(135deg,${bg1},${bg2});font-family:${family}`;
+      if(sub.id==='btnBuy') el.style.cssText=`padding:18px 44px;border-radius:${rdEff}px;border:none;color:${color};font-size:28px;font-weight:700;cursor:default;background:linear-gradient(135deg,${bg1},${bg2});font-family:${family}`;
     }
   } else {
     el=document.createElement('div');
-    // white-space:nowrap keeps banner/title text on a single line so flexbox
-    // centering stays symmetric even when the user scales the font up. With
-    // default wrapping, "BONUS PICK!" at 140px would wrap inside the 984px
-    // portrait viewport and appear cut off on one side.
-    el.style.cssText=`font-size:${size}px;color:${color};font-weight:${weight};letter-spacing:${spacing};font-family:Space Grotesk,sans-serif;text-align:center;line-height:1.1;white-space:nowrap`;
-    // Special text-shadows for epic win
+    el.style.cssText=`font-size:${size}px;color:${color};font-weight:${weight};letter-spacing:${spacing};font-family:${family};text-align:${align};line-height:1.1;white-space:nowrap`;
     if(ovId==='ov-epicwin'&&sub.id==='title') el.style.textShadow='0 0 120px #ff706088,0 0 60px #ff300066';
     if(ovId==='ov-bigwin'&&sub.id==='title') el.style.textShadow=`0 0 80px ${color}88`;
     if(ovId==='ov-fstrigger'&&sub.id==='title') el.style.textShadow=`0 0 60px ${color}88`;
@@ -1148,24 +1157,46 @@ function openOvPropsPanel(ov,sub){
   const subDef=OV_SUBS[ov]?.find(s=>s.id===sub); if(!subDef) return;
   const ovLabel={'ov-bigwin':'Big Win','ov-megawin':'Mega Win','ov-epicwin':'Epic Win','ov-fstrigger':'Free Spins Trigger','ov-hnstrigger':'Hold & Spin Trigger','ov-jpwin':'Jackpot Win','ov-buypopup':'Buy Feature','ov-splash':'Splash','ov-win':'Win'}[ov]||ov;
   document.getElementById('ov-props-title').textContent=`${ovLabel} › ${subDef.label}`;
-  const txtInp=document.getElementById('ovp-text');
-  const colorInp=document.getElementById('ovp-color');
-  const hexInp=document.getElementById('ovp-color-hex');
-  const sizeInp=document.getElementById('ovp-size');
-  const sizeRow=document.getElementById('ovp-size-row');
-  const isBtn=subDef.type==='button'||sub==='btnCancel'||sub==='btnBuy';
-  txtInp.value=getOvProp(ov,sub,'dText')||subDef.dText||'';
-  const col=getOvProp(ov,sub,'dColor')||subDef.dColor||'#ffffff';
-  colorInp.value=col.length===7?col:'#ffffff';
-  hexInp.value=col;
-  sizeRow.style.display=isBtn?'none':'flex';
-  if(!isBtn) sizeInp.value=getOvProp(ov,sub,'dSize')||subDef.dSize||40;
-  panel.dataset.ov=ov; panel.dataset.sub=sub;
+  const isBtn = subDef.type==='button' || sub==='btnCancel' || sub==='btnBuy';
+  // Toggle text-only vs button-only sections via a CSS attribute selector.
+  panel.dataset.mode = isBtn ? 'btn' : 'text';
+
+  // ── Shared: text + primary color ──
+  const txt   = getOvProp(ov,sub,'dText')  || subDef.dText  || '';
+  const color = getOvProp(ov,sub,'dColor') || subDef.dColor || '#ffffff';
+  document.getElementById('ovp-text').value      = txt;
+  document.getElementById('ovp-color').value     = color.length === 7 ? color : '#ffffff';
+  document.getElementById('ovp-color-hex').value = color;
+
+  if (!isBtn) {
+    // ── Text fields ──
+    const font    = getOvProp(ov,sub,'dFont')    || '';
+    const weight  = getOvProp(ov,sub,'dWeight')  || subDef.dWeight  || 600;
+    const size    = getOvProp(ov,sub,'dSize')    || subDef.dSize    || 40;
+    const spacing = getOvProp(ov,sub,'dSpacing') || subDef.dSpacing || '0';
+    const align   = getOvProp(ov,sub,'dAlign')   || 'center';
+    document.getElementById('ovp-font').value    = font;
+    document.getElementById('ovp-weight').value  = String(weight);
+    document.getElementById('ovp-size').value    = size;
+    document.getElementById('ovp-spacing').value = spacing;
+    document.querySelectorAll('.ovp-align-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.align === align);
+    });
+  } else {
+    // ── Button fields ──
+    const bg1    = getOvProp(ov,sub,'dBg1')    || '#c9a84c';
+    const bg2    = getOvProp(ov,sub,'dBg2')    || '#e8c96d';
+    const radius = getOvProp(ov,sub,'dRadius') || 40;
+    document.getElementById('ovp-bg1').value     = bg1.length === 7 ? bg1 : '#c9a84c';
+    document.getElementById('ovp-bg1-hex').value = bg1;
+    document.getElementById('ovp-bg2').value     = bg2.length === 7 ? bg2 : '#e8c96d';
+    document.getElementById('ovp-bg2-hex').value = bg2;
+    document.getElementById('ovp-radius').value  = radius;
+  }
+
+  panel.dataset.ov  = ov;
+  panel.dataset.sub = sub;
   panel.classList.add('show');
-  // Position the panel beside the selected element rather than center-right
-  // so it doesn't obscure the asset being edited. Prefers right-of; flips
-  // to left-of when close to the viewport edge. Requires classList.add
-  // above to run first so we can measure the panel's rendered size.
   try { _positionOvPanelNear(ov, sub); } catch(e){}
 }
 
@@ -1207,23 +1238,43 @@ function _positionOvPanelNear(ov, sub){
 function applyOvProps(){
   const panel=document.getElementById('ov-props-panel'); if(!panel?.classList.contains('show')) return;
   const ov=panel.dataset.ov, sub=panel.dataset.sub; if(!ov||!sub) return;
-  const txt=document.getElementById('ovp-text').value.trim();
-  const hex=document.getElementById('ovp-color-hex').value.trim();
-  const sz=parseInt(document.getElementById('ovp-size').value);
-  if(txt) setOvProp(ov,sub,'dText',txt);
-  if(hex&&/^#[0-9a-f]{3,6}$/i.test(hex)) setOvProp(ov,sub,'dColor',hex);
   const subDef=OV_SUBS[ov]?.find(s=>s.id===sub);
   const isBtn=subDef?.type==='button'||sub==='btnCancel'||sub==='btnBuy';
-  if(!isBtn&&sz>=8) setOvProp(ov,sub,'dSize',sz);
-  // Rebuild the element in-place without full buildCanvas()
-  const el=document.getElementById(`${ov}-${sub}`);
-  if(el){
-    const newTxt=txt||_ovText(ov,sub);
-    if(el.contentEditable!=='true') el.textContent=newTxt;
-    el.style.color=hex&&/^#[0-9a-f]{3,6}$/i.test(hex)?hex:(getOvProp(ov,sub,'dColor')||subDef?.dColor||'#fff');
-    if(!isBtn&&sz>=8) el.style.fontSize=sz+'px';
+
+  // Shared
+  const txt=document.getElementById('ovp-text').value.trim();
+  const hex=document.getElementById('ovp-color-hex').value.trim();
+  if(txt) setOvProp(ov,sub,'dText',txt);
+  if(hex&&/^#[0-9a-f]{3,6}$/i.test(hex)) setOvProp(ov,sub,'dColor',hex);
+
+  if(!isBtn){
+    // Text-specific
+    const sz      = parseInt(document.getElementById('ovp-size').value);
+    const font    = document.getElementById('ovp-font').value;
+    const weight  = parseInt(document.getElementById('ovp-weight').value);
+    const spacing = document.getElementById('ovp-spacing').value.trim();
+    const alignBtn= document.querySelector('.ovp-align-btn.active');
+    if(sz>=8)                         setOvProp(ov,sub,'dSize',sz);
+    if(font !== undefined)            setOvProp(ov,sub,'dFont',font);
+    if(weight >= 100 && weight <= 900) setOvProp(ov,sub,'dWeight',weight);
+    if(spacing)                       setOvProp(ov,sub,'dSpacing',spacing);
+    if(alignBtn)                      setOvProp(ov,sub,'dAlign',alignBtn.dataset.align);
+  } else {
+    // Button-specific
+    const bg1    = document.getElementById('ovp-bg1-hex').value.trim();
+    const bg2    = document.getElementById('ovp-bg2-hex').value.trim();
+    const radius = parseInt(document.getElementById('ovp-radius').value);
+    if(bg1 && /^#[0-9a-f]{3,6}$/i.test(bg1)) setOvProp(ov,sub,'dBg1',bg1);
+    if(bg2 && /^#[0-9a-f]{3,6}$/i.test(bg2)) setOvProp(ov,sub,'dBg2',bg2);
+    if(radius >= 0 && radius <= 200)         setOvProp(ov,sub,'dRadius',radius);
   }
+  // Full rebuild — every new prop (font, weight, spacing, align, bg stops,
+  // radius) needs to feed back into _buildOvSubEl, which happens inside
+  // buildCanvas. Rebuilding here keeps this flow simple + correct.
+  try { buildCanvas(); } catch(e){}
+  try { _rebuildFeatureOverlay(); } catch(e){}
   renderOvLayers();
+  try { markDirty(); } catch(e){}
 }
 function renderOvLayers(){
   // Stubbed out! CSS layers are now dynamically rendered through renderLayers inside the PSD flow!
@@ -1342,15 +1393,15 @@ function buildCanvas(){
       if(bgKey){const img=document.createElement('img');img.src=EL_ASSETS[bgKey];img.style.cssText='width:100%;height:100%;object-fit:cover;pointer-events:none';el.appendChild(img);}else{el.appendChild(makeThemeBG(pos.w,pos.h));}
 
     }else if(k==='dimLayer'){
-      // Background layer acting as the semi-transparent overlay
+      // Dim layer covers the ENTIRE 2000×2000 canvas, not just the viewport.
+      // The viewport clip (overflow:hidden on #gf-outer) keeps it from
+      // bleeding visually, and the consistent rect means bbox + footer
+      // readout stay stable across viewport switches.
       const opacityRaw = P.dimOpacity !== undefined ? P.dimOpacity : 0.75;
       el.style.background = `rgba(0,0,0,${opacityRaw})`;
       el.style.pointerEvents = 'auto'; // Block clicks underneath
-      const _vp=P.viewport==='desktop'?'landscape':P.viewport;
-      const _vpDef=VP[_vp];
-      // Maximize to full viewport dimensions
-      el.style.left = _vpDef.cx + 'px'; el.style.top = _vpDef.cy + 'px';
-      el.style.width = _vpDef.cw + 'px'; el.style.height = _vpDef.ch + 'px';
+      el.style.left = '0px'; el.style.top = '0px';
+      el.style.width = '2000px'; el.style.height = '2000px';
 
     }else if(def.type==='css_ov'){
       // Convert internal custom CSS elements into natural render chunks!
@@ -1569,12 +1620,21 @@ function buildCanvas(){
       el.style.opacity=(_adj.opacity/100).toFixed(2);
     }
 
-    // ALL elements get right-click context panel (including bg), except JP sentinels (already wired)
+    // Right-click routing: image assets → full context panel (adjustments,
+    // mask, upload, copy/paste); css_ov text/button → font/color/radius
+    // editor panel; dimLayer → opacity slider. All three close on outside-
+    // click (wired once at the document level).
     if(!isJpSentinel){
       el.addEventListener('contextmenu', e=>{
         e.preventDefault(); e.stopPropagation();
-        openCtxPanel(k, e.clientX, e.clientY);
         selectEl(k);
+        if (def.type === 'css_ov') {
+          openOvPropsPanel(def.ovId, def.subId);
+        } else if (def.type === 'dimLayer') {
+          openDimPropsPanel();
+        } else {
+          openCtxPanel(k, e.clientX, e.clientY);
+        }
       });
 
       if(!def.locked){
@@ -4851,6 +4911,33 @@ document.getElementById('ovp-color-hex')?.addEventListener('input',function(){
 // Live preview: pressing Enter in text field applies immediately
 document.getElementById('ovp-text')?.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();applyOvProps();}});
 document.getElementById('ovp-size')?.addEventListener('change',applyOvProps);
+// New text-side controls — all apply on change so the canvas updates live.
+document.getElementById('ovp-font')?.addEventListener('change', applyOvProps);
+document.getElementById('ovp-weight')?.addEventListener('change', applyOvProps);
+document.getElementById('ovp-spacing')?.addEventListener('change', applyOvProps);
+// Alignment is a 3-button radio; toggle .active on click and apply.
+document.querySelectorAll('.ovp-align-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ovp-align-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyOvProps();
+  });
+});
+// Button-side color pickers — keep hex + picker in sync, apply on change.
+['bg1','bg2'].forEach(slot => {
+  const picker = document.getElementById(`ovp-${slot}`);
+  const hexInp = document.getElementById(`ovp-${slot}-hex`);
+  picker?.addEventListener('input', () => {
+    if (hexInp) hexInp.value = picker.value;
+    applyOvProps();
+  });
+  hexInp?.addEventListener('input', () => {
+    const v = hexInp.value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(v) && picker) picker.value = v;
+  });
+  hexInp?.addEventListener('change', applyOvProps);
+});
+document.getElementById('ovp-radius')?.addEventListener('change', applyOvProps);
 
 // ═══ EXPANDING WILD SETTINGS ═══
 function initExpandingWild(){
@@ -8287,26 +8374,50 @@ function _el(tag, css){const d=document.createElement(tag);d.style.cssText=css;r
 // in EL_ASSETS) or a clear dashed placeholder labelled with the slot key.
 // The placeholder doubles as the "this slot needs an asset" affordance —
 // when the user sees the dashed box, they know exactly what to upload.
-function _imgSlot(key, x, y, w, h, fit){
+//
+// Two flavours:
+//   • Shared (repeated) slots — e.g. the 12 Bonus Pick grid tiles — all
+//     share the same key, render at computed positions, and are not
+//     individually draggable. Left click selects (layers panel syncs).
+//   • Singleton positioned slots — counters, jackpot badges, headers,
+//     footers, etc. — get id="el-<key>" + class="cel" so they participate
+//     in the standard selectEl / startMove / startResize / openCtxPanel
+//     pipeline just like base PSD layers. Their PSD entry (type:'feat_slot')
+//     stores default portrait/landscape rects; user drags persist via
+//     setPos → EL_VP and ride along on autosave.
+function _imgSlot(key, x, y, w, h, fit, opts){
+  opts = opts || {};
   const d = document.createElement('div');
   d.dataset.assetKey = key;
-  d.className = 'feat-slot' + (SEL_KEY === key ? ' selected' : '');
-  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:auto;cursor:pointer;box-sizing:border-box;${SEL_KEY===key?'outline:2px dashed #c9a84c;outline-offset:2px;':''}`;
+  if (opts.singleton) {
+    d.id = 'el-' + key;
+    d.dataset.key = key;
+    d.className = 'cel feat-slot' + (isLocked(key) ? ' locked' : '') + (SEL_KEY === key ? ' selected' : '');
+  } else {
+    d.className = 'feat-slot' + (SEL_KEY === key ? ' selected' : '');
+  }
+  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:auto;box-sizing:border-box;${opts.singleton ? '' : 'cursor:pointer;'}`;
   const img = document.createElement('img');
   img.src = EL_ASSETS[key];
   img.style.cssText = `width:100%;height:100%;object-fit:${fit||'contain'};pointer-events:none`;
   d.appendChild(img);
-  _wireSlotEvents(d, key);
+  _wireSlotEvents(d, key, opts);
   return d;
 }
-function _phSlot(key, x, y, w, h, label, c1){
+function _phSlot(key, x, y, w, h, label, c1, opts){
+  opts = opts || {};
   const d = document.createElement('div');
   d.dataset.assetKey = key;
   d.dataset.placeholder = '1';
-  d.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
+  if (opts.singleton) {
+    d.id = 'el-' + key;
+    d.dataset.key = key;
+    d.className = 'cel feat-slot placeholder' + (isLocked(key) ? ' locked' : '') + (SEL_KEY === key ? ' selected' : '');
+  } else {
+    d.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
+  }
   const fz = Math.max(10, Math.min(w, h) * 0.18);
-  const selRing = SEL_KEY === key ? 'outline:2px dashed #c9a84c;outline-offset:2px;' : '';
-  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:#0a0a1a99;border:2px dashed ${c1}55;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:Space Grotesk,sans-serif;color:${c1}cc;text-align:center;padding:8px;box-sizing:border-box;pointer-events:auto;cursor:pointer;${selRing}`;
+  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:#0a0a1a99;border:2px dashed ${c1}55;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:Space Grotesk,sans-serif;color:${c1}cc;text-align:center;padding:8px;box-sizing:border-box;pointer-events:auto;${opts.singleton ? '' : 'cursor:pointer;'}`;
   const big = document.createElement('div');
   big.style.cssText = `font-size:${fz}px;font-weight:700;letter-spacing:.04em`;
   big.textContent = label;
@@ -8315,44 +8426,75 @@ function _phSlot(key, x, y, w, h, label, c1){
   tag.style.cssText = `font-size:${Math.max(8, fz*0.42)}px;font-weight:500;color:${c1}77;font-family:DM Mono,monospace;opacity:.85;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`;
   tag.textContent = key;
   d.appendChild(tag);
-  // Subtle "Upload" affordance at the bottom so the dashed box reads as
-  // "this slot needs content" rather than "this slot is broken".
   const hint = document.createElement('div');
   hint.style.cssText = `font-size:${Math.max(7, fz*0.32)}px;font-weight:500;color:${c1}55;font-family:Space Grotesk,sans-serif;letter-spacing:.14em;text-transform:uppercase;margin-top:2px`;
   hint.textContent = '⬆ upload';
   d.appendChild(hint);
-  _wireSlotEvents(d, key);
+  _wireSlotEvents(d, key, opts);
   return d;
 }
 
-// Wire click → select for a feature slot element. Also posts the selection
-// change to the Layers panel so both surfaces stay in sync. Shift-click and
-// right-click are reserved — right-click will open the inline text editor in
-// a follow-up (mirrors the Big Win popup interaction pattern).
-function _wireSlotEvents(el, key){
+// Wire click / drag / contextmenu / drop handlers. Singletons route through
+// the standard selectEl path so they get resize handles and the full
+// context panel (adjustments, mask, upload, copy/paste). Non-singletons
+// keep the minimal layers-panel-sync behaviour.
+function _wireSlotEvents(el, key, opts){
+  opts = opts || {};
   el.addEventListener('click', function(e){
     e.stopPropagation();
-    selectFeatureSlot(key);
+    if (typeof TOOL !== 'undefined' && TOOL === 'pan') return;
+    if (opts.singleton && typeof selectEl === 'function') selectEl(key);
+    else selectFeatureSlot(key);
   });
-  // Context-menu gesture gets swallowed for now so it doesn't fall through
-  // to the canvas-wrap handler; will be wired to the inline editor in a
-  // follow-up commit.
   el.addEventListener('contextmenu', function(e){
     e.preventDefault();
     e.stopPropagation();
-    selectFeatureSlot(key);
+    if (opts.singleton) {
+      if (typeof selectEl === 'function') selectEl(key);
+      if (typeof openCtxPanel === 'function') openCtxPanel(key, e.clientX, e.clientY);
+    } else {
+      selectFeatureSlot(key);
+    }
   });
+  if (opts.singleton) {
+    el.addEventListener('mousedown', function(e){
+      if (e.button === 2) return;
+      if (typeof TOOL !== 'undefined' && TOOL === 'pan') return;
+      if (e.target && e.target.classList && e.target.classList.contains('rh')) return;
+      if (isLocked(key)) return;
+      if (typeof startMove === 'function') startMove(e, key);
+    });
+    // Library drag-drop: accept asset drops to replace the slot's image.
+    el.addEventListener('dragover', function(e){
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      el.style.outline = '2px dashed #c9a84c';
+      el.style.outlineOffset = '2px';
+    });
+    el.addEventListener('dragleave', function(){
+      el.style.outline = '';
+      el.style.outlineOffset = '';
+    });
+    el.addEventListener('drop', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      el.style.outline = '';
+      el.style.outlineOffset = '';
+      const raw = e.dataTransfer.getData('application/sf-lib');
+      if (!raw) return;
+      try {
+        const asset = JSON.parse(raw);
+        if (typeof applyAssetToLayer === 'function') applyAssetToLayer(key, asset.data);
+      } catch(err){}
+    });
+  }
 }
 
-// selectEl() is the base-layer selection path — it expects a DOM element
-// with id "el-<k>" to exist, which feature slots don't provide (they live
-// inside #feature-screen-overlay as [data-asset-key] children). This helper
-// bridges that gap: set SEL_KEY, update the status bars, and rebuild the
-// overlay so the selected slot gets its dashed outline.
+// Legacy selection path for non-singleton (repeated) feat-slots. Singletons
+// route to the standard selectEl, which handles the same bookkeeping.
 function selectFeatureSlot(key){
   SEL_KEY = key;
   SEL_KEYS = new Set();
-  // Clear any prior base-layer selection styling so the two don't compete.
   document.querySelectorAll('.cel.selected').forEach(e => {
     e.classList.remove('selected');
     e.querySelectorAll('.rh').forEach(h => h.remove());
@@ -8362,16 +8504,15 @@ function selectFeatureSlot(key){
     const ctx = document.getElementById('ctx-lyr');
     if (ctx) { ctx.textContent = key; ctx.className = 'ct on'; }
   } catch(e){}
-  // Rebuild overlay so the newly selected slot picks up its outline state,
-  // and push the layers panel so its selected-row highlight matches.
   _rebuildFeatureOverlay();
 }
-// Shorthand: render an uploaded asset if present, otherwise a placeholder.
-// Always tags the returned element with data-asset-label so _sendLayersUpdate
-// can surface a friendly name in the Layers panel. Hidden layers still emit
-// a stub so the click-catcher / data-asset-key remains enumerable for
-// _sendLayersUpdate; the stub is visually empty.
-function _slot(key, x, y, w, h, label, c1, fit){
+
+// Shared shorthand. Hidden slots still emit a stub so _sendLayersUpdate
+// can list them in the Layers panel (with an "unhide" affordance). When
+// called with opts.singleton=true, the slot participates fully in the
+// standard selection / move / resize pipeline.
+function _slot(key, x, y, w, h, label, c1, fit, opts){
+  opts = opts || {};
   if (HIDDEN_LAYERS && HIDDEN_LAYERS.has && HIDDEN_LAYERS.has(key)) {
     const stub = document.createElement('div');
     stub.dataset.assetKey   = key;
@@ -8381,16 +8522,42 @@ function _slot(key, x, y, w, h, label, c1, fit){
     return stub;
   }
   const el = EL_ASSETS[key]
-    ? _imgSlot(key, x, y, w, h, fit)
-    : _phSlot(key, x, y, w, h, label, c1);
+    ? _imgSlot(key, x, y, w, h, fit, opts)
+    : _phSlot(key, x, y, w, h, label, c1, opts);
   if (label) el.dataset.assetLabel = label;
   return el;
+}
+
+// Positioned feature slot — idempotently registers a PSD entry with
+// default portrait/landscape rects, then pulls the live position from
+// getPos() (which honours user drags via EL_VP). Returns a singleton DOM
+// node wired for full selection / move / resize / upload / drag-drop.
+function _posSlot(key, defaultPortrait, defaultLandscape, label, c1, fit){
+  if (!PSD[key] || PSD[key].type !== 'feat_slot') {
+    PSD[key] = {
+      label:     label || key,
+      type:      'feat_slot',
+      locked:    false,
+      z:         (PSD[key] && PSD[key].z) || 80,
+      portrait:  defaultPortrait,
+      landscape: defaultLandscape,
+    };
+  } else {
+    // Keep defaults fresh without stomping the user-stored positions
+    // (those live in EL_VP and are read by getPos). This handles the
+    // case where we tweak the default layout between deploys.
+    PSD[key].portrait  = PSD[key].portrait  || defaultPortrait;
+    PSD[key].landscape = PSD[key].landscape || defaultLandscape;
+  }
+  const pos = getPos(key);
+  return _slot(key, pos.x, pos.y, pos.w, pos.h, label, c1, fit, { singleton: true });
 }
 
 // ─── Feature overlay rebuild helper ──────────────────────────────────────────
 // Centralises the "remove old overlay, build fresh one, push layers panel"
 // pattern used after any state change that affects the feature canvas
-// (uploads, hide/show, lock/unlock, settings tweaks, etc.).
+// (uploads, hide/show, lock/unlock, settings tweaks, etc.). Re-applies the
+// current selection so resize handles + the gold outline survive rebuilds.
 function _rebuildFeatureOverlay(){
   try {
     const scr = SDEFS[P.screen];
@@ -8399,6 +8566,11 @@ function _rebuildFeatureOverlay(){
     const gf = document.getElementById('gf');
     const ov = buildFeatureOverlay(P.screen, scr);
     if (ov && gf) gf.appendChild(ov);
+    // Reapply selection so feat-slot singletons keep their handles across
+    // every rebuild (upload completion, settings change, hide toggle, etc.).
+    if (SEL_KEY && PSD[SEL_KEY]?.type === 'feat_slot') {
+      try { selectEl(SEL_KEY); } catch(e) {}
+    }
     _sendLayersUpdate();
   } catch(e) { /* non-fatal */ }
 }
@@ -8410,26 +8582,30 @@ function _rebuildFeatureOverlay(){
 // render as labelled dashed boxes so the user can see what to upload next.
 function _ovPickGame(ov, cx, cy, cw, ch, c1){
   const picks = parseInt(document.getElementById('pick-picks-inp')?.value) || 3;
-  // Grid shape reads from P.bonusPickSettings — editable via the on-canvas
-  // settings popover (click the grid) or the Features panel.
   const bps  = P.bonusPickSettings || { cols: 4, rows: 3, gap: 14 };
   const cols = Math.max(2, Math.min(6, Number(bps.cols) || 4));
   const rows = Math.max(2, Math.min(5, Number(bps.rows) || 3));
   const totalTiles = cols * rows;
+  const VPP = VP.portrait, VPL = VP.landscape;
 
-  // 1. Background — full viewport region (cover-fit)
-  ov.appendChild(_slot('bonuspick.bg', cx, cy, cw, ch, 'BG', c1, 'cover'));
+  // 1. Background — spans the full viewport in each orientation. User can
+  // still drag/resize if they want a smaller frame.
+  ov.appendChild(_posSlot('bonuspick.bg',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'BG', c1, 'cover'));
 
-  // 2. Header band, top-center
-  const headerH = Math.round(ch * 0.075);
-  const headerW = Math.round(cw * 0.72);
-  const headerX = cx + Math.round((cw - headerW) / 2);
-  const headerY = cy + Math.round(ch * 0.06);
-  ov.appendChild(_slot('bonuspick.header', headerX, headerY, headerW, headerH, 'CHOOSE YOUR PRIZE', c1));
+  // 2. Header — top-center band
+  const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.075);
+  const hwL = Math.round(VPL.cw * 0.72), hhL = Math.round(VPL.ch * 0.075);
+  ov.appendChild(_posSlot('bonuspick.header',
+    { x: VPP.cx + Math.round((VPP.cw - hwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.06), w: hwP, h: hhP },
+    { x: VPL.cx + Math.round((VPL.cw - hwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.06), w: hwL, h: hhL },
+    'CHOOSE YOUR PRIZE', c1));
 
-  // 3. Tile grid — tiles are square, sized to fit within the reserved area.
-  // Computing tile size from the tighter of (widthCap, heightCap) keeps every
-  // tile a clean square regardless of viewport aspect ratio or cols/rows.
+  // 3. Tile grid — tiles are grid-managed (cols/rows/gap from the popover),
+  // not individually draggable. Shared key keeps one asset upload covering
+  // every tile; drag-to-replace still works via the tile click handler.
   const gridAvailH   = Math.round(ch * 0.62);
   const gridAvailW   = Math.round(cw * 0.82);
   const tileGap      = Math.max(4, Math.min(32, Number(bps.gap) || 14));
@@ -8446,14 +8622,7 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
     const r  = Math.floor(i / cols), c = i % cols;
     const tx = gridX + c * (tileSize + tileGap);
     const ty = gridY + r * (tileSize + tileGap);
-
-    // Tile background (closed state) — same asset for every tile in the grid
     ov.appendChild(_slot('bonuspick.tile_closed', tx, ty, tileSize, tileSize, '?', c1, 'cover'));
-
-    // Prize icon — render at full tile size with object-fit:cover so the
-    // uploaded asset fills the slot edge-to-edge. Previously the prize was
-    // inset to 58% of the tile and centered, which made uploaded images
-    // look like a small badge floating in the middle of a placeholder.
     const prizeKey = prizeKeys[i % prizeKeys.length];
     if (EL_ASSETS[prizeKey]) {
       const prizeEl = _imgSlot(prizeKey, tx, ty, tileSize, tileSize, 'cover');
@@ -8462,12 +8631,13 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
     }
   }
 
-  // 4. Footer band, bottom-center
-  const footerH = Math.round(ch * 0.06);
-  const footerW = Math.round(cw * 0.65);
-  const footerX = cx + Math.round((cw - footerW) / 2);
-  const footerY = cy + Math.round(ch * 0.86);
-  ov.appendChild(_slot('bonuspick.footer', footerX, footerY, footerW, footerH, `Pick ${picks} of ${totalTiles}`, c1));
+  // 4. Footer — bottom-center band
+  const fwP = Math.round(VPP.cw * 0.65), fhP = Math.round(VPP.ch * 0.06);
+  const fwL = Math.round(VPL.cw * 0.65), fhL = Math.round(VPL.ch * 0.06);
+  ov.appendChild(_posSlot('bonuspick.footer',
+    { x: VPP.cx + Math.round((VPP.cw - fwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.86), w: fwP, h: fhP },
+    { x: VPL.cx + Math.round((VPL.cw - fwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.86), w: fwL, h: fhL },
+    `Pick ${picks} of ${totalTiles}`, c1));
 
   // 5. Click-catcher over the grid — double-click opens the settings popover
   // so the user can tweak cols / rows / gap without leaving the canvas.
@@ -8582,22 +8752,27 @@ function _ovPickOutro (){ /* text/dim handled by SDEFS css_ov + dimLayer */ }
 // ─────────────────────────────────────────────────────────────────────────────
 
 // In-round: decorate the reel screen with counter + multiplier + retrigger hint.
+// Every slot is a positioned singleton — user can drag, resize, right-click,
+// upload, and swap via the same machinery as base layers. Defaults are
+// computed per-viewport once; user drags ride in EL_VP on autosave.
 function _ovFreeSpinRound(ov, cx, cy, cw, ch, c1){
   const fs = P.features?.freespin;
   if (!fs) return;
+  const VPP = VP.portrait, VPL = VP.landscape;
 
-  // Spin counter frame — top-right corner, shows "3 / 10 spins left"
-  const counterW = Math.round(cw * 0.32);
-  const counterH = Math.round(ch * 0.07);
-  const counterX = cx + cw - counterW - Math.round(cw * 0.04);
-  const counterY = cy + Math.round(ch * 0.04);
-  ov.appendChild(_slot('freespins.spin_counter_frame', counterX, counterY, counterW, counterH, 'SPINS 3 / 10', c1));
+  // Spin counter frame — top-right
+  ov.appendChild(_posSlot('freespins.spin_counter_frame',
+    { x: VPP.cx + VPP.cw - Math.round(VPP.cw*0.36), y: VPP.cy + Math.round(VPP.ch*0.04), w: Math.round(VPP.cw*0.32), h: Math.round(VPP.ch*0.07) },
+    { x: VPL.cx + VPL.cw - Math.round(VPL.cw*0.36), y: VPL.cy + Math.round(VPL.ch*0.04), w: Math.round(VPL.cw*0.32), h: Math.round(VPL.ch*0.07) },
+    'SPINS 3 / 10', c1));
 
-  // Multiplier badge — top-left corner (only if user hasn't disabled via settings)
-  const badgeSize = Math.round(Math.min(cw, ch) * 0.09);
-  const badgeX    = cx + Math.round(cw * 0.04);
-  const badgeY    = cy + Math.round(ch * 0.04);
-  ov.appendChild(_slot('freespins.multiplier_badge', badgeX, badgeY, badgeSize, badgeSize, '×2', c1));
+  // Multiplier badge — top-left
+  const badgeP = Math.round(Math.min(VPP.cw, VPP.ch) * 0.09);
+  const badgeL = Math.round(Math.min(VPL.cw, VPL.ch) * 0.09);
+  ov.appendChild(_posSlot('freespins.multiplier_badge',
+    { x: VPP.cx + Math.round(VPP.cw*0.04), y: VPP.cy + Math.round(VPP.ch*0.04), w: badgeP, h: badgeP },
+    { x: VPL.cx + Math.round(VPL.cw*0.04), y: VPL.cy + Math.round(VPL.ch*0.04), w: badgeL, h: badgeL },
+    '×2', c1));
 }
 
 // Intro / outro handled by SDEFS css_ov + dimLayer (see promotion above).
@@ -8611,24 +8786,35 @@ function _ovFreeSpinOutro(){ /* no-op */ }
 // ─────────────────────────────────────────────────────────────────────────────
 
 function _ovHnsRound(ov, cx, cy, cw, ch, c1){
-  // Respin counter — top-center banner
-  const counterH = Math.round(ch * 0.07);
-  const counterW = Math.round(cw * 0.45);
-  const counterX = cx + Math.round((cw - counterW) / 2);
-  const counterY = cy + Math.round(ch * 0.04);
-  ov.appendChild(_slot('holdnspin.respin_counter_frame', counterX, counterY, counterW, counterH, 'RESPINS 3', c1));
+  const VPP = VP.portrait, VPL = VP.landscape;
 
-  // Jackpot tier badges stacked vertically on the right edge
-  const tiers = ['holdnspin.jackpot_grand','holdnspin.jackpot_major','holdnspin.jackpot_minor','holdnspin.jackpot_mini'];
+  // Respin counter — centered banner, top of viewport
+  const cwP = Math.round(VPP.cw * 0.45), chP = Math.round(VPP.ch * 0.07);
+  const cwL = Math.round(VPL.cw * 0.45), chL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('holdnspin.respin_counter_frame',
+    { x: VPP.cx + Math.round((VPP.cw - cwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.04), w: cwP, h: chP },
+    { x: VPL.cx + Math.round((VPL.cw - cwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.04), w: cwL, h: chL },
+    'RESPINS 3', c1));
+
+  // Jackpot tiers — stacked on the right edge. Each tier gets its own
+  // draggable/resizable singleton so users can nudge them individually.
+  const tiers      = ['holdnspin.jackpot_grand','holdnspin.jackpot_major','holdnspin.jackpot_minor','holdnspin.jackpot_mini'];
   const tierLabels = ['GRAND','MAJOR','MINOR','MINI'];
-  const tierW  = Math.round(cw * 0.13);
-  const tierH  = Math.round(ch * 0.08);
-  const tierX  = cx + cw - tierW - Math.round(cw * 0.025);
-  const totalStackH = tiers.length * tierH + (tiers.length - 1) * Math.round(ch * 0.015);
-  const tierY0 = cy + Math.round((ch - totalStackH) / 2);
+  const tierWP = Math.round(VPP.cw * 0.13), tierHP = Math.round(VPP.ch * 0.08);
+  const tierWL = Math.round(VPL.cw * 0.13), tierHL = Math.round(VPL.ch * 0.08);
+  const gapP   = Math.round(VPP.ch * 0.015);
+  const gapL   = Math.round(VPL.ch * 0.015);
+  const totalP = tiers.length * tierHP + (tiers.length - 1) * gapP;
+  const totalL = tiers.length * tierHL + (tiers.length - 1) * gapL;
+  const y0P    = VPP.cy + Math.round((VPP.ch - totalP) / 2);
+  const y0L    = VPL.cy + Math.round((VPL.ch - totalL) / 2);
+  const xP     = VPP.cx + VPP.cw - tierWP - Math.round(VPP.cw * 0.025);
+  const xL     = VPL.cx + VPL.cw - tierWL - Math.round(VPL.cw * 0.025);
   tiers.forEach((key, i) => {
-    const y = tierY0 + i * (tierH + Math.round(ch * 0.015));
-    ov.appendChild(_slot(key, tierX, y, tierW, tierH, tierLabels[i], c1));
+    ov.appendChild(_posSlot(key,
+      { x: xP, y: y0P + i * (tierHP + gapP), w: tierWP, h: tierHP },
+      { x: xL, y: y0L + i * (tierHL + gapL), w: tierWL, h: tierHL },
+      tierLabels[i], c1));
   });
 }
 
@@ -10871,11 +11057,25 @@ window._sfBridge = (function(){
       var op=msg.op, k=msg.key;
       try {
         if(op==='select'&&k) {
-          // Feature slot keys use "feature.slot" namespacing — not in PSD /
-          // SDEFS.keys. Route them through selectFeatureSlot; base-layer
-          // keys keep the legacy selectEl path.
-          if (k.indexOf('.') >= 0) { selectFeatureSlot(k); }
-          else { selectEl(k); _rebuildFeatureOverlay(); _sendLayersUpdate(); }
+          // Three routes:
+          //   • Singleton feat-slots (PSD entry with type 'feat_slot') now
+          //     participate in the full selectEl pipeline — id="el-<k>"
+          //     exists in #feature-screen-overlay and resize handles
+          //     attach there.
+          //   • Shared / grid feat-slots (no PSD entry, dotted keys like
+          //     bonuspick.tile_closed) use the lighter selectFeatureSlot
+          //     path that just syncs the layers panel.
+          //   • Base layer keys (no dot) keep the legacy selectEl path.
+          if (PSD[k] && PSD[k].type === 'feat_slot') {
+            selectEl(k);
+            _sendLayersUpdate();
+          } else if (k.indexOf('.') >= 0) {
+            selectFeatureSlot(k);
+          } else {
+            selectEl(k);
+            _rebuildFeatureOverlay();
+            _sendLayersUpdate();
+          }
         }
         else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); markDirty(); }
         else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers(); _sendLayersUpdate(); markDirty(); }

@@ -1409,22 +1409,99 @@
 </div>
 
 <!-- OVERLAY ELEMENT PROPERTIES PANEL -->
+<!-- Sections: text-only, button-only, shared. openOvPropsPanel() toggles
+     .ovp-text-only / .ovp-btn-only visibility based on the selected sub's
+     type (text vs button). All values live in P.ovProps so they persist. -->
 <div id="ov-props-panel">
   <div class="ovp-title" id="ov-props-title">Overlay Element</div>
+
+  <!-- Shared: text label / button label -->
   <div class="ovp-row">
     <div class="ovp-lbl">Text</div>
     <input class="ovp-fi" id="ovp-text" type="text" placeholder="Label text…">
   </div>
+
+  <!-- Shared: text / button color -->
   <div class="ovp-row">
     <div class="ovp-lbl">Color</div>
     <input type="color" class="ovp-color" id="ovp-color">
     <input class="ovp-fi" id="ovp-color-hex" type="text" placeholder="#ffffff" style="font-family:DM Mono,monospace;max-width:72px">
   </div>
-  <div class="ovp-row" id="ovp-size-row">
+
+  <!-- Text-only: font family -->
+  <div class="ovp-row ovp-text-only">
+    <div class="ovp-lbl">Font</div>
+    <select class="ovp-fi" id="ovp-font">
+      <option value="">Default (Space Grotesk)</option>
+      <option value="'Inter', sans-serif">Inter</option>
+      <option value="'Poppins', sans-serif">Poppins</option>
+      <option value="'Oswald', sans-serif">Oswald</option>
+      <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
+      <option value="'Montserrat', sans-serif">Montserrat</option>
+      <option value="'Playfair Display', serif">Playfair Display</option>
+      <option value="'Cinzel', serif">Cinzel</option>
+      <option value="'Cormorant Garamond', serif">Cormorant Garamond</option>
+      <option value="'DM Mono', monospace">DM Mono</option>
+      <option value="'Orbitron', sans-serif">Orbitron</option>
+    </select>
+  </div>
+
+  <!-- Text-only: font weight -->
+  <div class="ovp-row ovp-text-only">
+    <div class="ovp-lbl">Weight</div>
+    <select class="ovp-fi" id="ovp-weight">
+      <option value="300">Light (300)</option>
+      <option value="400">Regular (400)</option>
+      <option value="500">Medium (500)</option>
+      <option value="600">Semibold (600)</option>
+      <option value="700">Bold (700)</option>
+      <option value="800">Extra Bold (800)</option>
+      <option value="900">Black (900)</option>
+    </select>
+  </div>
+
+  <!-- Text-only: font size -->
+  <div class="ovp-row ovp-text-only" id="ovp-size-row">
     <div class="ovp-lbl">Font size</div>
-    <input class="ovp-fi" id="ovp-size" type="number" min="8" max="200" step="2" style="max-width:60px">
+    <input class="ovp-fi" id="ovp-size" type="number" min="8" max="300" step="2" style="max-width:60px">
     <span style="font-size:10px;color:#5a5a78">px</span>
   </div>
+
+  <!-- Text-only: letter spacing -->
+  <div class="ovp-row ovp-text-only">
+    <div class="ovp-lbl">Spacing</div>
+    <input class="ovp-fi" id="ovp-spacing" type="text" placeholder=".08em" style="max-width:80px">
+  </div>
+
+  <!-- Text-only: alignment -->
+  <div class="ovp-row ovp-text-only">
+    <div class="ovp-lbl">Align</div>
+    <div style="display:flex;gap:4px" id="ovp-align-group">
+      <button type="button" class="ovp-align-btn" data-align="left"   style="flex:1;padding:4px 8px;border-radius:5px;border:1px solid #2a2a3a;background:#161622;color:#8888a8;cursor:pointer;font-size:10px;font-family:Space Grotesk,sans-serif">Left</button>
+      <button type="button" class="ovp-align-btn" data-align="center" style="flex:1;padding:4px 8px;border-radius:5px;border:1px solid #2a2a3a;background:#161622;color:#8888a8;cursor:pointer;font-size:10px;font-family:Space Grotesk,sans-serif">Center</button>
+      <button type="button" class="ovp-align-btn" data-align="right"  style="flex:1;padding:4px 8px;border-radius:5px;border:1px solid #2a2a3a;background:#161622;color:#8888a8;cursor:pointer;font-size:10px;font-family:Space Grotesk,sans-serif">Right</button>
+    </div>
+  </div>
+
+  <!-- Button-only: gradient stops -->
+  <div class="ovp-row ovp-btn-only">
+    <div class="ovp-lbl">BG start</div>
+    <input type="color" class="ovp-color" id="ovp-bg1">
+    <input class="ovp-fi" id="ovp-bg1-hex" type="text" placeholder="#c9a84c" style="font-family:DM Mono,monospace;max-width:72px">
+  </div>
+  <div class="ovp-row ovp-btn-only">
+    <div class="ovp-lbl">BG end</div>
+    <input type="color" class="ovp-color" id="ovp-bg2">
+    <input class="ovp-fi" id="ovp-bg2-hex" type="text" placeholder="#e8c96d" style="font-family:DM Mono,monospace;max-width:72px">
+  </div>
+
+  <!-- Button-only: radius -->
+  <div class="ovp-row ovp-btn-only">
+    <div class="ovp-lbl">Radius</div>
+    <input class="ovp-fi" id="ovp-radius" type="number" min="0" max="80" step="1" style="max-width:60px">
+    <span style="font-size:10px;color:#5a5a78">px</span>
+  </div>
+
   <div style="display:flex;gap:6px;margin-top:4px">
     <button id="ovp-apply-btn" style="flex:1;padding:5px;border-radius:6px;border:none;background:#c9a84c;color:#1a1200;font-size:10px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif">Apply</button>
     <button id="ovp-reset-btn" style="padding:5px 10px;border-radius:6px;border:1px solid #2a2a3a;background:transparent;color:#7a7a9a;font-size:10px;cursor:pointer;font-family:Space Grotesk,sans-serif">Reset</button>
