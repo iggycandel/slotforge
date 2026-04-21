@@ -8,31 +8,39 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-/** Ensure a personal workspace exists for this user and return its id. */
-async function ensurePersonalWorkspace(userId: string): Promise<string | null> {
-  // Check if workspace already exists (slug = userId for personal accounts)
+/** Look up (or provision) the workspace row owned by this clerk principal.
+ *
+ *  Every other authz path in the app keys workspaces by `clerk_org_id = userId`
+ *  (see app/(app)/[orgSlug]/layout.tsx), so we must match that lookup here —
+ *  otherwise existing workspaces (with a slug like "test-team") are invisible
+ *  to this route, the fallback INSERT collides on the UNIQUE clerk_org_id
+ *  constraint, and the POST silently 500s. */
+async function ensureWorkspace(userId: string): Promise<string | null> {
   const { data: existing } = await supabase
     .from('workspaces')
     .select('id')
-    .eq('slug', userId)
-    .single()
+    .eq('clerk_org_id', userId)
+    .maybeSingle()
 
   if (existing) return existing.id
 
-  // Create personal workspace
+  // No workspace yet — create one with a deterministic slug so the user can
+  // be redirected to /<userId>/dashboard. The onboarding flow normally
+  // handles this; this is the safety net for old accounts that somehow
+  // skipped it.
   const { data: created, error } = await supabase
     .from('workspaces')
     .insert({
       clerk_org_id: userId,
       name: 'Personal',
-      slug: userId,
-      plan: 'free',
+      slug:  userId,
+      plan:  'free',
     })
     .select('id')
     .single()
 
   if (error) {
-    console.error('[ensurePersonalWorkspace]', error)
+    console.error('[ensureWorkspace] provision failed', error)
     return null
   }
   return created.id
@@ -73,8 +81,11 @@ export async function POST(req: NextRequest) {
   const { name } = await req.json()
   if (!name) return NextResponse.json({ error: 'Missing name' }, { status: 400 })
 
-  // Ensure a workspace exists for this user
-  const workspaceId = await ensurePersonalWorkspace(userId)
+  // Resolve the user's workspace — matches the clerk_org_id lookup used
+  // everywhere else. Returns the existing row for normal users and
+  // provisions a new one as a safety net for accounts that skipped
+  // onboarding.
+  const workspaceId = await ensureWorkspace(userId)
   if (!workspaceId) {
     return NextResponse.json({ error: 'Could not find or create workspace' }, { status: 500 })
   }
