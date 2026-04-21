@@ -260,6 +260,13 @@ function serializeState(){
   // Store asset pool references (not full dataURLs) — each unique image stored once in ASSET_POOL
   const assets={};
   Object.entries(EL_ASSETS).forEach(([k,url])=>{ if(url) assets[k]=poolAsset(url); });
+  // Dynamically-added PSD entries (groups + custom layers) — captured so
+  // addGroup / addLayer / duplicate are reversible. Base PSD entries are
+  // defined at load and never change, so they don't need snapshotting.
+  const customPsd = {};
+  Object.keys(PSD).forEach(k => {
+    if (k.startsWith('group_') || k.startsWith('custom_')) customPsd[k] = PSD[k];
+  });
   return JSON.stringify({
     p: JSON.parse(JSON.stringify(EL_VP.portrait)),
     l: JSON.parse(JSON.stringify(EL_VP.landscape)),
@@ -273,7 +280,22 @@ function serializeState(){
     userLocks: [...USER_LOCKS],
     assets,
     adjs: JSON.parse(JSON.stringify(EL_ADJ)),
-    masks: JSON.parse(JSON.stringify(EL_MASKS))
+    masks: JSON.parse(JSON.stringify(EL_MASKS)),
+    // Extensions: previously not captured, so their mutations (toggle
+    // visibility, change blend mode, edit text / colour / font, tweak
+    // bonus-pick / wheel / ladder / gamble / super-gamble settings,
+    // drag a feat-slot) couldn't be undone.
+    hidden:    [...(typeof HIDDEN_LAYERS !== 'undefined' ? HIDDEN_LAYERS : [])],
+    blends:    JSON.parse(JSON.stringify(typeof EL_BLEND_MODES !== 'undefined' ? EL_BLEND_MODES : {})),
+    ovProps:   JSON.parse(JSON.stringify(P.ovProps || {})),
+    ovPos:     JSON.parse(JSON.stringify(P.ovPos   || {})),
+    dimOp:     P.dimOpacity,
+    customPsd,
+    bps:       JSON.parse(JSON.stringify(P.bonusPickSettings   || {})),
+    wbs:       JSON.parse(JSON.stringify(P.wheelBonusSettings  || {})),
+    lbs:       JSON.parse(JSON.stringify(P.ladderBonusSettings || {})),
+    gbs:       JSON.parse(JSON.stringify(P.gambleSettings      || {})),
+    sgs:       JSON.parse(JSON.stringify(P.superGambleSettings || {})),
   });
 }
 function pushHistory(desc){
@@ -318,6 +340,34 @@ function restoreSnap(){
   if(s.adjs) Object.assign(EL_ADJ,s.adjs);
   Object.keys(EL_MASKS).forEach(k=>delete EL_MASKS[k]);
   if(s.masks) Object.assign(EL_MASKS,s.masks);
+  // Extended state — restore every field the extended serializeState
+  // now captures so the corresponding actions (visibility toggle, blend
+  // change, ov-props edit, feat-slot drag, bonus-round settings, group
+  // creation, etc.) are fully reversible.
+  if (typeof HIDDEN_LAYERS !== 'undefined' && s.hidden) {
+    HIDDEN_LAYERS.clear();
+    s.hidden.forEach(k => HIDDEN_LAYERS.add(k));
+  }
+  if (typeof EL_BLEND_MODES !== 'undefined') {
+    Object.keys(EL_BLEND_MODES).forEach(k => delete EL_BLEND_MODES[k]);
+    if (s.blends) Object.assign(EL_BLEND_MODES, s.blends);
+  }
+  if (s.ovProps) P.ovProps = JSON.parse(JSON.stringify(s.ovProps));
+  if (s.ovPos)   P.ovPos   = JSON.parse(JSON.stringify(s.ovPos));
+  if (s.dimOp !== undefined) P.dimOpacity = s.dimOp;
+  // Custom PSD entries: drop any current group_/custom_ keys not in the
+  // snapshot, then reinstate the ones that were.
+  Object.keys(PSD).forEach(k => {
+    if ((k.startsWith('group_') || k.startsWith('custom_')) && !(s.customPsd && s.customPsd[k])) {
+      delete PSD[k];
+    }
+  });
+  if (s.customPsd) Object.entries(s.customPsd).forEach(([k, def]) => { PSD[k] = def; });
+  if (s.bps && P.bonusPickSettings)   Object.assign(P.bonusPickSettings,   s.bps);
+  if (s.wbs && P.wheelBonusSettings)  Object.assign(P.wheelBonusSettings,  s.wbs);
+  if (s.lbs && P.ladderBonusSettings) Object.assign(P.ladderBonusSettings, s.lbs);
+  if (s.gbs && P.gambleSettings)      Object.assign(P.gambleSettings,      s.gbs);
+  if (s.sgs && P.superGambleSettings) Object.assign(P.superGambleSettings, s.sgs);
   SEL_KEY=null; buildCanvas(); renderLayers(); rebuildTabs(); updateUR();
   // buildCanvas() wipes #gf wholesale, which takes the #feature-screen-overlay
   // down with it. Without this rebuild, Ctrl+Z on a feature screen would
@@ -1289,42 +1339,44 @@ function openOvPropsPanel(ov,sub){
   const panel=document.getElementById('ov-props-panel'); if(!panel) return;
   const subDef=OV_SUBS[ov]?.find(s=>s.id===sub); if(!subDef) return;
   const ovLabel={'ov-bigwin':'Big Win','ov-megawin':'Mega Win','ov-epicwin':'Epic Win','ov-fstrigger':'Free Spins Trigger','ov-hnstrigger':'Hold & Spin Trigger','ov-jpwin':'Jackpot Win','ov-buypopup':'Buy Feature','ov-splash':'Splash','ov-win':'Win'}[ov]||ov;
-  document.getElementById('ov-props-title').textContent=`${ovLabel} › ${subDef.label}`;
   const isBtn = subDef.type==='button' || sub==='btnCancel' || sub==='btnBuy';
-  // Toggle text-only vs button-only sections via a CSS attribute selector.
+
+  // Defensive write helper — a missing field (e.g. stale iframe cache) used
+  // to throw and silently break the whole panel. Now we write what we can
+  // and skip the rest, so the panel still shows.
+  const _set = (id, val) => { const el = document.getElementById(id); if (el != null) el.value = val; };
+
+  const titleEl = document.getElementById('ov-props-title');
+  if (titleEl) titleEl.textContent = `${ovLabel} › ${subDef.label}`;
   panel.dataset.mode = isBtn ? 'btn' : 'text';
 
-  // ── Shared: text + primary color ──
+  // ── Shared: text + primary colour ──
   const txt   = getOvProp(ov,sub,'dText')  || subDef.dText  || '';
   const color = getOvProp(ov,sub,'dColor') || subDef.dColor || '#ffffff';
-  document.getElementById('ovp-text').value      = txt;
-  document.getElementById('ovp-color').value     = color.length === 7 ? color : '#ffffff';
-  document.getElementById('ovp-color-hex').value = color;
+  _set('ovp-text', txt);
+  _set('ovp-color',      color.length === 7 ? color : '#ffffff');
+  _set('ovp-color-hex',  color);
 
   if (!isBtn) {
-    // ── Text fields ──
     const font    = getOvProp(ov,sub,'dFont')    || '';
     const weight  = getOvProp(ov,sub,'dWeight')  || subDef.dWeight  || 600;
     const size    = getOvProp(ov,sub,'dSize')    || subDef.dSize    || 40;
     const spacing = getOvProp(ov,sub,'dSpacing') || subDef.dSpacing || '0';
     const align   = getOvProp(ov,sub,'dAlign')   || 'center';
-    document.getElementById('ovp-font').value    = font;
-    document.getElementById('ovp-weight').value  = String(weight);
-    document.getElementById('ovp-size').value    = size;
-    document.getElementById('ovp-spacing').value = spacing;
-    document.querySelectorAll('.ovp-align-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.align === align);
-    });
+    _set('ovp-font',    font);
+    _set('ovp-weight',  String(weight));
+    _set('ovp-size',    size);
+    _set('ovp-spacing', spacing);
+    try { document.querySelectorAll('.ovp-align-btn').forEach(b => b.classList.toggle('active', b.dataset.align === align)); } catch(_){}
   } else {
-    // ── Button fields ──
     const bg1    = getOvProp(ov,sub,'dBg1')    || '#c9a84c';
     const bg2    = getOvProp(ov,sub,'dBg2')    || '#e8c96d';
     const radius = getOvProp(ov,sub,'dRadius') || 40;
-    document.getElementById('ovp-bg1').value     = bg1.length === 7 ? bg1 : '#c9a84c';
-    document.getElementById('ovp-bg1-hex').value = bg1;
-    document.getElementById('ovp-bg2').value     = bg2.length === 7 ? bg2 : '#e8c96d';
-    document.getElementById('ovp-bg2-hex').value = bg2;
-    document.getElementById('ovp-radius').value  = radius;
+    _set('ovp-bg1',     bg1.length === 7 ? bg1 : '#c9a84c');
+    _set('ovp-bg1-hex', bg1);
+    _set('ovp-bg2',     bg2.length === 7 ? bg2 : '#e8c96d');
+    _set('ovp-bg2-hex', bg2);
+    _set('ovp-radius',  radius);
   }
 
   panel.dataset.ov  = ov;
@@ -1407,6 +1459,7 @@ function applyOvProps(){
   try { buildCanvas(); } catch(e){}
   try { _rebuildFeatureOverlay(); } catch(e){}
   renderOvLayers();
+  try { pushHistory('edit '+ov+'/'+sub); } catch(e){}
   try { markDirty(); } catch(e){}
 }
 function renderOvLayers(){
@@ -8740,7 +8793,10 @@ function _imgSlot(key, x, y, w, h, fit, opts){
 // Win Sequence title-art slots (where the CSS text already fills the role)
 // out of the way until the user explicitly uploads art.
 const _svg = (vb, inner) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block;overflow:visible">${inner}</svg>`;
+  // pointer-events:none on the SVG makes the parent div the sole hit target
+  // so clicks on painted silhouettes still route to the div's drag / select
+  // handlers rather than being swallowed by SVG shapes.
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block;overflow:visible;pointer-events:none">${inner}</svg>`;
 const _btnSvg = (label) => _svg('0 0 160 50', `
   <rect x="2" y="2" width="156" height="46" rx="10" fill="currentColor" fill-opacity="0.18"/>
   <rect x="2" y="2" width="156" height="46" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.8"/>
@@ -9479,8 +9535,22 @@ function _ovWinSequence(ov, cx, cy, cw, ch, c1, tier){
   // it again here would stack two copies of the same image on top of each
   // other, so this path is intentionally empty.
 
-  // 1. Decorative frame around the amount area — centred, ~78% viewport width,
-  // tall enough to wrap title + amount + button.
+  // Stacking order (back → front, DOM append order controls z inside the
+  // overlay since every feat_slot shares the default z:80):
+  //   1. Celebration FX  — full-viewport particle burst, sits behind
+  //      everything so uploaded coin sprites don't cover the frame/text.
+  //   2. Frame            — decorative border around the amount area.
+  //   3. Tier title art   — overlays the CSS title (BIG WIN / MEGA /
+  //      EPIC) when uploaded; transparent when empty.
+  //   4. Collect button   — topmost so the CTA is always tappable.
+
+  // 1. Celebration FX (back-most)
+  ov.appendChild(_posSlot('winsequence.coins_fx',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'Celebration FX', c1, 'contain'));
+
+  // 2. Frame
   const frW_P = Math.round(VPP.cw * 0.82), frH_P = Math.round(VPP.ch * 0.55);
   const frW_L = Math.round(VPL.cw * 0.58), frH_L = Math.round(VPL.ch * 0.72);
   ov.appendChild(_posSlot('winsequence.frame',
@@ -9488,8 +9558,7 @@ function _ovWinSequence(ov, cx, cy, cw, ch, c1, tier){
     { x: VPL.cx + Math.round((VPL.cw - frW_L) / 2), y: VPL.cy + Math.round(VPL.ch*0.12), w: frW_L, h: frH_L },
     'Frame', c1, 'contain'));
 
-  // 3. Tier title art (only the slot for the *current* tier is rendered so
-  // users don't see every tier's placeholder at once).
+  // 3. Tier title art (only the current tier's slot renders)
   const titleKey = `winsequence.${tier}win_title_art`;
   const tW_P = Math.round(VPP.cw * 0.72), tH_P = Math.round(VPP.ch * 0.14);
   const tW_L = Math.round(VPL.cw * 0.48), tH_L = Math.round(VPL.ch * 0.20);
@@ -9499,14 +9568,7 @@ function _ovWinSequence(ov, cx, cy, cw, ch, c1, tier){
     { x: VPL.cx + Math.round((VPL.cw - tW_L) / 2), y: VPL.cy + Math.round(VPL.ch*0.20), w: tW_L, h: tH_L },
     `${tierLabel} art`, c1, 'contain'));
 
-  // 4. Celebration effect overlay — particles / sparks / coin burst.
-  // Covers the whole viewport so users have room to position a full-bleed FX.
-  ov.appendChild(_posSlot('winsequence.coins_fx',
-    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
-    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
-    'Celebration FX', c1, 'contain'));
-
-  // 5. Collect button art — replaces the CSS button when uploaded.
+  // 4. Collect button art — replaces the CSS button when uploaded.
   const bW_P = Math.round(VPP.cw * 0.42), bH_P = Math.round(VPP.ch * 0.07);
   const bW_L = Math.round(VPL.cw * 0.28), bH_L = Math.round(VPL.ch * 0.10);
   ov.appendChild(_posSlot('winsequence.button_collect',
@@ -12026,11 +12088,11 @@ window._sfBridge = (function(){
             _sendLayersUpdate();
           }
         }
-        else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); markDirty(); }
-        else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers(); _sendLayersUpdate(); markDirty(); }
-        else if(op==='delete'&&k){ deleteAnyLayer(k); }
-        else if(op==='duplicate'&&k){ duplicateLayer(k); }
-        else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas();markDirty(); }
+        else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); pushHistory('toggle visibility '+k); markDirty(); }
+        else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers(); _sendLayersUpdate(); pushHistory('toggle lock '+k); markDirty(); }
+        else if(op==='delete'&&k){ deleteAnyLayer(k); pushHistory('delete '+k); }
+        else if(op==='duplicate'&&k){ duplicateLayer(k); pushHistory('duplicate '+k); }
+        else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas(); pushHistory('blend '+k); markDirty(); }
         else if(op==='addLayer'){ document.getElementById('add-layer-btn')?.click(); }
         else if(op==='reorder' && k && msg.targetKey){
           var tgt=msg.targetKey;
@@ -12043,21 +12105,21 @@ window._sfBridge = (function(){
               arr.splice(fromIdx,1);
               toIdx=arr.indexOf(tgt);
               arr.splice(msg.position==='before'?toIdx:toIdx+1,0,k);
-              buildCanvas(); renderLayers(); markDirty();
+              buildCanvas(); renderLayers(); pushHistory('reorder '+k); markDirty();
             }
           }
         }
-        else if(op==='zForward'&&k){ layerReorder(k,'forward'); }
-        else if(op==='zFront'&&k){   layerReorder(k,'front');   }
-        else if(op==='zBackward'&&k){ layerReorder(k,'backward'); }
-        else if(op==='zBack'&&k){    layerReorder(k,'back');    }
+        else if(op==='zForward'&&k){ layerReorder(k,'forward'); pushHistory('z-forward '+k); }
+        else if(op==='zFront'&&k){   layerReorder(k,'front');   pushHistory('z-front '+k); }
+        else if(op==='zBackward'&&k){ layerReorder(k,'backward'); pushHistory('z-backward '+k); }
+        else if(op==='zBack'&&k){    layerReorder(k,'back');    pushHistory('z-back '+k); }
         else if(op==='addGroup'){
           var gNum=Object.keys(PSD).filter(function(x){return x.startsWith('group_');}).length+1;
           var gKey='group_'+gNum;
           PSD[gKey]={label:'Group '+gNum,type:'group',x:0,y:0,w:200,h:200,keys:SEL_KEY?[SEL_KEY]:[]};
           if(SDEFS[P.screen]&&SDEFS[P.screen].keys) SDEFS[P.screen].keys.push(gKey);
           SEL_KEY=gKey;
-          buildCanvas(); renderLayers(); markDirty();
+          buildCanvas(); renderLayers(); pushHistory('add group '+gKey); markDirty();
         }
       } catch(ex){ console.error('[SF_LAYER_OP]',ex); }
     }
