@@ -366,6 +366,7 @@ const FEATURE_SCREEN_DEFS={
   walking_wild: {label:'Walking Wild',     dot:'#d4b84c', keys:REEL_KEYS,        overlay:'walking',   group:'wild'},
   // Cascade/reaction — reel screen with cascade arrows
   cascade:      {label:'Cascade',          dot:'#4adde8', keys:REEL_KEYS,        overlay:'cascade',   group:'reaction'},
+  tumble:       {label:'Tumble',           dot:'#40c8d0', keys:REEL_KEYS,        overlay:'tumble',    group:'reaction'},
   win_multiplier:{label:'Win Multiplier',  dot:'#60e0a0', keys:REEL_KEYS,        overlay:'winmult',   group:'reaction'},
   // Special mechanics — modified reel layouts
   infinity_reels:{label:'Infinity Reels', dot:'#9a7cdf', keys:REEL_KEYS,        overlay:'infinity',  group:'special'},
@@ -876,7 +877,7 @@ const FDEFS=[
   // ── Cascades & Reactions ──
   {key:'cascade',        label:'Cascade / Avalanche',  group:'Cascades & Reactions',  color:'#4adde8', screen:'cascade',
    desc:'Winning symbols are removed; new symbols fall in to enable chain wins.'},
-  {key:'tumble',         label:'Tumble / Reel Collapse',group:'Cascades & Reactions', color:'#40c8d0', screen:null,
+  {key:'tumble',         label:'Tumble / Reel Collapse',group:'Cascades & Reactions', color:'#40c8d0', screen:'tumble',
    desc:'Symbols collapse after a win and are replaced from above.'},
   {key:'win_multiplier', label:'Win Multiplier Trail',  group:'Cascades & Reactions', color:'#60e0a0', screen:'win_multiplier',
    desc:'Consecutive wins in one spin increase a multiplier counter (1×, 2×, 3×…).'},
@@ -8505,6 +8506,8 @@ function buildFeatureOverlay(screenKey, def){
     _ovWalkingWild(ov, cx, cy, cw, ch, c1);
   } else if(type==='cascade'){
     _ovCascade(ov, cx, cy, cw, ch, c1);
+  } else if(type==='tumble'){
+    _ovTumble(ov, cx, cy, cw, ch, c1);
   } else if(type==='winmult'){
     _ovWinMultiplier(ov, cx, cy, cw, ch, c1);
   } else if(type==='infinity'){
@@ -9204,146 +9207,205 @@ function _ovLadder(ov, cx, cy, cw, ch, c1){
     'Next prize: €100', c1));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TIER B — REEL OVERLAYS (no intro/outro, just in-round art on top of reels)
+//
+// Shared helper: resolve the reelArea rect + cell size in current viewport.
+// Every overlay below uses _demoReelRect() to place overlay art on top of
+// specific cells, then exposes its registered asset slots via _posSlot at
+// sensible default positions (centred above / below / inside the reel area).
+// ─────────────────────────────────────────────────────────────────────────────
+function _demoReelRect(){
+  const vp  = P.viewport === 'desktop' ? 'landscape' : P.viewport;
+  const ec  = EL_COMPUTED[vp];
+  const ra  = ec?.reelArea;
+  if (!ra) return null;
+  const CELL = (EL_COMPUTED._cellSize && EL_COMPUTED._cellSize[vp]) || 120;
+  return { ra, CELL, GAP: 8 };
+}
+
 // ─── STICKY WILD ───
 function _ovStickyWild(ov, cx, cy, cw, ch, c1){
-  // Show locked wild indicators on specific reel cells
-  const reelPos=EL_COMPUTED[P.viewport==='desktop'?'landscape':'portrait'];
-  if(!reelPos?.reelArea) return;
-  const ra=reelPos.reelArea;
-  const [cols,rows]=parseReel(P.reelset);
-  const CELL=EL_COMPUTED._cellSize?.[P.viewport==='desktop'?'landscape':'portrait']||120;
-  const GAP=8;
-  // Lock 2 random cells
-  [[0,1],[1,0],[2,2]].slice(0,2).forEach(([col,row])=>{
-    const x=ra.x+col*(CELL+GAP)+(CELL-60)/2;
-    const y=ra.y+row*(CELL+GAP)+(CELL-60)/2;
-    const lock=_el('div',`position:absolute;left:${x}px;top:${y}px;width:60px;height:60px;background:${c1}33;border:3px solid ${c1};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px`);
-    lock.textContent='📌';
-    const badge=_el('div',`position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);background:${c1};color:#1a1200;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;white-space:nowrap;font-family:Space Grotesk,sans-serif`);
-    badge.textContent='STICKY';
-    lock.appendChild(badge);
-    ov.appendChild(lock);
-  });
-  const counter=_el('div',`position:absolute;left:${cx+Math.round(cw/2)-60}px;top:${cy+ch-120}px;background:#0a0a14ee;border:2px solid ${c1};border-radius:12px;padding:10px 24px;font-size:22px;font-weight:700;color:${c1};font-family:Space Grotesk,sans-serif;text-align:center`);
-  counter.innerHTML='STICKY WILDS<br><span style="font-size:36px">2</span>';
-  ov.appendChild(counter);
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const r = _demoReelRect();
+  if (r) {
+    const { ra, CELL, GAP } = r;
+    // Demo locked cells — shows where the lock_frame slot would render.
+    [[0, 1], [2, 2]].forEach(([col, row]) => {
+      const x = ra.x + col * (CELL + GAP);
+      const y = ra.y + row * (CELL + GAP);
+      const w = CELL, h = CELL;
+      ov.appendChild(_posSlot('stickywild.lock_frame', { x, y, w, h }, { x, y, w, h }, 'Lock frame', c1, 'contain'));
+    });
+    // "STICKY" badge on the first locked cell
+    const bx = ra.x + 0 * (CELL + GAP) + Math.round(CELL * 0.15);
+    const by = ra.y + 1 * (CELL + GAP) + CELL - Math.round(CELL * 0.18);
+    const bw = Math.round(CELL * 0.7), bh = Math.round(CELL * 0.2);
+    ov.appendChild(_posSlot('stickywild.badge', { x: bx, y: by, w: bw, h: bh }, { x: bx, y: by, w: bw, h: bh }, 'STICKY', c1));
+  }
+  // Counter frame — below the reel area, centered
+  const cfWP = Math.round(VPP.cw * 0.34), cfHP = Math.round(VPP.ch * 0.06);
+  const cfWL = Math.round(VPL.cw * 0.22), cfHL = Math.round(VPL.ch * 0.08);
+  ov.appendChild(_posSlot('stickywild.counter_frame',
+    { x: VPP.cx + Math.round((VPP.cw - cfWP) / 2), y: VPP.cy + Math.round(VPP.ch * 0.88), w: cfWP, h: cfHP },
+    { x: VPL.cx + Math.round((VPL.cw - cfWL) / 2), y: VPL.cy + Math.round(VPL.ch * 0.88), w: cfWL, h: cfHL },
+    'STICKY ×2', c1));
 }
 
 // ─── WALKING WILD ───
 function _ovWalkingWild(ov, cx, cy, cw, ch, c1){
-  const reelPos=EL_COMPUTED[P.viewport==='desktop'?'landscape':'portrait'];
-  if(!reelPos?.reelArea) return;
-  const ra=reelPos.reelArea;
-  const [cols,rows]=parseReel(P.reelset);
-  const CELL=EL_COMPUTED._cellSize?.[P.viewport==='desktop'?'landscape':'portrait']||120;
-  const GAP=8;
-  // Show wild on reel 3 with arrows showing movement direction
-  const col=2, row=1;
-  const x=ra.x+col*(CELL+GAP), y=ra.y+row*(CELL+GAP);
-  const wildCell=_el('div',`position:absolute;left:${x}px;top:${y}px;width:${CELL}px;height:${CELL}px;background:${c1}44;border:3px solid ${c1};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:${Math.round(CELL*0.28)}px;font-weight:700;color:${c1};font-family:Space Grotesk,sans-serif`);
-  wildCell.textContent='W';
-  ov.appendChild(wildCell);
-  // Arrow showing next position
-  const arrowX=ra.x+(col-1)*(CELL+GAP)+CELL/2;
-  const arrowY=y+CELL/2;
-  for(let i=col-1;i>=0;i--){
-    const arrow=_el('div',`position:absolute;left:${ra.x+i*(CELL+GAP)+CELL/2-12}px;top:${arrowY-12}px;font-size:28px;color:${c1}88`);
-    arrow.textContent='←';
-    ov.appendChild(arrow);
-  }
-  const info=_el('div',`position:absolute;left:${cx+20}px;top:${cy+ch-90}px;font-size:18px;color:#888;font-family:Space Grotesk,sans-serif`);
-  info.textContent='← Wild moves one reel left each spin';
-  ov.appendChild(info);
-}
-
-// ─── CASCADE ───
-function _ovCascade(ov, cx, cy, cw, ch, c1){
-  const reelPos=EL_COMPUTED[P.viewport==='desktop'?'landscape':'portrait'];
-  if(!reelPos?.reelArea) return;
-  const ra=reelPos.reelArea;
-  const [cols,rows]=parseReel(P.reelset);
-  const CELL=EL_COMPUTED._cellSize?.[P.viewport==='desktop'?'landscape':'portrait']||120;
-  const GAP=8;
-  const multColor='#60e0a0';
-  // Highlight a winning row (row 1) and show cascade arrows
-  for(let col=0;col<3;col++){
-    const x=ra.x+col*(CELL+GAP), y=ra.y+1*(CELL+GAP);
-    const highlight=_el('div',`position:absolute;left:${x}px;top:${y}px;width:${CELL}px;height:${CELL}px;background:${multColor}33;border:3px solid ${multColor};border-radius:12px;pointer-events:none`);
-    const blast=_el('div',`position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px`);blast.textContent='💥';
-    highlight.appendChild(blast); ov.appendChild(highlight);
-    // Falling arrows above
-    for(let r=0;r<1;r++){
-      const ax=ra.x+col*(CELL+GAP)+CELL/2-12, ay=ra.y+r*(CELL+GAP)-30;
-      const arrow=_el('div',`position:absolute;left:${ax}px;top:${ay}px;font-size:24px;color:${c1}88`);
-      arrow.textContent='⬇'; ov.appendChild(arrow);
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const r = _demoReelRect();
+  if (r) {
+    const { ra, CELL, GAP } = r;
+    // Wild frame on the middle reel, second row
+    const col = 2, row = 1;
+    const x = ra.x + col * (CELL + GAP);
+    const y = ra.y + row * (CELL + GAP);
+    ov.appendChild(_posSlot('walkingwild.wild_frame', { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Wild', c1, 'contain'));
+    // Trail — left of the wild, same row
+    for (let i = col - 1; i >= 0; i--) {
+      const tx = ra.x + i * (CELL + GAP);
+      const ty = y;
+      const key = 'walkingwild.trail';
+      ov.appendChild(_slot(key, tx, ty, CELL, CELL, '←', c1, 'contain'));
     }
   }
-  // Multiplier counter
-  const mult=_el('div',`position:absolute;left:${cx+Math.round(cw/2)-50}px;top:${cy+20}px;background:#0a0a14ee;border:2px solid ${multColor};border-radius:12px;padding:8px 20px;font-size:20px;font-weight:700;color:${multColor};font-family:Space Grotesk,sans-serif;text-align:center`);
-  mult.innerHTML='MULTIPLIER<br><span style="font-size:38px">3×</span>';
-  ov.appendChild(mult);
+  // Hint banner below reels
+  const hwP = Math.round(VPP.cw * 0.70), hhP = Math.round(VPP.ch * 0.05);
+  const hwL = Math.round(VPL.cw * 0.40), hhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('walkingwild.hint_label',
+    { x: VPP.cx + Math.round((VPP.cw - hwP) / 2), y: VPP.cy + Math.round(VPP.ch * 0.88), w: hwP, h: hhP },
+    { x: VPL.cx + Math.round((VPL.cw - hwL) / 2), y: VPL.cy + Math.round(VPL.ch * 0.88), w: hwL, h: hhL },
+    'Wild moves left each spin', c1));
+}
+
+// ─── CASCADE / AVALANCHE ───
+function _ovCascade(ov, cx, cy, cw, ch, c1){
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const r = _demoReelRect();
+  if (r) {
+    const { ra, CELL, GAP } = r;
+    // Highlight a winning row
+    for (let col = 0; col < 3; col++) {
+      const x = ra.x + col * (CELL + GAP);
+      const y = ra.y + 1 * (CELL + GAP);
+      ov.appendChild(_posSlot('cascade.highlight', { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Winning cell', c1, 'contain'));
+    }
+    // Explosion FX on the first highlighted cell
+    const fxX = ra.x + 1 * (CELL + GAP);
+    const fxY = ra.y + 1 * (CELL + GAP);
+    ov.appendChild(_posSlot('cascade.explosion_fx', { x: fxX, y: fxY, w: CELL, h: CELL }, { x: fxX, y: fxY, w: CELL, h: CELL }, 'FX', c1, 'contain'));
+    // Incoming falling symbol — top-of-reels area
+    const fsX = ra.x + 1 * (CELL + GAP);
+    const fsY = ra.y - CELL - GAP;
+    ov.appendChild(_posSlot('cascade.falling_symbol', { x: fsX, y: fsY, w: CELL, h: CELL }, { x: fsX, y: fsY, w: CELL, h: CELL }, 'New symbol', c1, 'contain'));
+  }
+  // Chain counter badge — top-center
+  const bwP = Math.round(VPP.cw * 0.22), bhP = Math.round(VPP.ch * 0.05);
+  const bwL = Math.round(VPL.cw * 0.14), bhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('cascade.chain_badge',
+    { x: VPP.cx + Math.round((VPP.cw - bwP) / 2), y: VPP.cy + Math.round(VPP.ch * 0.08), w: bwP, h: bhP },
+    { x: VPL.cx + Math.round((VPL.cw - bwL) / 2), y: VPL.cy + Math.round(VPL.ch * 0.08), w: bwL, h: bhL },
+    'Chain ×3', c1));
+}
+
+// ─── TUMBLE / REEL COLLAPSE ───
+function _ovTumble(ov, cx, cy, cw, ch, c1){
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const r = _demoReelRect();
+  if (r) {
+    const { ra, CELL, GAP } = r;
+    for (let col = 1; col <= 3; col++) {
+      const x = ra.x + col * (CELL + GAP);
+      const y = ra.y + 0 * (CELL + GAP);
+      ov.appendChild(_posSlot('tumble.highlight', { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Winning cell', c1, 'contain'));
+      const tx = ra.x + col * (CELL + GAP);
+      const ty = ra.y + 1 * (CELL + GAP);
+      ov.appendChild(_posSlot('tumble.trail_fx', { x: tx, y: ty, w: CELL, h: CELL }, { x: tx, y: ty, w: CELL, h: CELL }, 'Trail', c1, 'contain'));
+    }
+  }
+  const bwP = Math.round(VPP.cw * 0.22), bhP = Math.round(VPP.ch * 0.05);
+  const bwL = Math.round(VPL.cw * 0.14), bhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('tumble.chain_badge',
+    { x: VPP.cx + Math.round((VPP.cw - bwP) / 2), y: VPP.cy + Math.round(VPP.ch * 0.08), w: bwP, h: bhP },
+    { x: VPL.cx + Math.round((VPL.cw - bwL) / 2), y: VPL.cy + Math.round(VPL.ch * 0.08), w: bwL, h: bhL },
+    'Tumble ×2', c1));
 }
 
 // ─── WIN MULTIPLIER ───
 function _ovWinMultiplier(ov, cx, cy, cw, ch, c1){
-  const steps=[1,2,3,5,8,15,25,50];
-  const stepW=Math.round(cw*0.08), stepH=40;
-  const totalW=(stepW+8)*steps.length;
-  const startX=cx+Math.round((cw-totalW)/2);
-  const startY=cy+ch-160;
-  steps.forEach((val,i)=>{
-    const isActive=(i===4);
-    const x=startX+i*(stepW+8);
-    const box=_el('div',`position:absolute;left:${x}px;top:${startY}px;width:${stepW}px;height:${stepH}px;background:${isActive?c1+'44':'#ffffff08'};border:2px solid ${isActive?c1:'#333'};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:${isActive?c1:'#666'};font-family:Space Grotesk,sans-serif`);
-    box.textContent=val+'×';
-    ov.appendChild(box);
-    if(i<steps.length-1){
-      const arrow=_el('div',`position:absolute;left:${x+stepW}px;top:${startY+stepH/2-10}px;font-size:14px;color:#444;display:flex;align-items:center`);
-      arrow.textContent='→'; ov.appendChild(arrow);
-    }
-  });
-  const label=_el('div',`position:absolute;left:${startX}px;top:${startY-32}px;font-size:14px;color:#9898b8;font-family:Space Grotesk,sans-serif;font-weight:600;letter-spacing:.06em;text-transform:uppercase`);
-  label.textContent='Win Multiplier Trail — resets on no win';
-  ov.appendChild(label);
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const r = _demoReelRect();
+  // Frame on top of the reel area, right side
+  if (r) {
+    const { ra, CELL } = r;
+    const fx = ra.x + ra.w - CELL - 20;
+    const fy = ra.y - CELL - 20;
+    ov.appendChild(_posSlot('winmult.frame', { x: fx, y: fy, w: CELL, h: CELL }, { x: fx, y: fy, w: CELL, h: CELL }, '×2', c1, 'contain'));
+    ov.appendChild(_posSlot('winmult.glow_fx', { x: fx - 20, y: fy - 20, w: CELL + 40, h: CELL + 40 }, { x: fx - 20, y: fy - 20, w: CELL + 40, h: CELL + 40 }, 'Glow', c1, 'contain'));
+  }
+  // Optional ladder — below the reel area
+  const lwP = Math.round(VPP.cw * 0.74), lhP = Math.round(VPP.ch * 0.05);
+  const lwL = Math.round(VPL.cw * 0.40), lhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('winmult.ladder',
+    { x: VPP.cx + Math.round((VPP.cw - lwP) / 2), y: VPP.cy + Math.round(VPP.ch * 0.88), w: lwP, h: lhP },
+    { x: VPL.cx + Math.round((VPL.cw - lwL) / 2), y: VPL.cy + Math.round(VPL.ch * 0.88), w: lwL, h: lhL },
+    '1× → 2× → 3× → 5×', c1));
 }
 
 // ─── INFINITY REELS ───
 function _ovInfinityReels(ov, cx, cy, cw, ch, c1){
-  const reelPos=EL_COMPUTED[P.viewport==='desktop'?'landscape':'portrait'];
-  if(!reelPos?.reelArea) return;
-  const ra=reelPos.reelArea;
-  const CELL=EL_COMPUTED._cellSize?.[P.viewport==='desktop'?'landscape':'portrait']||120;
-  const GAP=8;
-  // Show a ghost extra reel appearing on the right
-  const ghostX=ra.x+ra.w+GAP;
-  const ghostCol=_el('div',`position:absolute;left:${ghostX}px;top:${ra.y}px;width:${CELL}px;height:${ra.h}px;border:2px dashed ${c1}88;border-radius:12px;opacity:0.6;display:flex;align-items:center;justify-content:center`);
-  const plus=_el('div',`font-size:${Math.round(CELL*0.35)}px;color:${c1}88`); plus.textContent='+';
-  ghostCol.appendChild(plus); ov.appendChild(ghostCol);
-  const label=_el('div',`position:absolute;left:${ghostX-20}px;top:${ra.y+ra.h+10}px;font-size:14px;color:${c1}88;font-family:Space Grotesk,sans-serif;white-space:nowrap`);
-  label.textContent='New reel added on win →';
-  ov.appendChild(label);
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const r = _demoReelRect();
+  if (r) {
+    const { ra, CELL, GAP } = r;
+    // Extra reel slice, attached to the right of the reel area
+    const ex = ra.x + ra.w + GAP;
+    ov.appendChild(_posSlot('infinity.extra_reel_art', { x: ex, y: ra.y, w: CELL, h: ra.h }, { x: ex, y: ra.y, w: CELL, h: ra.h }, '+1 reel', c1, 'contain'));
+  }
+  // Counter badge — below reels
+  const bwP = Math.round(VPP.cw * 0.24), bhP = Math.round(VPP.ch * 0.05);
+  const bwL = Math.round(VPL.cw * 0.14), bhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('infinity.counter_badge',
+    { x: VPP.cx + Math.round((VPP.cw - bwP) / 2) - Math.round(bwP * 0.8), y: VPP.cy + Math.round(VPP.ch * 0.88), w: bwP, h: bhP },
+    { x: VPL.cx + Math.round((VPL.cw - bwL) / 2) - Math.round(bwL * 0.8), y: VPL.cy + Math.round(VPL.ch * 0.88), w: bwL, h: bhL },
+    '6 reels', c1));
+  // Multiplier frame — below, right of counter
+  const mwP = Math.round(VPP.cw * 0.22), mhP = Math.round(VPP.ch * 0.05);
+  const mwL = Math.round(VPL.cw * 0.14), mhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('infinity.multiplier_frame',
+    { x: VPP.cx + Math.round((VPP.cw - mwP) / 2) + Math.round(mwP * 0.8), y: VPP.cy + Math.round(VPP.ch * 0.88), w: mwP, h: mhP },
+    { x: VPL.cx + Math.round((VPL.cw - mwL) / 2) + Math.round(mwL * 0.8), y: VPL.cy + Math.round(VPL.ch * 0.88), w: mwL, h: mhL },
+    '×3 total', c1));
 }
 
 // ─── CLUSTER PAYS ───
 function _ovClusterPays(ov, cx, cy, cw, ch, c1){
-  const reelPos=EL_COMPUTED[P.viewport==='desktop'?'landscape':'portrait'];
-  if(!reelPos?.reelArea) return;
-  const ra=reelPos.reelArea;
-  const [cols,rows]=parseReel(P.reelset);
-  const CELL=EL_COMPUTED._cellSize?.[P.viewport==='desktop'?'landscape':'portrait']||120;
-  const GAP=8;
-  const clusterColor='#7a8aef';
-  // Highlight a cluster of 6 adjacent cells
-  const clusterCells=[[0,0],[1,0],[0,1],[1,1],[2,1],[1,2]];
-  clusterCells.forEach(([col,row])=>{
-    if(col>=cols||row>=rows) return;
-    const x=ra.x+col*(CELL+GAP), y=ra.y+row*(CELL+GAP);
-    const hl=_el('div',`position:absolute;left:${x}px;top:${y}px;width:${CELL}px;height:${CELL}px;background:${clusterColor}33;border:3px solid ${clusterColor};border-radius:12px`);
-    ov.appendChild(hl);
-  });
-  const info=_el('div',`position:absolute;left:${cx+20}px;top:${cy+ch-80}px;font-size:18px;color:#888;font-family:Space Grotesk,sans-serif`);
-  info.textContent=`Cluster of ${clusterCells.length} · No paylines needed`;
-  ov.appendChild(info);
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const r = _demoReelRect();
+  if (r) {
+    const { ra, CELL, GAP } = r;
+    const [cols, rows] = parseReel(P.reelset);
+    const cluster = [[0, 0], [1, 0], [0, 1], [1, 1], [2, 1], [1, 2]];
+    cluster.forEach(([col, row]) => {
+      if (col >= cols || row >= rows) return;
+      const x = ra.x + col * (CELL + GAP);
+      const y = ra.y + row * (CELL + GAP);
+      ov.appendChild(_posSlot('cluster.highlight', { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Cluster', c1, 'contain'));
+    });
+    // Trail FX attached to the centre of the cluster
+    const tx = ra.x + 1 * (CELL + GAP);
+    const ty = ra.y + 1 * (CELL + GAP);
+    ov.appendChild(_posSlot('cluster.trail_fx', { x: tx - CELL / 2, y: ty - CELL / 2, w: CELL * 2, h: CELL * 2 }, { x: tx - CELL / 2, y: ty - CELL / 2, w: CELL * 2, h: CELL * 2 }, 'Trail', c1, 'contain'));
+  }
+  // Size badge — bottom-left
+  const bwP = Math.round(VPP.cw * 0.26), bhP = Math.round(VPP.ch * 0.05);
+  const bwL = Math.round(VPL.cw * 0.16), bhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('cluster.count_badge',
+    { x: VPP.cx + Math.round(VPP.cw * 0.06), y: VPP.cy + Math.round(VPP.ch * 0.88), w: bwP, h: bhP },
+    { x: VPL.cx + Math.round(VPL.cw * 0.06), y: VPL.cy + Math.round(VPL.ch * 0.88), w: bwL, h: bhL },
+    'Cluster ×6', c1));
 }
 
 // ════════════════════════════════════════════════════════

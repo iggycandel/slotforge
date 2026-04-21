@@ -395,6 +395,140 @@ const superGamble: FeatureDef<SuperGambleSettings> = {
   screens: ['Super Gamble · Intro', 'Super Gamble · Ladder', 'Super Gamble · Outro'],
 }
 
+// ─── Tier B: reel-overlay features ──────────────────────────────────────────
+// These features decorate the base reel area during spins — no intro/outro
+// screens, just an "in-round" view with overlay art slots. The corresponding
+// SDEF entries reuse the base-game keys + their overlay function layers the
+// feature's art on top of the reels.
+
+const StickyWildSchema = z.object({
+  appliesIn: z.enum(['base', 'freespin', 'both']).default('freespin'),
+  maxLocked: z.number().int().min(1).max(15).default(5),
+  holdsUntil: z.enum(['feature_end', 'n_spins', 'no_new_wilds']).default('feature_end'),
+})
+const stickyWild: FeatureDef<z.infer<typeof StickyWildSchema>> = {
+  id: 'sticky_wild', label: 'Sticky Wild', group: 'wild',
+  description: 'Wilds remain locked in place for one or more subsequent spins.',
+  settingsSchema: StickyWildSchema, defaultSettings: StickyWildSchema.parse({}),
+  assetSlots: [
+    { key: 'stickywild.lock_frame',   label: 'Lock frame',         requirement: 'required',
+      description: 'Rendered around each sticky-locked reel cell.' },
+    { key: 'stickywild.badge',        label: '"STICKY" badge',     requirement: 'optional' },
+    { key: 'stickywild.counter_frame',label: 'Counter frame',      requirement: 'optional',
+      description: 'Shows total sticky wilds on the current round.' },
+  ],
+  screens: ['Sticky Wild'],
+}
+
+const WalkingWildSchema = z.object({
+  direction:      z.enum(['left', 'right', 'both']).default('left'),
+  stepsPerSpin:   z.number().int().min(1).max(3).default(1),
+  keepMultiplier: z.boolean().default(false),
+})
+const walkingWild: FeatureDef<z.infer<typeof WalkingWildSchema>> = {
+  id: 'walking_wild', label: 'Walking Wild', group: 'wild',
+  description: 'Wild shifts one or more reels per spin until it walks off the grid.',
+  settingsSchema: WalkingWildSchema, defaultSettings: WalkingWildSchema.parse({}),
+  assetSlots: [
+    { key: 'walkingwild.wild_frame', label: 'Wild cell frame',     requirement: 'required' },
+    { key: 'walkingwild.trail',      label: 'Movement trail',      requirement: 'optional',
+      description: 'Arrow / footprint art rendered on cells the wild will pass through.' },
+    { key: 'walkingwild.hint_label', label: '"Wild moves left" banner', requirement: 'optional' },
+  ],
+  screens: ['Walking Wild'],
+}
+
+const CascadeSchema = z.object({
+  avalanche:      z.boolean().default(true),
+  removesWilds:   z.boolean().default(false),
+  multiplierStep: z.number().int().min(0).max(5).default(1),
+})
+const cascade: FeatureDef<z.infer<typeof CascadeSchema>> = {
+  id: 'cascade', label: 'Cascade / Avalanche', group: 'cascade',
+  description: 'Winning symbols are removed; new symbols fall in to enable chain wins.',
+  settingsSchema: CascadeSchema, defaultSettings: CascadeSchema.parse({}),
+  assetSlots: [
+    { key: 'cascade.highlight',     label: 'Winning-cell highlight', requirement: 'required' },
+    { key: 'cascade.explosion_fx',  label: 'Explosion / dust FX',    requirement: 'optional' },
+    { key: 'cascade.falling_symbol',label: 'Incoming-symbol art',    requirement: 'optional',
+      description: 'Decorative art shown while new symbols drop in.' },
+    { key: 'cascade.chain_badge',   label: 'Chain counter badge',    requirement: 'optional' },
+  ],
+  screens: ['Cascade'],
+}
+
+const TumbleSchema = z.object({
+  avalanche:    z.boolean().default(true),
+  maxChainSize: z.number().int().min(3).max(12).default(6),
+})
+const tumble: FeatureDef<z.infer<typeof TumbleSchema>> = {
+  id: 'tumble', label: 'Tumble / Reel Collapse', group: 'cascade',
+  description: 'Winning symbols collapse out and are replaced from above, enabling chain wins.',
+  settingsSchema: TumbleSchema, defaultSettings: TumbleSchema.parse({}),
+  assetSlots: [
+    { key: 'tumble.highlight',    label: 'Winning-cell highlight', requirement: 'required' },
+    { key: 'tumble.trail_fx',     label: 'Collapse-trail FX',      requirement: 'optional' },
+    { key: 'tumble.chain_badge',  label: 'Chain counter badge',    requirement: 'optional' },
+  ],
+  screens: ['Tumble'],
+}
+
+const WinMultiplierSchema = z.object({
+  start:       z.number().int().min(1).default(1),
+  increment:   z.number().int().min(1).default(1),
+  cap:         z.number().int().min(2).default(10),
+  resetOnLoss: z.boolean().default(true),
+})
+const winMultiplier: FeatureDef<z.infer<typeof WinMultiplierSchema>> = {
+  id: 'win_multiplier', label: 'Win Multiplier Trail', group: 'cascade',
+  description: 'Consecutive wins within a single spin raise a visible multiplier counter.',
+  settingsSchema: WinMultiplierSchema, defaultSettings: WinMultiplierSchema.parse({}),
+  assetSlots: [
+    { key: 'winmult.frame',     label: 'Multiplier frame',  requirement: 'required',
+      description: 'Rendered over / beside the reels; holds the current multiplier value.' },
+    { key: 'winmult.glow_fx',   label: 'Glow / pulse FX',   requirement: 'optional' },
+    { key: 'winmult.ladder',    label: 'Optional ladder',   requirement: 'optional',
+      description: 'Shown alongside the frame when multiplier progression should be visible.' },
+  ],
+  screens: ['Win Multiplier'],
+}
+
+const ClusterPaysSchema = z.object({
+  minClusterSize: z.number().int().min(3).max(10).default(5),
+  connectedOnly:  z.boolean().default(true),
+})
+const clusterPays: FeatureDef<z.infer<typeof ClusterPaysSchema>> = {
+  id: 'cluster_pays', label: 'Cluster Pays', group: 'special',
+  description: 'Wins formed by clusters of adjacent matching symbols. Overlay highlights each cluster.',
+  settingsSchema: ClusterPaysSchema, defaultSettings: ClusterPaysSchema.parse({}),
+  assetSlots: [
+    { key: 'cluster.highlight',   label: 'Cluster highlight',    requirement: 'required',
+      description: 'Glow / outline rendered around every winning cluster.' },
+    { key: 'cluster.count_badge', label: 'Cluster size badge',   requirement: 'optional' },
+    { key: 'cluster.trail_fx',    label: 'Connection trail FX',  requirement: 'optional' },
+  ],
+  screens: ['Cluster Pays'],
+}
+
+const InfinityReelsSchema = z.object({
+  startReels:       z.number().int().min(3).max(6).default(4),
+  maxReels:         z.number().int().min(5).max(12).default(8),
+  multiplierPerAdd: z.number().int().min(0).max(5).default(1),
+})
+const infinityReels: FeatureDef<z.infer<typeof InfinityReelsSchema>> = {
+  id: 'infinity_reels', label: 'Infinity Reels', group: 'special',
+  description: 'Grid grows by one reel per consecutive winning spin.',
+  settingsSchema: InfinityReelsSchema, defaultSettings: InfinityReelsSchema.parse({}),
+  assetSlots: [
+    { key: 'infinity.extra_reel_art', label: 'Extra-reel art',        requirement: 'required',
+      description: 'Slice rendered to the right of the base grid each time a reel is added.' },
+    { key: 'infinity.counter_badge',  label: 'Reel counter badge',    requirement: 'optional' },
+    { key: 'infinity.multiplier_frame', label: 'Multiplier frame',    requirement: 'optional',
+      description: 'Ornament around the accumulated multiplier value.' },
+  ],
+  screens: ['Infinity Reels'],
+}
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -409,6 +543,14 @@ export const FEATURE_REGISTRY: Record<FeatureId, FeatureDef<any>> = {
   ladder_bonus:    ladderBonus,
   gamble:          gamble,
   super_gamble:    superGamble,
+  // Tier B — reel overlay decorations (in-round only)
+  sticky_wild:     stickyWild,
+  walking_wild:    walkingWild,
+  cascade:         cascade,
+  tumble:          tumble,
+  win_multiplier:  winMultiplier,
+  cluster_pays:    clusterPays,
+  infinity_reels:  infinityReels,
 }
 
 export const FEATURE_IDS = Object.keys(FEATURE_REGISTRY) as FeatureId[]

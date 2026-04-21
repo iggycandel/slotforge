@@ -32,6 +32,14 @@ export type FeatureId =
   | 'ladder_bonus'    // Ladder / Trail climbing bonus
   | 'gamble'          // Post-win double-or-nothing
   | 'super_gamble'    // Extended gamble ladder
+  // ─ Tier B: reel-area decoration overlays (no intro/outro) ─
+  | 'sticky_wild'     // Wilds stay put across respins
+  | 'walking_wild'    // Wild shifts one reel per spin
+  | 'cascade'         // Cascade / avalanche FX
+  | 'tumble'          // Tumble / falling-symbol FX
+  | 'win_multiplier'  // Counter frame on top of reels
+  | 'cluster_pays'    // Cluster highlight overlay
+  | 'infinity_reels'  // Extra-reel slice art
 
 export type FeatureGroup =
   | 'bonus'      // Bonus Rounds
