@@ -72,8 +72,10 @@ const RATIO_TABLE: Record<AspectRatio, RatioSpec> = {
 function resolveProvider(requested: AIProvider): 'runway' | 'openai' | 'mock' {
   // Short, distinct log marker so the line survives Vercel's log-preview
   // truncation and can be grepped by "[ai_env]".
-  const hasR = !!process.env.RUNWAY_API_KEY
-  const hasO = !!process.env.OPENAI_API_KEY
+  // Trim before truthy-check so a literal " " or "\n" pasted into the
+  // Vercel dashboard doesn't pass the gate and then 401 at the provider.
+  const hasR = !!process.env.RUNWAY_API_KEY?.trim()
+  const hasO = !!process.env.OPENAI_API_KEY?.trim()
   console.log(`[ai_env] requested=${requested} runway=${hasR} openai=${hasO}`)
   if (requested === 'auto') {
     if (hasR) return 'runway'
