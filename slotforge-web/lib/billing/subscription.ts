@@ -24,7 +24,14 @@ const FREE_SUB: OrgSubscription = {
   cancelAtPeriodEnd: false,
 }
 
-/** Fetch the active subscription for a Clerk org ID. Falls back to free. */
+/** Fetch the active subscription for a Clerk principal (user ID in this
+ *  app, since Clerk orgs aren't used). Source of truth is `workspaces.plan`
+ *  keyed by `clerk_org_id` — the `subscriptions` table schema (workspace_id,
+ *  stripe_sub_id) doesn't match what the old lookup queried (`org_id`),
+ *  which silently returned FREE_SUB for every user and kept everyone on the
+ *  free plan regardless of actual subscription state. Stripe-specific
+ *  metadata (customer/subscription IDs, period end) can be layered back in
+ *  once the subscriptions schema is harmonised with the webhook writer. */
 export async function getOrgSubscription(orgId: string): Promise<OrgSubscription> {
   if (!orgId) return FREE_SUB
 
@@ -32,21 +39,16 @@ export async function getOrgSubscription(orgId: string): Promise<OrgSubscription
     const supabase = createAdminClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
-      .from('subscriptions')
-      .select('*')
-      .eq('org_id', orgId)
+      .from('workspaces')
+      .select('plan')
+      .eq('clerk_org_id', orgId)
       .maybeSingle()
 
     if (error || !data) return FREE_SUB
 
     return {
-      plan:                  (data.plan as Plan) ?? 'free',
-      status:                data.status ?? 'active',
-      seatCount:             data.seat_count ?? 1,
-      stripeCustomerId:      data.stripe_customer_id,
-      stripeSubscriptionId:  data.stripe_subscription_id,
-      currentPeriodEnd:      data.current_period_end,
-      cancelAtPeriodEnd:     data.cancel_at_period_end ?? false,
+      ...FREE_SUB,
+      plan: (data.plan as Plan) ?? 'free',
     }
   } catch {
     return FREE_SUB
