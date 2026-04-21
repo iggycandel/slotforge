@@ -2679,7 +2679,12 @@ function _sendLayersUpdate(){
     if(!window._sfPayloadLoaded) return;
     var screen = P.screen || 'base';
     var sdef = SDEFS[screen];
-    if(!sdef || !sdef.keys) return;
+    // Expanding Wild screens (ew_<parent>) aren't in SDEFS but they render
+    // buildCanvas() base layers + buildEWOverlay feat-slots on top. Treat
+    // them like popup screens for the purpose of the panel enumeration so
+    // base layers (logo, reelFrame, etc.) show up alongside the EW slots.
+    var isEWScreen = typeof screen === 'string' && screen.indexOf('ew_') === 0;
+    if (!isEWScreen && (!sdef || !sdef.keys)) return;
     // On popup screens the underlying base game (logo, reelFrame, spin
     // button, bannerBet, …) is rendered behind the popup via the isPopup
     // branch in buildCanvas — but _sendLayersUpdate used to iterate only
@@ -2688,15 +2693,17 @@ function _sendLayersUpdate(){
     // anything that's actually drawn on canvas.
     var panelKeys = [];
     var seenBaseKey = new Set();
-    var isPopupScreen = sdef.group === 'popup' || screen === 'win';
-    if (isPopupScreen && typeof BASE_KEYS !== 'undefined') {
+    var isPopupScreen = sdef && (sdef.group === 'popup' || screen === 'win');
+    if ((isPopupScreen || isEWScreen) && typeof BASE_KEYS !== 'undefined') {
       BASE_KEYS.forEach(function(bk){
         if (!seenBaseKey.has(bk)) { seenBaseKey.add(bk); panelKeys.push(bk); }
       });
     }
-    sdef.keys.forEach(function(k){
-      if (!seenBaseKey.has(k)) { seenBaseKey.add(k); panelKeys.push(k); }
-    });
+    if (sdef && sdef.keys) {
+      sdef.keys.forEach(function(k){
+        if (!seenBaseKey.has(k)) { seenBaseKey.add(k); panelKeys.push(k); }
+      });
+    }
     var layers = [];
     panelKeys.forEach(function(k){
       var def = PSD[k]; if(!def) return;
@@ -2754,11 +2761,18 @@ function _sendLayersUpdate(){
 
     // Send highest-z first (visual Photoshop order)
     layers.sort(function(a,b){ return b.z - a.z; });
+    var screenLabel = sdef ? (sdef.label || screen) : screen;
+    if (isEWScreen) {
+      var parentScr = screen.replace('ew_','');
+      var parentLabel = SDEFS[parentScr]?.label || parentScr;
+      var ewName = P.expandWild?.wildSymbol || 'Expanding Wild';
+      screenLabel = ewName + ' (' + parentLabel + ')';
+    }
     window.parent.postMessage({
       type: 'SF_LAYERS_UPDATE',
       layers: layers,
       screen: screen,
-      screenLabel: (sdef.label||screen),
+      screenLabel: screenLabel,
     }, '*');
   } catch(ex){}
 }
@@ -3172,7 +3186,6 @@ function switchScreen(scr){
       // whether to build a new one, so switching between sub-tabs (In-round →
       // Outro / Intro) never leaks layers from the prior screen.
       document.getElementById('feature-screen-overlay')?.remove();
-      document.getElementById('ew-canvas-overlay')?.remove();
       const gf = document.getElementById('gf');
       // Fix H: build overlays synchronously inside the rAF callback (after
       // buildCanvas) instead of via a 60ms setTimeout. Eliminates the
@@ -3180,6 +3193,9 @@ function switchScreen(scr){
       if(scr.startsWith('ew_')){
         const parentScr=scr.replace('ew_','');
         if(gf) gf.appendChild(buildEWOverlay(parentScr));
+        // Replay stored feat-slot order so user reorders persist across
+        // screen switches — matches the featureDef.overlay path below.
+        try { _applyFeatSlotOrder(); } catch(e){}
       }
       const featureDef=SDEFS[scr];
       if(featureDef?.overlay && featureDef.overlay!=='generic'){
@@ -5521,101 +5537,100 @@ function rebuildTabs(){
 }
 
 // ═══ EXPANDING WILD CANVAS OVERLAY ═══
-// Draws the EW expansion pattern on top of the reel area
+// Renders only uploaded feat-slots for Expanding Wild. Prior versions drew
+// CSS glow columns, ↕/↔ badges and a "WILD EXPANDS" text tile that the user
+// could not select, move, reorder, or delete — which made the EW screen
+// behave unlike every other feature screen. It now dispatches through the
+// same _posSlot / _slot pipeline used by Sticky, Walking, Cascade, etc., so
+// the three EW asset slots (symbol / expanded_overlay / multiplier_badge)
+// participate fully in selection, drag, reorder, lock, hide, and delete.
 function buildEWOverlay(parentScr){
   computeLayout();
-  const ew=P.expandWild;
-  const[cols,rows]=parseReel(P.reelset);
-  const CELL=164,GAP=8,PAD=12;
-  const reelPos=getPos('reelArea');
-  const gridW=cols*CELL+(cols-1)*GAP;
-  const gridH=rows*CELL+(rows-1)*GAP;
-  const offX=reelPos.x+Math.round((reelPos.w-gridW)/2);
-  const offY=reelPos.y+Math.round((reelPos.h-gridH)/2);
+  const ew   = P.expandWild || {};
+  const [cols, rows] = parseReel(P.reelset);
+  const vp   = P.viewport === 'desktop' ? 'landscape' : P.viewport;
+  const CELL = (EL_COMPUTED._cellSize && EL_COMPUTED._cellSize[vp]) || 164;
+  const GAP  = 8;
+  const reelPos = getPos('reelArea');
+  const gridW   = cols * CELL + (cols - 1) * GAP;
+  const gridH   = rows * CELL + (rows - 1) * GAP;
+  const offX    = reelPos.x + Math.round((reelPos.w - gridW) / 2);
+  const offY    = reelPos.y + Math.round((reelPos.h - gridH) / 2);
+  const midRow  = Math.floor(rows / 2);
+  const c1      = P.colors.t1 ? P.colors.c1 : (ew.glowColor || '#e8c96d');
 
-  const overlay=document.createElement('div');
-  overlay.id='ew-canvas-overlay';
-  overlay.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:50';
+  const overlay = document.createElement('div');
+  // id matches the shared feature overlay container so cleanup at
+  // screen-switch (line ~3174) and _applyFeatSlotOrder() both find it.
+  overlay.id = 'feature-screen-overlay';
+  overlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:600';
 
-  const glow=ew.glowColor||'#e8c96d';
-
-  // For each reel the wild can land on, draw the expansion
-  ew.reels.forEach(reelN=>{
-    const col=reelN-1; if(col<0||col>=cols) return;
-    const cx=offX+col*(CELL+GAP);
-    const cy=offY;
-
-    const highlight=document.createElement('div');
-
-    if(ew.direction==='vertical'||ew.direction==='both'){
-      // Full reel column highlighted
-      highlight.style.cssText=`position:absolute;left:${cx-6}px;top:${cy-6}px;width:${CELL+12}px;height:${gridH+12}px;border:3px solid ${glow};border-radius:12px;background:${glow}14;box-shadow:0 0 30px ${glow}44;pointer-events:none`;
-      overlay.appendChild(highlight);
-      // If the user uploaded expandwild.expanded_overlay, layer it on top
-      // of the highlight so the preview reflects their art instead of the
-      // default glow. Cover-fit so the uploaded art fills the column.
-      if (EL_ASSETS['expandwild.expanded_overlay']) {
-        const imgWrap = document.createElement('div');
-        imgWrap.dataset.assetKey   = 'expandwild.expanded_overlay';
-        imgWrap.dataset.assetLabel = 'Expanded reel overlay';
-        imgWrap.style.cssText = `position:absolute;left:${cx-6}px;top:${cy-6}px;width:${CELL+12}px;height:${gridH+12}px;pointer-events:none;border-radius:12px;overflow:hidden`;
-        const img = document.createElement('img');
-        img.src = EL_ASSETS['expandwild.expanded_overlay'];
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
-        imgWrap.appendChild(img);
-        overlay.appendChild(imgWrap);
+  // Compute the footprint a single expansion covers, based on direction.
+  // For multi-reel setups, each active reel anchors its own footprint.
+  function expandedFootprint(col){
+    const cellX = offX + col * (CELL + GAP);
+    switch (ew.direction) {
+      case 'horizontal':
+        return { x: offX,  y: offY + midRow * (CELL + GAP), w: gridW, h: CELL };
+      case 'full':
+        return { x: offX,  y: offY, w: gridW, h: gridH };
+      case 'cross': {
+        // Represent as full column — one anchor is enough; the asset art
+        // itself can include the cross arm. Users can still resize if needed.
+        return { x: cellX, y: offY, w: CELL, h: gridH };
       }
-      // Expansion arrow
-      const arrow=document.createElement('div');
-      arrow.style.cssText=`position:absolute;left:${cx+CELL/2-16}px;top:${cy-44}px;width:32px;height:32px;border-radius:50%;background:${glow};display:flex;align-items:center;justify-content:center;font-size:18px;color:#1a1200;font-weight:700;box-shadow:0 0 20px ${glow}88`;
-      arrow.textContent='↕';
-      overlay.appendChild(arrow);
+      case 'vertical':
+      case 'both':
+      default:
+        return { x: cellX, y: offY, w: CELL, h: gridH };
     }
-    if(ew.direction==='horizontal'||ew.direction==='both'){
-      // Full row highlighted — show on all rows
-      for(let row=0;row<rows;row++){
-        const ry=offY+row*(CELL+GAP);
-        const rowH=document.createElement('div');
-        rowH.style.cssText=`position:absolute;left:${offX-6}px;top:${ry-4}px;width:${gridW+12}px;height:${CELL+8}px;border:2px solid ${glow}88;border-radius:8px;background:${glow}0a;pointer-events:none`;
-        overlay.appendChild(rowH);
-      }
-      const rarrow=document.createElement('div');
-      rarrow.style.cssText=`position:absolute;left:${offX-50}px;top:${offY+gridH/2-16}px;width:32px;height:32px;border-radius:50%;background:${glow};display:flex;align-items:center;justify-content:center;font-size:18px;color:#1a1200;font-weight:700;box-shadow:0 0 20px ${glow}88`;
-      rarrow.textContent='↔';
-      overlay.appendChild(rarrow);
-    }
-    if(ew.direction==='cross'){
-      // Column + row cross
-      const col_h=document.createElement('div');
-      col_h.style.cssText=`position:absolute;left:${cx-4}px;top:${cy-4}px;width:${CELL+8}px;height:${gridH+8}px;border:3px solid ${glow};border-radius:10px;background:${glow}14;box-shadow:0 0 30px ${glow}44`;
-      overlay.appendChild(col_h);
-      const midRow=Math.floor(rows/2);
-      const ry=offY+midRow*(CELL+GAP);
-      const row_h=document.createElement('div');
-      row_h.style.cssText=`position:absolute;left:${offX-4}px;top:${ry-4}px;width:${gridW+8}px;height:${CELL+8}px;border:2px solid ${glow}66;border-radius:8px;background:${glow}0c;pointer-events:none`;
-      overlay.appendChild(row_h);
-    }
-    if(ew.direction==='full'){
-      const full=document.createElement('div');
-      full.style.cssText=`position:absolute;left:${offX-8}px;top:${offY-8}px;width:${gridW+16}px;height:${gridH+16}px;border:4px solid ${glow};border-radius:14px;background:${glow}18;box-shadow:0 0 60px ${glow}55;pointer-events:none`;
-      overlay.appendChild(full);
-    }
+  }
 
-    // Wild symbol badge on the landing cell
-    const badge=document.createElement('div');
-    const midRow=Math.floor(rows/2);
-    const by=offY+midRow*(CELL+GAP);
-    badge.style.cssText=`position:absolute;left:${cx}px;top:${by}px;width:${CELL}px;height:${CELL}px;border-radius:8px;background:radial-gradient(circle at 40% 40%,${glow}55,${glow}11);border:3px solid ${glow};display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;z-index:2;box-shadow:0 0 40px ${glow}66`;
-    badge.innerHTML=`<div style="font-size:${Math.round(CELL*0.16)}px;font-weight:700;color:${glow};letter-spacing:.06em">${ew.wildSymbol||'WILD'}</div><div style="font-size:${Math.round(CELL*0.1)}px;color:${glow}99">EXPANDS</div>`;
-    overlay.appendChild(badge);
+  const activeReels = (ew.reels || []).filter(r => r >= 1 && r <= cols);
+  activeReels.forEach((reelN, i) => {
+    const col = reelN - 1;
+    const cellX = offX + col * (CELL + GAP);
+    const cellY = offY + midRow * (CELL + GAP);
+    const fp    = expandedFootprint(col);
+
+    if (i === 0) {
+      // Primary reel — anchors the three singleton feat-slots. These
+      // become draggable, resizable, layer-panel-listed entries.
+      overlay.appendChild(_posSlot('expandwild.symbol',
+        { x: cellX, y: cellY, w: CELL, h: CELL },
+        { x: cellX, y: cellY, w: CELL, h: CELL },
+        'Wild (un-expanded)', c1, 'contain'));
+
+      overlay.appendChild(_posSlot('expandwild.expanded_overlay',
+        fp, fp, 'Expanded overlay', c1, 'cover'));
+
+      // Multiplier badge — small, top-right of the wild cell
+      const bw = Math.max(Math.round(CELL * 0.42), 48);
+      const bh = Math.max(Math.round(CELL * 0.28), 32);
+      const bx = cellX + CELL - bw - 6;
+      const by = cellY + 6;
+      overlay.appendChild(_posSlot('expandwild.multiplier_badge',
+        { x: bx, y: by, w: bw, h: bh },
+        { x: bx, y: by, w: bw, h: bh },
+        'Multiplier', c1, 'contain'));
+    } else {
+      // Additional reels — shared-key mirrors (non-singleton, same asset
+      // shows in N places). Matches the bonuspick/ladder tile pattern.
+      overlay.appendChild(_slot('expandwild.symbol', cellX, cellY, CELL, CELL,
+        'Wild (un-expanded)', c1, 'contain'));
+      overlay.appendChild(_slot('expandwild.expanded_overlay', fp.x, fp.y, fp.w, fp.h,
+        'Expanded overlay', c1, 'cover'));
+    }
   });
 
-  // Screen label
-  const lbl=document.createElement('div');
-  const parentLabel=SDEFS[parentScr]?.label||parentScr;
-  lbl.style.cssText=`position:absolute;top:20px;left:50%;transform:translateX(-50%);background:${glow}22;border:2px solid ${glow}66;border-radius:8px;padding:8px 20px;font-size:22px;font-weight:600;color:${glow};letter-spacing:.1em;text-transform:uppercase;white-space:nowrap`;
-  lbl.textContent='Expanding Wild — '+parentLabel;
-  overlay.appendChild(lbl);
+  // Screen label — matches buildFeatureOverlay's own badge so EW looks
+  // consistent with every other feature screen.
+  const vpDef = VP[vp];
+  const badge = document.createElement('div');
+  const parentLabel = SDEFS[parentScr]?.label || parentScr;
+  badge.style.cssText = `position:absolute;top:${vpDef.cy + 18}px;left:${vpDef.cx + 20}px;background:#00000088;border:1px solid ${c1}66;border-radius:6px;padding:6px 16px;font-size:18px;font-weight:600;color:${c1};font-family:Space Grotesk,sans-serif;letter-spacing:.06em;text-transform:uppercase`;
+  badge.textContent = 'Expanding Wild — ' + parentLabel;
+  overlay.appendChild(badge);
 
   return overlay;
 }
@@ -8528,6 +8543,11 @@ window.addEventListener('resize',()=>{
 });
 function renderSplitView(){
   const savedVP=P.viewport;
+  // try/finally guarantees P.viewport is restored even if the forEach
+  // throws partway through (e.g. an asset decode or getPos() fails). Without
+  // this the editor would be stuck on 'landscape' while the toolbar label
+  // still said 'Portrait' — the reported orientation-flip bug.
+  try {
   ['portrait','landscape'].forEach(vp=>{
     const mode=vp==='portrait'?'p':'l';
     const host=document.getElementById('split-host-'+mode); if(!host) return;
@@ -8703,15 +8723,21 @@ function renderSplitView(){
     const editBtn=document.getElementById('split-edit-'+mode);
     if(editBtn) editBtn.classList.toggle('active-vp',savedVP===vp);
   });
-  P.viewport=savedVP; computeLayout();
+  } finally {
+    P.viewport=savedVP; computeLayout();
+  }
 }
 function splitSwitchVP(vp){
   document.getElementById('split-view').classList.remove('show');
-  // Switch main editor to this viewport
-  const vpBtns=document.querySelectorAll('[data-vp]');
-  vpBtns.forEach(b=>b.classList.toggle('on',b.dataset.vp===vp));
-  P.viewport=vp; computeLayout(); buildCanvas(); renderLayers();
-  document.getElementById('vp-current')&&(document.getElementById('vp-current').textContent=VP[vp]?.label||vp);
+  // Go through setViewport so ALL toolbar labels (sb-vp, vp-icon, vp-label)
+  // stay in sync. Previously this function only flipped P.viewport + the
+  // vpBtns checkmarks, which left the dropdown label ("Portrait") showing
+  // even after the canvas had switched to landscape — the user-reported
+  // orientation-flip bug.
+  setViewport(vp);
+  renderLayers();
+  const cur = document.getElementById('vp-current');
+  if (cur) cur.textContent = VP[vp]?.label||vp;
 }
 
 // ════════════════════════════════════════════════════════
@@ -9422,6 +9448,22 @@ function _applyFeatSlotOrder(){
 // current selection so resize handles + the gold outline survive rebuilds.
 function _rebuildFeatureOverlay(){
   try {
+    // Expanding Wild screens (ew_<parent>) aren't registered in SDEFS —
+    // they go through buildEWOverlay instead of buildFeatureOverlay. Route
+    // them here too so asset uploads / hide-toggles / settings changes on
+    // the EW screen rebuild the overlay like every other feature screen.
+    if (P.screen && P.screen.startsWith('ew_')) {
+      document.getElementById('feature-screen-overlay')?.remove();
+      const gfEW = document.getElementById('gf');
+      const parentScr = P.screen.replace('ew_','');
+      if (gfEW) gfEW.appendChild(buildEWOverlay(parentScr));
+      try { _applyFeatSlotOrder(); } catch(e) {}
+      if (SEL_KEY && PSD[SEL_KEY]?.type === 'feat_slot') {
+        try { selectEl(SEL_KEY); } catch(e) {}
+      }
+      _sendLayersUpdate();
+      return;
+    }
     const scr = SDEFS[P.screen];
     if (!scr || !scr.overlay || scr.overlay === 'generic') return;
     document.getElementById('feature-screen-overlay')?.remove();
