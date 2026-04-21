@@ -1,5 +1,5 @@
 // ═══ STATE ═══
-const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:true,t2:true,t3:true},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,win_sequence:true,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{}};
+const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:true,t2:true,t3:true},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,win_sequence:true,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{},featSlotOrders:{}};
 let LIB_CAT='All'; // active library category filter
 let LIB_TAB='uploads'; // 'uploads' or 'placeholders'
 
@@ -296,6 +296,7 @@ function serializeState(){
     lbs:       JSON.parse(JSON.stringify(P.ladderBonusSettings || {})),
     gbs:       JSON.parse(JSON.stringify(P.gambleSettings      || {})),
     sgs:       JSON.parse(JSON.stringify(P.superGambleSettings || {})),
+    fsOrd:     JSON.parse(JSON.stringify(P.featSlotOrders      || {})),
   });
 }
 function pushHistory(desc){
@@ -368,6 +369,7 @@ function restoreSnap(){
   if (s.lbs && P.ladderBonusSettings) Object.assign(P.ladderBonusSettings, s.lbs);
   if (s.gbs && P.gambleSettings)      Object.assign(P.gambleSettings,      s.gbs);
   if (s.sgs && P.superGambleSettings) Object.assign(P.superGambleSettings, s.sgs);
+  if (s.fsOrd) P.featSlotOrders = JSON.parse(JSON.stringify(s.fsOrd));
   SEL_KEY=null; buildCanvas(); renderLayers(); rebuildTabs(); updateUR();
   // buildCanvas() wipes #gf wholesale, which takes the #feature-screen-overlay
   // down with it. Without this rebuild, Ctrl+Z on a feature screen would
@@ -1958,6 +1960,10 @@ function selectEl(k){
   document.getElementById('ctx-lyr').textContent=PSD[k]?.label||k;
   document.getElementById('ctx-lyr').className='ct on';
   updateSelInfo();
+  // Notify the React Layers panel so the selected row highlights when the
+  // user clicks a layer on canvas. Without this push, the panel stayed on
+  // whatever row it had highlighted before the canvas click.
+  try { _sendLayersUpdate(); } catch(e) {}
 }
 function updateSelInfo(){
   if(!SEL_KEY)return;
@@ -3159,6 +3165,9 @@ function switchScreen(scr){
       if(featureDef?.overlay && featureDef.overlay!=='generic'){
         const ov=buildFeatureOverlay(scr, featureDef);
         if(ov && gf) gf.appendChild(ov);
+        // Replay the stored feat-slot order so user-reordered layers stay
+        // reordered when the user switches back to this screen.
+        try { _applyFeatSlotOrder(); } catch(e){}
       }
       // Push layers update unconditionally — screens without a feature
       // overlay still need the Layers panel refreshed (empty feature-slot set).
@@ -9319,6 +9328,89 @@ function _posSlot(key, defaultPortrait, defaultLandscape, label, c1, fit){
   return _slot(key, pos.x, pos.y, pos.w, pos.h, label, c1, fit, { singleton: true });
 }
 
+// ─── Feat-slot ordering (per-screen back→front key list) ────────────────────
+// Feat-slots aren't stored in SDEFS[screen].keys — they're rendered by each
+// overlay function via _posSlot. That means the shared layerReorder / drag-
+// to-reorder paths that operate on SDEFS.keys silently no-op on feat-slot
+// keys, and the Layers panel gets out of sync with the canvas.
+//
+// Solution: remember the desired back→front order per screen in
+// P.featSlotOrders[screen]. After each overlay rebuild, re-sort the DOM
+// children of #feature-screen-overlay to match — all four z-order buttons
+// (forward/back/front/back) and the drag-to-reorder op update this array.
+// Repeated-key slots (e.g. bonuspick.tile_closed, ladder steps) stay
+// grouped together at their key's position in the array.
+function _featSlotCurrentOrder(screen){
+  // Prefer the stored order if it exists; fall back to current DOM order.
+  const stored = P.featSlotOrders && P.featSlotOrders[screen];
+  if (stored && stored.length) return [...stored];
+  const out = [];
+  const seen = new Set();
+  const overlay = document.getElementById('feature-screen-overlay');
+  if (overlay) {
+    overlay.querySelectorAll('[data-asset-key]').forEach(el => {
+      const k = el.dataset.assetKey;
+      if (k && !seen.has(k)) { seen.add(k); out.push(k); }
+    });
+  }
+  return out;
+}
+function _featSlotReorder(key, action){
+  if (!key) return;
+  const screen = P.screen;
+  const order = _featSlotCurrentOrder(screen);
+  const idx = order.indexOf(key);
+  if (idx < 0) return;
+  order.splice(idx, 1);
+  if      (action === 'forward'  && idx < order.length) order.splice(idx + 1, 0, key);
+  else if (action === 'front')                          order.push(key);
+  else if (action === 'backward' && idx > 0)            order.splice(idx - 1, 0, key);
+  else if (action === 'back')                           order.unshift(key);
+  else                                                  order.splice(idx, 0, key);
+  if (!P.featSlotOrders) P.featSlotOrders = {};
+  P.featSlotOrders[screen] = order;
+}
+function _featSlotReorderBefore(key, targetKey, position){
+  const screen = P.screen;
+  const order = _featSlotCurrentOrder(screen);
+  const fromIdx = order.indexOf(key);
+  const toIdx   = order.indexOf(targetKey);
+  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return false;
+  order.splice(fromIdx, 1);
+  const insertIdx = order.indexOf(targetKey);
+  order.splice(position === 'before' ? insertIdx : insertIdx + 1, 0, key);
+  if (!P.featSlotOrders) P.featSlotOrders = {};
+  P.featSlotOrders[screen] = order;
+  return true;
+}
+// Re-sort the feature overlay's direct children to match
+// P.featSlotOrders[screen] (back→front, so DOM append order === stack order).
+// Keeps repeated-key groups together at their configured position.
+function _applyFeatSlotOrder(){
+  const screen  = P.screen;
+  const order   = P.featSlotOrders && P.featSlotOrders[screen];
+  const overlay = document.getElementById('feature-screen-overlay');
+  if (!order || !order.length || !overlay) return;
+  const grouped = new Map(); // key → array of elements
+  const others  = [];
+  Array.from(overlay.children).forEach(el => {
+    const k = el.dataset && el.dataset.assetKey;
+    if (!k) { others.push(el); return; }
+    if (!grouped.has(k)) grouped.set(k, []);
+    grouped.get(k).push(el);
+  });
+  // Re-append in the stored order; any key not in the order array keeps
+  // its current position relative to the rest.
+  order.forEach(key => {
+    const els = grouped.get(key);
+    if (els) { els.forEach(el => overlay.appendChild(el)); grouped.delete(key); }
+  });
+  grouped.forEach(els => els.forEach(el => overlay.appendChild(el)));
+  // Append non-asset-key children (badges, click-catchers) after asset
+  // layers so they stay on top of the slot art.
+  others.forEach(el => overlay.appendChild(el));
+}
+
 // ─── Feature overlay rebuild helper ──────────────────────────────────────────
 // Centralises the "remove old overlay, build fresh one, push layers panel"
 // pattern used after any state change that affects the feature canvas
@@ -9332,6 +9424,10 @@ function _rebuildFeatureOverlay(){
     const gf = document.getElementById('gf');
     const ov = buildFeatureOverlay(P.screen, scr);
     if (ov && gf) gf.appendChild(ov);
+    // Apply the user's stored feat-slot back→front order AFTER the overlay
+    // function appends its defaults — otherwise drag-to-reorder / z-forward /
+    // z-back in the Layers panel would silently revert on every rebuild.
+    try { _applyFeatSlotOrder(); } catch(e) {}
     // Reapply selection so feat-slot singletons keep their handles across
     // every rebuild (upload completion, settings change, hide toggle, etc.).
     if (SEL_KEY && PSD[SEL_KEY]?.type === 'feat_slot') {
@@ -11650,6 +11746,7 @@ window._sfApplyPayload = function(payload){
   try { if(s.ladderBonusSettings) Object.assign(P.ladderBonusSettings, s.ladderBonusSettings); } catch(e){}
   try { if(s.gambleSettings)      Object.assign(P.gambleSettings,      s.gambleSettings);      } catch(e){}
   try { if(s.superGambleSettings) Object.assign(P.superGambleSettings, s.superGambleSettings); } catch(e){}
+  try { if(s.featSlotOrders)      P.featSlotOrders = JSON.parse(JSON.stringify(s.featSlotOrders)); } catch(e){}
   // Restore character, ante, and other settings missing from earlier versions
   // Use explicit property assignment for boolean flags to avoid Object.assign edge-cases
   try {
@@ -11786,6 +11883,7 @@ window._sfBridge = (function(){
       ladderBonusSettings:JSON.parse(JSON.stringify(P.ladderBonusSettings || {})),
       gambleSettings:      JSON.parse(JSON.stringify(P.gambleSettings      || {})),
       superGambleSettings: JSON.parse(JSON.stringify(P.superGambleSettings || {})),
+      featSlotOrders:      JSON.parse(JSON.stringify(P.featSlotOrders      || {})),
       assets:           JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
       library:     JSON.parse(JSON.stringify(P.library  || [])),
       adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ    !== 'undefined' ? EL_ADJ    : {})),
@@ -12034,6 +12132,7 @@ window._sfBridge = (function(){
         ladderBonusSettings: p.ladderBonusSettings,
         gambleSettings:      p.gambleSettings,
         superGambleSettings: p.superGambleSettings,
+        featSlotOrders:      p.featSlotOrders,
         ovProps:           p.ovProps,
         ovPos:          p.ovPos,
         elVP:           p.elVP,
@@ -12168,23 +12267,49 @@ window._sfBridge = (function(){
         else if(op==='addLayer'){ document.getElementById('add-layer-btn')?.click(); }
         else if(op==='reorder' && k && msg.targetKey){
           var tgt=msg.targetKey;
-          var scr=SDEFS[P.screen];
-          if(scr&&scr.keys){
-            var arr=scr.keys;
-            var fromIdx=arr.indexOf(k);
-            var toIdx=arr.indexOf(tgt);
-            if(fromIdx!==-1&&toIdx!==-1&&fromIdx!==toIdx){
-              arr.splice(fromIdx,1);
-              toIdx=arr.indexOf(tgt);
-              arr.splice(msg.position==='before'?toIdx:toIdx+1,0,k);
-              buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); pushHistory('reorder '+k); markDirty();
+          // Feat-slot reorder — keys live outside SDEFS.keys, so route
+          // through the per-screen ordering array instead.
+          if (PSD[k] && PSD[k].type === 'feat_slot') {
+            var changed = _featSlotReorderBefore(k, tgt, msg.position);
+            if (changed) {
+              _rebuildFeatureOverlay(); renderLayers();
+              pushHistory('reorder '+k); markDirty();
+            }
+          } else {
+            var scr=SDEFS[P.screen];
+            if(scr&&scr.keys){
+              var arr=scr.keys;
+              var fromIdx=arr.indexOf(k);
+              var toIdx=arr.indexOf(tgt);
+              if(fromIdx!==-1&&toIdx!==-1&&fromIdx!==toIdx){
+                arr.splice(fromIdx,1);
+                toIdx=arr.indexOf(tgt);
+                arr.splice(msg.position==='before'?toIdx:toIdx+1,0,k);
+                buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); pushHistory('reorder '+k); markDirty();
+              }
             }
           }
         }
-        else if(op==='zForward'&&k){ layerReorder(k,'forward');  try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-forward '+k); }
-        else if(op==='zFront'&&k){   layerReorder(k,'front');    try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-front '+k); }
-        else if(op==='zBackward'&&k){ layerReorder(k,'backward'); try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-backward '+k); }
-        else if(op==='zBack'&&k){    layerReorder(k,'back');     try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-back '+k); }
+        else if(op==='zForward'&&k){
+          if (PSD[k] && PSD[k].type === 'feat_slot') { _featSlotReorder(k,'forward');  _rebuildFeatureOverlay(); renderLayers(); markDirty(); }
+          else { layerReorder(k,'forward');  try{_rebuildFeatureOverlay();}catch(e){} }
+          pushHistory('z-forward '+k);
+        }
+        else if(op==='zFront'&&k){
+          if (PSD[k] && PSD[k].type === 'feat_slot') { _featSlotReorder(k,'front');    _rebuildFeatureOverlay(); renderLayers(); markDirty(); }
+          else { layerReorder(k,'front');    try{_rebuildFeatureOverlay();}catch(e){} }
+          pushHistory('z-front '+k);
+        }
+        else if(op==='zBackward'&&k){
+          if (PSD[k] && PSD[k].type === 'feat_slot') { _featSlotReorder(k,'backward'); _rebuildFeatureOverlay(); renderLayers(); markDirty(); }
+          else { layerReorder(k,'backward'); try{_rebuildFeatureOverlay();}catch(e){} }
+          pushHistory('z-backward '+k);
+        }
+        else if(op==='zBack'&&k){
+          if (PSD[k] && PSD[k].type === 'feat_slot') { _featSlotReorder(k,'back');     _rebuildFeatureOverlay(); renderLayers(); markDirty(); }
+          else { layerReorder(k,'back');     try{_rebuildFeatureOverlay();}catch(e){} }
+          pushHistory('z-back '+k);
+        }
         else if(op==='addGroup'){
           var gNum=Object.keys(PSD).filter(function(x){return x.startsWith('group_');}).length+1;
           var gKey='group_'+gNum;
