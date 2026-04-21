@@ -2742,6 +2742,13 @@ function _sendLayersUpdate(){
           var k = node.getAttribute('data-asset-key');
           if (!k || seen.has(k)) return;
           seen.add(k);
+          // Skip feat-slots with no uploaded asset — empty slots render as
+          // invisible stubs on canvas (v88 _phSlot simplification), so listing
+          // them in the Layers panel just creates clutter for things the user
+          // cannot see. Assets workspace remains the discovery surface for
+          // unpopulated slots; once an asset is uploaded, the layer reappears
+          // here automatically on the next _sendLayersUpdate call.
+          if (!EL_ASSETS[k]) return;
           var label = node.getAttribute('data-asset-label') || k;
           layers.push({
             key:        k,
@@ -5204,13 +5211,21 @@ document.getElementById('ovp-close-btn')?.addEventListener('click',()=>{
   document.getElementById('ov-props-panel')?.classList.remove('show');
   deselectOv();
 });
-// Sync hex input → color picker and vice versa
+// Sync hex input → color picker and vice versa, and apply live on every
+// change so the canvas updates while the user drags the color picker
+// swatch — matches how font/weight/spacing already behave. Previously
+// only the hex display synced and color changes were held until the user
+// re-selected a font, which made the color picker feel broken.
 document.getElementById('ovp-color')?.addEventListener('input',function(){
   const hex=this.value;document.getElementById('ovp-color-hex').value=hex;
+  applyOvProps();
 });
 document.getElementById('ovp-color-hex')?.addEventListener('input',function(){
   const hex=this.value.trim();
-  if(/^#[0-9a-f]{6}$/i.test(hex)) document.getElementById('ovp-color').value=hex;
+  if(/^#[0-9a-f]{6}$/i.test(hex)) {
+    document.getElementById('ovp-color').value=hex;
+    applyOvProps();
+  }
 });
 // Live preview: pressing Enter in text field applies immediately
 document.getElementById('ovp-text')?.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();applyOvProps();}});
