@@ -319,6 +319,12 @@ function restoreSnap(){
   Object.keys(EL_MASKS).forEach(k=>delete EL_MASKS[k]);
   if(s.masks) Object.assign(EL_MASKS,s.masks);
   SEL_KEY=null; buildCanvas(); renderLayers(); rebuildTabs(); updateUR();
+  // buildCanvas() wipes #gf wholesale, which takes the #feature-screen-overlay
+  // down with it. Without this rebuild, Ctrl+Z on a feature screen would
+  // silently hide every feat-slot (HOLD & SPIN counter, jackpot badges,
+  // Free Spins counter etc.) until the user navigated away and back — even
+  // though the undone action was something unrelated like a move.
+  try { _rebuildFeatureOverlay(); } catch(e){}
 }
 function updateUR(){
   document.getElementById('btn-undo').disabled=HIDX<=0;
