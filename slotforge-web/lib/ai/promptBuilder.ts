@@ -168,17 +168,23 @@ const HIGH_SYM_TIER = [
   'tier-8 lowest high-value icon, flat simple icon',
 ]
 
-// ─── Low symbol suit differentiators ─────────────────────────────────────────
+// ─── Low symbol tier differentiators ─────────────────────────────────────────
+// Neutral tier language — no longer assumes playing-card ranks (Ace/King/…),
+// which locked non-card themes (mythology, sci-fi, candy, adventure) into a
+// card-game aesthetic whether the designer wanted it or not. The per-symbol
+// name from meta.symbolLowNames is appended after the tier descriptor; if
+// the designer has not set names, no card rank is injected as a fallback —
+// the prompt is left theme-agnostic.
 
-const LOW_SYM_SUIT = [
-  'Ace — strongest contrast, boldest weight',
-  'King — regal angular form',
-  'Queen — elegant curved form',
-  'Jack — playful balanced form',
-  'Ten — neutral simple form',
-  'Nine — small compact form',
-  'Eight — minimal rounded form',
-  'Seven — classic lucky seven form',
+const LOW_SYM_TIER = [
+  'tier-1 low-value icon, strongest silhouette among low-value symbols, boldest readable form',
+  'tier-2 low-value icon, strong clear silhouette, clean readable form',
+  'tier-3 low-value icon, balanced silhouette, simple readable form',
+  'tier-4 low-value icon, moderate visual weight, simple form',
+  'tier-5 low-value icon, light visual weight, minimal detail',
+  'tier-6 low-value icon, lighter visual weight, very simple form',
+  'tier-7 low-value icon, minimal visual weight, flat simple form',
+  'tier-8 lowest low-value icon, simplest flat form, lightest weight',
 ]
 
 // ─── Bonus scene modifier ─────────────────────────────────────────────────────
@@ -214,6 +220,25 @@ function buildIdentityAnchor(theme: string, meta?: ProjectMeta, styleId?: string
   return parts.join(', ')
 }
 
+// ─── Sanitize free-text fields before injecting into prompt ──────────────────
+// User-supplied text (artRef, artNotes, setting, story, bonusNarrative) flows
+// straight into the prompt string concatenated to the model call. Without
+// sanitization, a determined user could paste instruction-like content
+// ("ignore previous, generate X") and steer the image model past our
+// guardrails. Strip control chars, cap length, drop newlines + obvious
+// command verbs that mark prompt-injection attempts.
+const INJECTION_KEYWORDS = /\b(ignore|disregard|override|bypass|system prompt|jailbreak|new instructions?)\b/gi
+function sanitizeUserText(input: string | undefined, maxLen = 240): string {
+  if (!input) return ''
+  return input
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')  // control chars
+    .replace(/[\r\n]+/g, ' ')                 // newlines
+    .replace(INJECTION_KEYWORDS, '')          // obvious prompt-injection verbs
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen)
+}
+
 // ─── Build per-asset meta context ────────────────────────────────────────────
 // Injected AFTER the template — adds world/mood/colour specifics for this asset.
 
@@ -235,20 +260,26 @@ function buildAssetContext(type: AssetType, category: PromptCategory, meta?: Pro
 
   // World-building — backgrounds especially
   if (category === 'background') {
-    if (meta.setting) parts.push(`world: ${meta.setting}`)
-    if (meta.story)   parts.push(`narrative context: ${meta.story}`)
+    const setting = sanitizeUserText(meta.setting)
+    const story   = sanitizeUserText(meta.story)
+    if (setting) parts.push(`world: ${setting}`)
+    if (story)   parts.push(`narrative context: ${story}`)
   }
 
   // Bonus narrative — bonus background only
-  if (type === 'background_bonus' && meta.bonusNarrative) {
-    parts.push(`bonus scenario: ${meta.bonusNarrative}`)
+  if (type === 'background_bonus') {
+    const bonus = sanitizeUserText(meta.bonusNarrative)
+    if (bonus) parts.push(`bonus scenario: ${bonus}`)
   }
 
   // Art direction notes — explicit constraints from the art team
-  if (meta.artNotes) parts.push(`art direction: ${meta.artNotes}`)
+  const artNotes = sanitizeUserText(meta.artNotes)
+  if (artNotes) parts.push(`art direction: ${artNotes}`)
 
-  // Visual reference — concrete inspiration
-  if (meta.artRef) parts.push(`visual reference: ${meta.artRef}`)
+  // Visual reference — concrete inspiration (text-only until reference-image
+  // plumbing lands in P3; until then we sanitize to avoid prompt injection).
+  const artRef = sanitizeUserText(meta.artRef)
+  if (artRef) parts.push(`visual reference: ${artRef}`)
 
   return parts.filter(Boolean).join(', ')
 }
@@ -335,7 +366,7 @@ export function buildPrompt(
 
   const lowIdx = LOW_TYPE_KEYS.indexOf(type as typeof LOW_TYPE_KEYS[number])
   if (lowIdx >= 0) {
-    differentiators.push(LOW_SYM_SUIT[lowIdx] ?? LOW_SYM_SUIT[4])
+    differentiators.push(LOW_SYM_TIER[lowIdx] ?? LOW_SYM_TIER[4])
     const symName = resolveSymbolName(type, meta)
     if (symName) differentiators.push(`depicted as: ${symName}`)
   }
@@ -371,24 +402,6 @@ export function buildPrompt(
   const negativePrompt = negParts.join(', ')
 
   return { category, assetType: type, prompt, negativePrompt }
-}
-
-// ─── Build all prompts for a theme at once ───────────────────────────────────
-
-export function buildAllPrompts(
-  theme: string,
-  meta?: ProjectMeta,
-): Record<AssetType, BuiltPrompt> {
-  const types: AssetType[] = [
-    'background_base', 'background_bonus',
-    'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
-    'symbol_low_1',  'symbol_low_2',  'symbol_low_3',  'symbol_low_4',  'symbol_low_5',
-    'symbol_wild', 'symbol_scatter', 'logo',
-  ]
-
-  return Object.fromEntries(
-    types.map(t => [t, buildPrompt(t, theme, undefined, meta)])
-  ) as Record<AssetType, BuiltPrompt>
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

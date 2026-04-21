@@ -5,7 +5,14 @@
 
 export interface OpenAIGenerateOptions {
   prompt:        string
-  size?:         '1024x1024' | '1792x1024' | '1024x1792' | '1536x1024'
+  /**
+   * Supported sizes per model:
+   *   • gpt-image-1: 1024x1024, 1536x1024 (landscape), 1024x1536 (portrait)
+   *   • dall-e-3:    1024x1024, 1792x1024 (landscape), 1024x1792 (portrait)
+   * The lib/ai/index.ts RATIO_TABLE picks per-model; the union is the
+   * superset of both so the factory doesn't need split types.
+   */
+  size?:         '1024x1024' | '1792x1024' | '1024x1792' | '1536x1024' | '1024x1536'
   quality?:      'standard' | 'hd' | 'low' | 'medium' | 'high' | 'auto'
   model?:        'dall-e-3' | 'gpt-image-1'
   /** gpt-image-1 only — set to 'transparent' for cutout assets (symbols, UI elements) */

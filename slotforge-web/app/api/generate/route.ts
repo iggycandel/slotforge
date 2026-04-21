@@ -22,6 +22,8 @@ export const maxDuration = 300
 
 // ─── Request schema ──────────────────────────────────────────────────────────
 
+const RATIO_VALUES = ['1:1','3:2','2:3','16:9','9:16','3:1','4:1','1:4'] as const
+
 const RequestSchema = z.object({
   theme:        z.string().max(200).trim().default(''),
   project_id:   z.string().uuid(),
@@ -30,6 +32,8 @@ const RequestSchema = z.object({
   project_meta: z.record(z.unknown()).optional(),
   /** Subset of asset types to generate (fill-gaps mode). All types when omitted. */
   asset_types:  z.array(z.string()).optional(),
+  /** Optional batch-wide aspect ratio override. */
+  ratio:        z.enum(RATIO_VALUES).optional(),
 })
 
 // ─── SSE helper ─────────────────────────────────────────────────────────────
@@ -77,7 +81,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { theme, project_id, provider, style_id, project_meta, asset_types } = parsed.data
+  const { theme, project_id, provider, style_id, project_meta, asset_types, ratio } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -105,7 +109,7 @@ export async function POST(req: NextRequest) {
         emit('start', { total: TOTAL, theme, fillGaps: !!asset_types?.length })
 
         const pipelineResult = await generateSlotAssets(
-          { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined, asset_types: activeTypes },
+          { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined, asset_types: activeTypes, ratio },
           {
             onProgress: (completed, total, lastType) => {
               emit('progress', { completed, total, lastType })

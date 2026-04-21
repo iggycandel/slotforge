@@ -149,6 +149,21 @@ export interface GenerationResult {
   logo: GeneratedAsset
 }
 
+// ─── Aspect ratio ────────────────────────────────────────────────────────────
+// User-selectable output aspect ratio. Each provider is mapped to its nearest
+// supported size in lib/ai/index.ts. When the caller does not specify a ratio
+// we fall back to DEFAULT_RATIO_FOR_ASSET (also in lib/ai/index.ts) — which
+// encodes the natural aspect per asset type (symbols 1:1, logo 3:1, etc.).
+export type AspectRatio =
+  | '1:1'     // square — symbols, UI buttons, jackpot tier badges
+  | '3:2'     // classic background landscape
+  | '2:3'     // portrait — characters, tall overlays
+  | '16:9'    // wide banner — backgrounds in widescreen
+  | '9:16'    // vertical banner — mobile portrait
+  | '3:1'     // title banner — logo, intro/outro banners
+  | '4:1'     // extra-wide banner — HUD / footer rows
+  | '1:4'     // extra-tall column — expanded reel overlay
+
 // ─── Generation request ──────────────────────────────────────────────────────
 
 export interface GenerateRequest {
@@ -159,6 +174,9 @@ export interface GenerateRequest {
   project_meta?: ProjectMeta
   /** When set, only generate these specific types (used for "fill gaps" mode). */
   asset_types?: AssetType[]
+  /** Optional per-asset ratio override. Bulk calls apply this to every
+   *  asset unless the asset type has its own default. */
+  ratio?:       AspectRatio
 }
 
 export interface GenerateResponse {

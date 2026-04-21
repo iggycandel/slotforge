@@ -77,7 +77,10 @@ export async function generateSlotAssets(
     const results = await Promise.allSettled(
       batch.map(async type => {
         const built = buildPrompt(type, theme, req.style_id, meta)
-        const result = await generateImage(type, built, provider)
+        // Apply the optional batch-wide ratio override. Per-asset defaults
+        // still kick in for any asset whose caller didn't pass a ratio —
+        // see DEFAULT_RATIO_FOR_ASSET in lib/ai/index.ts.
+        const result = await generateImage(type, built, provider, { ratio: req.ratio })
         return { type, ...result, prompt: built.prompt }
       })
     )

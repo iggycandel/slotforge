@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spinative — Estructura de la App</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0f;
+    color: #e8e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 40px 32px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #5b5b7a;
+    margin-bottom: 32px;
+  }
+
+  h1 span {
+    color: #a78bfa;
+    margin-right: 8px;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────────── */
+  .diagram {
+    display: flex;
+    gap: 0;
+    align-items: flex-start;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+  }
+
+  .col-auth    { width: 160px; }
+  .col-shell   { width: 220px; margin-left: 40px; }
+  .col-pages   { width: 200px; margin-left: 40px; }
+  .col-credits { width: 200px; margin-left: 40px; }
+
+  /* ── Labels ──────────────────────────────────────────────────── */
+  .col-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: #3d3d5c;
+    margin-bottom: 4px;
+    padding-left: 2px;
+  }
+
+  /* ── Cards ───────────────────────────────────────────────────── */
+  .card {
+    border-radius: 10px;
+    padding: 14px 16px;
+    border: 1px solid;
+    position: relative;
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .card-sub {
+    font-size: 11px;
+    line-height: 1.5;
+    opacity: 0.65;
+  }
+
+  /* ── Colour themes ───────────────────────────────────────────── */
+  .c-auth    { background: #120f1f; border-color: #2d2450; }
+  .c-auth    .card-title { color: #a78bfa; }
+
+  .c-shell   { background: #0e1320; border-color: #1a2540; }
+  .c-shell   .card-title { color: #60a5fa; }
+
+  .c-page    { background: #0e1a14; border-color: #1a3028; }
+  .c-page    .card-title { color: #34d399; }
+
+  .c-credit  { background: #1a130e; border-color: #3a2010; }
+  .c-credit  .card-title { color: #fb923c; }
+
+  .c-locked  { background: #1a0e10; border-color: #3a1520; }
+  .c-locked  .card-title { color: #f87171; }
+
+  /* ── Special pill ───────────────────────────────────────────── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 99px;
+    margin-top: 6px;
+  }
+  .pill-purple { background: #2d1d5a; color: #c4b5fd; }
+  .pill-orange { background: #3a1f0a; color: #fb923c; }
+  .pill-green  { background: #0d2a1a; color: #6ee7b7; }
+  .pill-blue   { background: #0d1f3a; color: #93c5fd; }
+  .pill-red    { background: #3a0d12; color: #fca5a5; }
+
+  /* ── Connector arrows ────────────────────────────────────────── */
+  .connectors {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+  }
+
+  /* ── SVG arrows overlay ──────────────────────────────────────── */
+  .diagram-wrapper {
+    position: relative;
+  }
+
+  svg.arrows {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* ── Credit detail section ───────────────────────────────────── */
+  .credit-detail {
+    margin-top: 40px;
+    border-top: 1px solid #1e1e30;
+    padding-top: 32px;
+  }
+
+  .credit-detail h2 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fb923c;
+    margin-bottom: 20px;
+  }
+
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+  }
+
+  .flow-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .flow-box {
+    border-radius: 8px;
+    padding: 12px 16px;
+    border: 1px solid;
+    text-align: center;
+    min-width: 130px;
+  }
+
+  .flow-arrow {
+    font-size: 18px;
+    color: #2d2d50;
+    padding: 0 8px;
+    align-self: center;
+    margin-bottom: 20px;
+  }
+
+  .flow-label {
+    font-size: 10px;
+    color: #5b5b7a;
+    text-align: center;
+  }
+
+  .flow-title {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .fb-purple { background: #100d1f; border-color: #2d1d5a; }
+  .fb-purple .flow-title { color: #a78bfa; }
+
+  .fb-blue { background: #0d1220; border-color: #1a2540; }
+  .fb-blue .flow-title { color: #60a5fa; }
+
+  .fb-orange { background: #1a100a; border-color: #3a2010; }
+  .fb-orange .flow-title { color: #fb923c; }
+
+  .fb-green { background: #0a1a10; border-color: #1a3028; }
+  .fb-green .flow-title { color: #34d399; }
+
+  .fb-red { background: #1a0a0d; border-color: #3a1520; }
+  .fb-red .flow-title { color: #f87171; }
+
+  /* ── Plan table ──────────────────────────────────────────────── */
+  .plan-table {
+    margin-top: 40px;
+    border-top: 1px solid #1e1e30;
+    padding-top: 32px;
+  }
+
+  .plan-table h2 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #5b5b7a;
+    margin-bottom: 20px;
+  }
+
+  .plans {
+    display: flex;
+    gap: 16px;
+  }
+
+  .plan {
+    flex: 1;
+    border-radius: 10px;
+    padding: 20px;
+    border: 1px solid;
+  }
+
+  .plan-free     { background: #0d0d14; border-color: #1e1e30; }
+  .plan-free     .plan-name { color: #6b7280; }
+
+  .plan-freelancer { background: #0f0d1f; border-color: #2d1d5a; }
+  .plan-freelancer .plan-name { color: #a78bfa; }
+
+  .plan-studio   { background: #0d1220; border-color: #1a3060; }
+  .plan-studio   .plan-name { color: #60a5fa; }
+
+  .plan-name {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .plan-price {
+    font-size: 11px;
+    color: #5b5b7a;
+    margin-bottom: 14px;
+  }
+
+  .plan-feature {
+    font-size: 11px;
+    color: #9ca3af;
+    padding: 4px 0;
+    border-bottom: 1px solid #1a1a28;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .plan-feature:last-child { border-bottom: none; }
+
+  .dot-green { color: #34d399; }
+  .dot-red   { color: #f87171; }
+  .dot-orange { color: #fb923c; }
+</style>
+</head>
+<body>
+
+<h1><span>◈</span> Spinative — Mapa de la App & Flujo de Créditos</h1>
+
+<!-- ── MAIN DIAGRAM ──────────────────────────────────────────── -->
+<div class="diagram-wrapper">
+  <div class="diagram">
+
+    <!-- COL 1: Auth -->
+    <div class="col col-auth">
+      <div class="col-label">Acceso</div>
+
+      <div class="card c-auth">
+        <div class="card-title">Sign Up / Sign In</div>
+        <div class="card-sub">Clerk Auth<br>/sign-in · /sign-up</div>
+        <div class="pill pill-purple">🔐 Clerk</div>
+      </div>
+    </div>
+
+    <!-- COL 2: Shell -->
+    <div class="col col-shell">
+      <div class="col-label">App Shell</div>
+
+      <div class="card c-shell">
+        <div class="card-title">Header Global</div>
+        <div class="card-sub">Logo · Navegación · Usuario</div>
+        <div class="pill pill-orange">💎 Créditos restantes</div>
+      </div>
+
+      <div class="card c-shell" style="border-color:#1e3a50;">
+        <div class="card-title">Barra lateral</div>
+        <div class="card-sub">Proyectos · Workspace · Settings</div>
+      </div>
+    </div>
+
+    <!-- COL 3: Pages -->
+    <div class="col col-pages">
+      <div class="col-label">Páginas</div>
+
+      <div class="card c-page">
+        <div class="card-title">Dashboard /</div>
+        <div class="card-sub">Lista de proyectos<br>Crear nuevo proyecto</div>
+      </div>
+
+      <div class="card c-page">
+        <div class="card-title">Editor /editor</div>
+        <div class="card-sub">Canvas · Assets · Generate<br>Symbolizer · Feedback</div>
+        <div class="pill pill-orange">Usa créditos al generar</div>
+      </div>
+
+      <div class="card c-page">
+        <div class="card-title">Billing /billing</div>
+        <div class="card-sub">Pricing Table Stripe<br>Plan actual · Historial</div>
+        <div class="pill pill-green">Gestiona suscripción</div>
+      </div>
+
+      <div class="card c-page">
+        <div class="card-title">Settings /settings</div>
+        <div class="card-sub">Workspace name · Slug<br>Miembros del equipo</div>
+      </div>
+    </div>
+
+    <!-- COL 4: Credits -->
+    <div class="col col-credits">
+      <div class="col-label">Sistema de Créditos</div>
+
+      <div class="card c-credit">
+        <div class="card-title">Indicador Header</div>
+        <div class="card-sub">Muestra créditos usados<br>vs. créditos del plan</div>
+        <div class="pill pill-orange">Visible siempre</div>
+      </div>
+
+      <div class="card c-credit">
+        <div class="card-title">Tabla credit_usage</div>
+        <div class="card-sub">org_id + mes → usado<br>Se incrementa por IA</div>
+        <div class="pill pill-blue">Supabase DB</div>
+      </div>
+
+      <div class="card c-locked">
+        <div class="card-title">Gate Modal</div>
+        <div class="card-sub">Aparece al superar<br>el límite del plan</div>
+        <div class="pill pill-red">→ Upgrade a Studio</div>
+      </div>
+
+      <div class="card c-credit" style="border-color:#1a3028;">
+        <div class="card-title">Webhook Stripe</div>
+        <div class="card-sub">Actualiza plan en DB<br>al pagar suscripción</div>
+        <div class="pill pill-green">POST /api/webhooks/stripe</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── CREDIT FLOW ────────────────────────────────────────────── -->
+<div class="credit-detail">
+  <h2>⚡ Flujo completo: cómo se consumen los créditos</h2>
+
+  <div class="flow-row">
+
+    <div class="flow-step">
+      <div class="flow-box fb-purple">
+        <div class="flow-title">Usuario en el Editor</div>
+      </div>
+      <div class="flow-label">Abre pestaña Generate</div>
+    </div>
+
+    <div class="flow-arrow">→</div>
+
+    <div class="flow-step">
+      <div class="flow-box fb-blue">
+        <div class="flow-title">Pulsa "Generate"</div>
+      </div>
+      <div class="flow-label">Llama a /api/generate</div>
+    </div>
+
+    <div class="flow-arrow">→</div>
+
+    <div class="flow-step">
+      <div class="flow-box fb-orange">
+        <div class="flow-title">Comprueba créditos</div>
+      </div>
+      <div class="flow-label">Lee credit_usage en DB</div>
+    </div>
+
+    <div class="flow-arrow">→</div>
+
+    <div class="flow-step">
+      <div class="flow-box fb-orange">
+        <div class="flow-title">Genera imagen (OpenAI)</div>
+      </div>
+      <div class="flow-label">+1 crédito usado en DB</div>
+    </div>
+
+    <div class="flow-arrow">→</div>
+
+    <div class="flow-step">
+      <div class="flow-box fb-blue">
+        <div class="flow-title">Header se actualiza</div>
+      </div>
+      <div class="flow-label">Indicador muestra nuevo total</div>
+    </div>
+
+  </div>
+
+  <div style="margin-top: 16px; display: flex; gap: 12px; align-items: center;">
+    <div class="flow-arrow" style="padding:0; font-size:14px; color:#5b5b7a; margin-bottom:0;">Si se supera el límite →</div>
+    <div class="flow-box fb-red" style="min-width: 0; padding: 10px 14px;">
+      <div class="flow-title">Gate Modal aparece</div>
+    </div>
+    <div class="flow-arrow" style="padding:0 8px; margin-bottom:0;">→</div>
+    <div class="flow-box fb-green" style="min-width: 0; padding: 10px 14px;">
+      <div class="flow-title">Usuario va a /billing</div>
+    </div>
+    <div class="flow-arrow" style="padding:0 8px; margin-bottom:0;">→</div>
+    <div class="flow-box fb-purple" style="min-width: 0; padding: 10px 14px;">
+      <div class="flow-title">Stripe Checkout</div>
+    </div>
+    <div class="flow-arrow" style="padding:0 8px; margin-bottom:0;">→</div>
+    <div class="flow-box fb-green" style="min-width: 0; padding: 10px 14px;">
+      <div class="flow-title">Webhook activa plan</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PLAN TABLE ─────────────────────────────────────────────── -->
+<div class="plan-table">
+  <h2>Planes y límites de créditos</h2>
+
+  <div class="plans">
+
+    <div class="plan plan-free">
+      <div class="plan-name">Free</div>
+      <div class="plan-price">€0 / mes</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> 5 créditos / mes</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> 1 proyecto</div>
+      <div class="plan-feature"><span class="dot-red">✗</span> Sin exportación HD</div>
+      <div class="plan-feature"><span class="dot-red">✗</span> Sin acceso a todos los estilos</div>
+      <div class="plan-feature"><span class="dot-red">✗</span> Sin Symbolizer</div>
+    </div>
+
+    <div class="plan plan-freelancer">
+      <div class="plan-name">Freelancer</div>
+      <div class="plan-price">€29 / mes · 1 seat</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> 50 créditos / mes</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> Proyectos ilimitados</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> Exportación HD</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> Todos los estilos gráficos</div>
+      <div class="plan-feature"><span class="dot-red">✗</span> Sin Symbolizer</div>
+    </div>
+
+    <div class="plan plan-studio">
+      <div class="plan-name">Studio</div>
+      <div class="plan-price">€49 / mes · hasta 5 seats</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> 200 créditos / mes</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> Proyectos ilimitados</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> Exportación HD</div>
+      <div class="plan-feature"><span class="dot-green">✓</span> Todos los estilos gráficos</div>
+      <div class="plan-feature"><span class="dot-orange">✓</span> Symbolizer completo</div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

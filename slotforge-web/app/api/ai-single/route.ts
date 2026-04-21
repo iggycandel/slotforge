@@ -48,6 +48,8 @@ const VALID_ASSET_TYPES: AssetType[] = [
 
 const VALID_ASSET_TYPE_SET = new Set<string>(VALID_ASSET_TYPES as string[])
 
+const RATIO_VALUES = ['1:1','3:2','2:3','16:9','9:16','3:1','4:1','1:4'] as const
+
 const RequestSchema = z.object({
   asset_type:    z.string().refine(
     v => VALID_ASSET_TYPE_SET.has(v) || isFeatureSlotKey(v),
@@ -61,6 +63,9 @@ const RequestSchema = z.object({
   custom_prompt: z.string().max(2000).optional(),
   // Rich project meta from the Theme panel — fed into prompt building
   project_meta:  z.record(z.unknown()).optional(),
+  // Optional aspect ratio override. When omitted, lib/ai/index.ts chooses
+  // the natural default for this asset type (symbols 1:1, logo 3:1, etc.)
+  ratio:         z.enum(RATIO_VALUES).optional(),
 })
 
 // ─── Route handler ───────────────────────────────────────────────────────────
@@ -101,7 +106,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta } = parsed.data
+  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta, ratio } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -127,7 +132,7 @@ export async function POST(req: NextRequest) {
     // generateImage / uploadGeneratedAsset both type their asset-key param as
     // AssetType, but they operate on the string underneath. Cast is safe for
     // feature slot keys — the storage layer preserves whatever key we pass.
-    const generated = await generateImage(asset_type as AssetType, built, provider)
+    const generated = await generateImage(asset_type as AssetType, built, provider, { ratio })
 
     // ── Upload to Supabase Storage + insert DB record ─────────────────────────
     const asset = await uploadGeneratedAsset(
