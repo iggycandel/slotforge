@@ -583,8 +583,8 @@ function AssetLibraryContent({
                ?? '')}
           projectMeta={projectMeta ?? {}}
           defaultStyleId={projectMeta?.styleId as string | undefined}
-          onGenerated={(key, url) => {
-            onAddToCanvas(key as AssetType, url)
+          onGenerated={(key, asset) => {
+            onAddToCanvas(key as AssetType, asset.url)
           }}
           onReloadAssets={loadAssets}
         />

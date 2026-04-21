@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useRef, useState } from 'react'
 import { X, Sparkles, Loader2, Upload, ImageIcon, Info } from 'lucide-react'
-import type { AspectRatio } from '@/types/assets'
+import type { AspectRatio, GeneratedAsset } from '@/types/assets'
 import { GRAPHIC_STYLES }    from '@/lib/ai/styles'
 
 export interface SingleGeneratePopupProps {
@@ -27,10 +27,13 @@ export interface SingleGeneratePopupProps {
   projectMeta:     Record<string, unknown>
   /** Style id currently set on the project — pre-selects the dropdown. */
   defaultStyleId?: string
-  /** Called on successful generation with the new asset URL. */
-  onGenerated:     (assetKey: string, url: string) => void
-  /** Trigger a refetch of the assets list after a successful generation. */
-  onReloadAssets:  () => void
+  /** Called on successful generation with the full asset record. Callers
+   *  that only need the URL can read `asset.url`. */
+  onGenerated:     (assetKey: string, asset: GeneratedAsset) => void
+  /** Trigger a refetch of the assets list after a successful generation.
+   *  Optional — workspaces that manage their own asset state (AssetsWorkspace)
+   *  can skip this and update via onGenerated instead. */
+  onReloadAssets?: () => void
 }
 
 // ─── Ratio presets with preview rectangles ──────────────────────────────────
@@ -161,10 +164,10 @@ export function SingleGeneratePopup({
       if (!res.ok || data?.error) {
         throw new Error(data?.error ?? `Generation failed (${res.status})`)
       }
-      const url = (data?.asset?.url ?? data?.url) as string | undefined
-      if (!url) throw new Error('Generation returned no URL')
-      onGenerated(slotKey, url)
-      onReloadAssets()
+      const asset = data?.asset as GeneratedAsset | undefined
+      if (!asset?.url) throw new Error('Generation returned no URL')
+      onGenerated(slotKey, asset)
+      onReloadAssets?.()
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Generation failed')

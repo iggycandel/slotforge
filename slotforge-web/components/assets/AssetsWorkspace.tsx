@@ -22,6 +22,7 @@ import type { FeatureDef, FeatureId, AssetSlot } from '@/types/features'
 import { activeAssetSlots } from '@/types/features'
 import { FEATURE_REGISTRY } from '@/lib/features/registry'
 import { GRAPHIC_STYLES } from '@/lib/ai/styles'
+import { SingleGeneratePopup } from '@/components/generate/SingleGeneratePopup'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -288,6 +289,14 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const [regenTarget, setRegenTarget] = useState<AssetType | null>(null)
   const [customPrompt, setCustomPrompt] = useState('')
 
+  // Slot the single-asset regenerate popup (Popup A) is open for.
+  // null = closed. Holds both legacy AssetType keys and feature slot keys.
+  const [popupSlot, setPopupSlot] = useState<{
+    key:    string
+    label:  string
+    url?:   string
+  } | null>(null)
+
   // Failed asset tracking — populated after each batch, cleared on next run
   const [failedTypes, setFailedTypes] = useState<Set<AssetType>>(new Set())
 
@@ -485,51 +494,25 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
   // ─── Single-asset regeneration ──────────────────────────────────────────────
 
-  const handleRegen = useCallback(async (assetType: AssetType, overridePrompt?: string) => {
-    setRegenTarget(assetType)
-    addLog(`Generating ${assetType}…`)
-
-    try {
-      const res = await fetch('/api/ai-single', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          asset_type:    assetType,
-          theme:         theme.trim(),
-          project_id:    projectId,
-          provider,
-          style_id:      styleId || undefined,
-          custom_prompt: overridePrompt || undefined,
-          project_meta:  projectMeta ?? undefined,
-        }),
-      })
-
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        // Show gate modal for plan/credit errors
-        if (json.error === 'upgrade_required') { setGateModal({ type: 'upgrade' }); return }
-        if (json.error === 'credits_exhausted') { setGateModal({ type: 'credits' }); return }
-        addLog(`Regen error: ${json.error ?? 'Failed'}`)
-        return
-      }
-
-      const newAsset = json.asset as GeneratedAsset
-      // Only store the asset if it has a valid URL — never count blanks as generated
-      if (!newAsset?.url) {
-        addLog(`Regen error: no image returned for ${assetType}`)
-        return
-      }
-      setAssets(prev => ({ ...prev, [assetType]: newAsset }))
-      setAssetHistory(prev => ({ ...prev, [assetType]: [newAsset, ...(prev[assetType] ?? [])] }))
-      setFailedTypes(prev => { const s = new Set(prev); s.delete(assetType); return s })
-      setRightTab('inspector')
-      addLog(`✓ Regenerated ${assetType}`)
-    } catch (err) {
-      addLog(`Regen error: ${err instanceof Error ? err.message : 'Failed'}`)
-    } finally {
-      setRegenTarget(null)
-    }
-  }, [theme, projectId, provider, styleId, addLog])
+  // Open the Single regenerate popup (Popup A). The popup handles the
+  // /api/ai-single call with user-selected ratio / style / custom prompt /
+  // references; on success its onGenerated callback (below, inside the
+  // render block) updates `assets` + `assetHistory` and clears failedTypes.
+  // Gate-modal routing (upgrade_required / credits_exhausted) still fires
+  // on bulk generate — single-asset errors surface in the popup itself.
+  //
+  // `overridePrompt` is kept as an optional arg for future callers that
+  // want to preseed the popup's textarea; the popup's own custom_prompt
+  // textarea is the primary entry point now.
+  const handleRegen = useCallback((assetType: AssetType, _overridePrompt?: string) => {
+    const label = (ASSET_LABELS as Record<string, string>)[assetType] ?? assetType
+    setPopupSlot({
+      key:   assetType,
+      label,
+      url:   assets[assetType]?.url,
+    })
+    return Promise.resolve()
+  }, [assets])
 
   // ─── User upload ─────────────────────────────────────────────────────────────
 
@@ -602,42 +585,24 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     }
   }, [projectId, theme, addLog])
 
-  // AI generate for a feature slot via /api/ai-single. Same endpoint as legacy
-  // regens — route now accepts namespaced slot keys and dispatches to
-  // buildFeatureSlotPrompt internally.
-  const handleFeatureSlotGenerate = useCallback(async (slotKey: string): Promise<{ ok: boolean; error?: string }> => {
-    addLog(`✦ Generating ${slotKey}…`)
-    try {
-      const res = await fetch('/api/ai-single', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          asset_type:   slotKey,
-          theme:        theme || '',
-          project_id:   projectId,
-          provider:     provider === 'mock' ? 'auto' : 'auto',
-          style_id:     styleId || undefined,
-          project_meta: projectMeta,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        const msg = json.error ?? `Generation failed (${res.status})`
-        addLog(`✗ ${slotKey} — ${msg}`)
-        return { ok: false, error: String(msg) }
-      }
-      const newAsset: GeneratedAsset = json.asset
-      if (newAsset) {
-        setFeatureAssets(prev => ({ ...prev, [slotKey]: newAsset }))
-      }
-      addLog(`✓ Generated ${slotKey}`)
-      return { ok: true }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Network error'
-      addLog(`✗ ${slotKey} — ${msg}`)
-      return { ok: false, error: msg }
+  // Open the Single regenerate popup for a feature slot. Same flow as
+  // handleRegen above; the popup's onGenerated updates featureAssets
+  // instead of the legacy assets map.
+  const handleFeatureSlotGenerate = useCallback((slotKey: string): Promise<{ ok: boolean; error?: string }> => {
+    // Resolve a nice header label ("Bonus Pick · Background") from the
+    // registry so the popup doesn't show a raw namespaced key.
+    let label = slotKey
+    for (const fdef of Object.values(FEATURE_REGISTRY) as FeatureDef[]) {
+      const slot = fdef.assetSlots.find(s => s.key === slotKey)
+      if (slot) { label = `${fdef.label} · ${slot.label}`; break }
     }
-  }, [projectId, theme, styleId, projectMeta, addLog])
+    setPopupSlot({
+      key:   slotKey,
+      label,
+      url:   featureAssets[slotKey]?.url,
+    })
+    return Promise.resolve({ ok: true })
+  }, [featureAssets])
 
   // ─── Computed values ────────────────────────────────────────────────────────
 
@@ -1039,6 +1004,37 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         />
       </div>
     </div>
+
+    {/* Single-asset regenerate popup (Popup A). Shown whenever the user
+        clicks ✨ on a base-game tile or a feature slot row. Routes the new
+        asset into `assets` vs `featureAssets` based on whether the key
+        belongs to FEATURE_SLOT_KEYS, and updates history + clears the
+        failedTypes flag so the tile stops showing red. */}
+    {popupSlot && (
+      <SingleGeneratePopup
+        open={!!popupSlot}
+        onClose={() => setPopupSlot(null)}
+        slotKey={popupSlot.key}
+        slotLabel={popupSlot.label}
+        currentUrl={popupSlot.url}
+        projectId={projectId}
+        theme={theme}
+        projectMeta={(projectMeta ?? {}) as Record<string, unknown>}
+        defaultStyleId={styleId || undefined}
+        onGenerated={(key, asset) => {
+          if (FEATURE_SLOT_KEYS.has(key)) {
+            setFeatureAssets(prev => ({ ...prev, [key]: asset }))
+          } else {
+            const at = key as AssetType
+            setAssets(prev => ({ ...prev, [at]: asset }))
+            setAssetHistory(prev => ({ ...prev, [at]: [asset, ...(prev[at] ?? [])] }))
+            setFailedTypes(prev => { const s = new Set(prev); s.delete(at); return s })
+            setRightTab('inspector')
+          }
+          addLog(`✓ Generated ${key}`)
+        }}
+      />
+    )}
     </>
   )
 }
