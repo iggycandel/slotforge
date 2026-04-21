@@ -324,6 +324,77 @@ const ladderBonus: FeatureDef<LadderBonusSettings> = {
   screens: ['Ladder Bonus · Intro', 'Ladder Bonus · Climb', 'Ladder Bonus · Outro'],
 }
 
+// ─── 9. Gamble (classic double-or-nothing) ──────────────────────────────────
+// Post-win gamble — player bets the current win on a card/coin/colour pick.
+// Correct guess doubles the prize; wrong guess loses it. Rounds continue
+// until the player collects or a ceiling is hit.
+
+const GambleSchema = z.object({
+  maxRounds:        z.number().int().min(1).max(10).default(5),
+  gambleType:       z.enum(['card_color', 'card_suit', 'coin', 'number']).default('card_color'),
+  winChance:        z.number().min(0.05).max(0.95).default(0.5),
+  minWinToGamble:   z.number().min(0).default(0),
+})
+type GambleSettings = z.infer<typeof GambleSchema>
+
+const gamble: FeatureDef<GambleSettings> = {
+  id:          'gamble',
+  label:       'Gamble',
+  group:       'gamble',
+  description: 'Post-win double-or-nothing on a card, coin or colour pick. Each correct guess doubles the prize.',
+  settingsSchema:  GambleSchema,
+  defaultSettings: GambleSchema.parse({}),
+  assetSlots: [
+    { key: 'gamble.bg',               label: 'Background',          requirement: 'required' },
+    { key: 'gamble.header',           label: '"Gamble?" header',    requirement: 'optional' },
+    { key: 'gamble.pick_element',     label: 'Pick element',        requirement: 'required',
+      description: 'The card / coin / wheel the player picks (rendered centered).' },
+    { key: 'gamble.option_a',         label: 'Option A art',        requirement: 'required',
+      description: 'e.g. Red / Heads / Hearts — left pick button.' },
+    { key: 'gamble.option_b',         label: 'Option B art',        requirement: 'required',
+      description: 'e.g. Black / Tails / Spades — right pick button.' },
+    { key: 'gamble.button_collect',   label: 'Collect button',      requirement: 'required' },
+    { key: 'gamble.meter',            label: 'Round meter',         requirement: 'optional',
+      description: 'Shows "Round X of Y" above or beside the pick element.' },
+    { key: 'gamble.footer',           label: 'Prize / status bar',  requirement: 'optional' },
+  ],
+  screens: ['Gamble · Intro', 'Gamble · Pick', 'Gamble · Outro'],
+}
+
+// ─── 10. Super Gamble (extended ladder) ────────────────────────────────────
+// Steps are typed (some safer, some risky) and capped at a configurable
+// maximum — the player can choose how far to climb before collecting.
+
+const SuperGambleSchema = z.object({
+  maxSteps:         z.number().int().min(3).max(10).default(5),
+  baseMultiplier:   z.number().min(1.5).max(5).default(2),
+  bustProbability:  z.number().min(0).max(0.5).default(0.1),
+  collectEveryStep: z.boolean().default(true),
+})
+type SuperGambleSettings = z.infer<typeof SuperGambleSchema>
+
+const superGamble: FeatureDef<SuperGambleSettings> = {
+  id:          'super_gamble',
+  label:       'Super Gamble',
+  group:       'gamble',
+  description: 'Extended gamble ladder with multiple steps up to a capped maximum — risk the prize for a bigger multiplier.',
+  settingsSchema:  SuperGambleSchema,
+  defaultSettings: SuperGambleSchema.parse({}),
+  assetSlots: [
+    { key: 'supergamble.bg',            label: 'Background',        requirement: 'required' },
+    { key: 'supergamble.header',        label: 'Header art',        requirement: 'optional' },
+    { key: 'supergamble.step',          label: 'Ladder step tile',  requirement: 'required',
+      description: 'Shared tile rendered once per step. Multiplier value is a CSS overlay on top.' },
+    { key: 'supergamble.step_active',   label: 'Step (current)',    requirement: 'optional' },
+    { key: 'supergamble.meter',         label: 'Multiplier meter',  requirement: 'optional',
+      description: 'Ornamental frame that wraps the current prize total.' },
+    { key: 'supergamble.button_collect',label: 'Collect button',    requirement: 'required' },
+    { key: 'supergamble.button_gamble', label: 'Gamble button',     requirement: 'required' },
+    { key: 'supergamble.footer',        label: 'Prize / status bar',requirement: 'optional' },
+  ],
+  screens: ['Super Gamble · Intro', 'Super Gamble · Ladder', 'Super Gamble · Outro'],
+}
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -336,6 +407,8 @@ export const FEATURE_REGISTRY: Record<FeatureId, FeatureDef<any>> = {
   win_sequence:    winSequence,
   wheel_bonus:     wheelBonus,
   ladder_bonus:    ladderBonus,
+  gamble:          gamble,
+  super_gamble:    superGamble,
 }
 
 export const FEATURE_IDS = Object.keys(FEATURE_REGISTRY) as FeatureId[]

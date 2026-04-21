@@ -30,6 +30,8 @@ export type FeatureId =
   | 'win_sequence'    // Big / Mega / Epic Win popup sequence
   | 'wheel_bonus'     // Spin-the-wheel bonus
   | 'ladder_bonus'    // Ladder / Trail climbing bonus
+  | 'gamble'          // Post-win double-or-nothing
+  | 'super_gamble'    // Extended gamble ladder
 
 export type FeatureGroup =
   | 'bonus'      // Bonus Rounds

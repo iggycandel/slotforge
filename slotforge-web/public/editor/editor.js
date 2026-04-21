@@ -371,7 +371,8 @@ const FEATURE_SCREEN_DEFS={
   infinity_reels:{label:'Infinity Reels', dot:'#9a7cdf', keys:REEL_KEYS,        overlay:'infinity',  group:'special'},
   cluster_pays: {label:'Cluster Pays',     dot:'#7a8aef', keys:REEL_KEYS,        overlay:'cluster',   group:'special'},
   // Gamble
-  super_gamble: {label:'Super Gamble',     dot:'#6060df', keys:['bg'],           overlay:'gamble',    group:'gamble'},
+  gamble:       {label:'Gamble',           dot:'#7a8aef', keys:['bg'],           overlay:'gamble_pick', group:'gamble'},
+  super_gamble: {label:'Super Gamble',     dot:'#6060df', keys:['bg'],           overlay:'super_gamble', group:'gamble'},
 };
 
 // Sub-screens we add in step 4 of registerFeatureScreens (intro/outro pairs).
@@ -383,6 +384,8 @@ const FEATURE_SUB_SCREENS = [
   'holdnspin_intro','holdnspin_outro',
   'wheel_bonus_intro','wheel_bonus_outro',
   'ladder_bonus_intro','ladder_bonus_outro',
+  'gamble_intro','gamble_outro',
+  'super_gamble_intro','super_gamble_outro',
 ];
 
 function registerFeatureScreens(){
@@ -509,6 +512,38 @@ function registerFeatureScreens(){
       parentScreen:'ladder_bonus',
     };
   }
+  if(P.features.gamble){
+    SDEFS.gamble_intro = {
+      label: 'Gamble · Intro',
+      keys:  ['bg', 'dimLayer', 'ov-gb-intro_banner', 'ov-gb-intro_sub'],
+      dot:   '#7a8aef',
+      featureKey:  'gamble',
+      parentScreen:'gamble',
+    };
+    SDEFS.gamble_outro = {
+      label: 'Gamble · Outro',
+      keys:  ['bg', 'dimLayer', 'ov-gb-outro_label', 'ov-gb-outro_amount', 'ov-gb-outro_btn'],
+      dot:   '#7a8aef',
+      featureKey:  'gamble',
+      parentScreen:'gamble',
+    };
+  }
+  if(P.features.super_gamble){
+    SDEFS.super_gamble_intro = {
+      label: 'Super Gamble · Intro',
+      keys:  ['bg', 'dimLayer', 'ov-sg-intro_banner', 'ov-sg-intro_sub'],
+      dot:   '#6060df',
+      featureKey:  'super_gamble',
+      parentScreen:'super_gamble',
+    };
+    SDEFS.super_gamble_outro = {
+      label: 'Super Gamble · Outro',
+      keys:  ['bg', 'dimLayer', 'ov-sg-outro_label', 'ov-sg-outro_amount', 'ov-sg-outro_btn'],
+      dot:   '#6060df',
+      featureKey:  'super_gamble',
+      parentScreen:'super_gamble',
+    };
+  }
 }
 
 // Keep old name as alias for backward compat
@@ -621,6 +656,26 @@ const OV_SUBS={
     {id:'amount', label:'Amount',     type:'text',   dText:'€ 3,200',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
     {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#1a0a2a'},
   ],
+  // Gamble intro / outro text overlays
+  'ov-gb-intro':[
+    {id:'banner', label:'Banner',     type:'text',   dText:'GAMBLE',                 dColor:'#7a8aef', dSize:120, dWeight:800, dSpacing:'.06em'},
+    {id:'sub',    label:'Sub-copy',   type:'text',   dText:'Double or nothing',      dColor:'#7a8aefcc', dSize:34, dWeight:600, dSpacing:'.1em'},
+  ],
+  'ov-gb-outro':[
+    {id:'label',  label:'"Total Win"',type:'text',   dText:'TOTAL WIN',              dColor:'#7a8aef', dSize:56,  dWeight:700, dSpacing:'.14em'},
+    {id:'amount', label:'Amount',     type:'text',   dText:'€ 400',                  dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
+    {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#0a0a2a'},
+  ],
+  // Super Gamble intro / outro text overlays
+  'ov-sg-intro':[
+    {id:'banner', label:'Banner',     type:'text',   dText:'SUPER GAMBLE',           dColor:'#6060df', dSize:110, dWeight:800, dSpacing:'.04em'},
+    {id:'sub',    label:'Sub-copy',   type:'text',   dText:'Climb the multiplier ladder',  dColor:'#6060dfcc', dSize:34, dWeight:600, dSpacing:'.1em'},
+  ],
+  'ov-sg-outro':[
+    {id:'label',  label:'"Total Win"',type:'text',   dText:'TOTAL WIN',              dColor:'#6060df', dSize:56,  dWeight:700, dSpacing:'.14em'},
+    {id:'amount', label:'Amount',     type:'text',   dText:'€ 1,600',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
+    {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#0a0a2a'},
+  ],
 };
 // Overlay backdrop colors and layout styles
 const OV_META={
@@ -646,6 +701,10 @@ const OV_META={
   'ov-wb-outro': {bg:null, layout:'col'},
   'ov-lb-intro': {bg:null, layout:'col'},
   'ov-lb-outro': {bg:null, layout:'col'},
+  'ov-gb-intro': {bg:null, layout:'col'},
+  'ov-gb-outro': {bg:null, layout:'col'},
+  'ov-sg-intro': {bg:null, layout:'col'},
+  'ov-sg-outro': {bg:null, layout:'col'},
 };
 
 // Map ALL OV_SUBS seamlessly into the PSD layer structure.
@@ -690,14 +749,14 @@ PSD['dimLayer'] = {
   const portraitBanner = { x:441, w:984 };
   const landscapeBanner= { x:0,   w:2000 };
   // Intro: banner at top-center, sub-copy below
-  ['ov-bp-intro','ov-fs-intro','ov-hns-intro','ov-wb-intro','ov-lb-intro'].forEach(ov => {
+  ['ov-bp-intro','ov-fs-intro','ov-hns-intro','ov-wb-intro','ov-lb-intro','ov-gb-intro','ov-sg-intro'].forEach(ov => {
     PSD[`${ov}_banner`].portrait  = { ...portraitBanner,  y: 620, h: 200 };
     PSD[`${ov}_banner`].landscape = { ...landscapeBanner, y: 260, h: 160 };
     PSD[`${ov}_sub`].portrait     = { ...portraitBanner,  y: 840, h: 80 };
     PSD[`${ov}_sub`].landscape    = { ...landscapeBanner, y: 440, h: 60 };
   });
   // Outro: "TOTAL WIN" label, then big amount, then COLLECT button
-  ['ov-bp-outro','ov-fs-outro','ov-hns-outro','ov-wb-outro','ov-lb-outro'].forEach(ov => {
+  ['ov-bp-outro','ov-fs-outro','ov-hns-outro','ov-wb-outro','ov-lb-outro','ov-gb-outro','ov-sg-outro'].forEach(ov => {
     PSD[`${ov}_label`].portrait  = { ...portraitBanner,  y: 500, h: 110 };
     PSD[`${ov}_label`].landscape = { ...landscapeBanner, y: 220, h: 80 };
     PSD[`${ov}_amount`].portrait = { ...portraitBanner,  y: 620, h: 260 };
@@ -835,7 +894,7 @@ const FDEFS=[
   {key:'symbol_upgrade', label:'Symbol Upgrade',       group:'Special Mechanics',     color:'#a070ef', screen:null,
    desc:'Symbols upgrade to higher-value versions during a bonus or random trigger.'},
   // ── Gamble ──
-  {key:'gamble',         label:'Gamble',               group:'Gamble',                color:'#7a8aef', screen:null,
+  {key:'gamble',         label:'Gamble',               group:'Gamble',                color:'#7a8aef', screen:'gamble',
    desc:'Post-win gamble — double or nothing on a card, coin or wheel.'},
   {key:'super_gamble',   label:'Super Gamble',         group:'Gamble',                color:'#6060df', screen:'super_gamble',
    desc:'Extended gamble ladder with multiple steps up to a capped maximum.'},
@@ -4834,6 +4893,19 @@ P.ladderBonusSettings = P.ladderBonusSettings || {
   climbOdds: 0.6,
 };
 
+// ═══ GAMBLE + SUPER GAMBLE SETTINGS ═══
+P.gambleSettings = P.gambleSettings || {
+  maxRounds: 5,
+  gambleType: 'card_color',
+  winChance: 0.5,
+};
+P.superGambleSettings = P.superGambleSettings || {
+  maxSteps: 5,
+  baseMultiplier: 2,
+  bustProbability: 0.1,
+  collectEveryStep: true,
+};
+
 // ─── Load default symbol assets via fetch → base64 dataURL ──────────────────
 // fetch() resolves correctly inside iframes; dataURLs work everywhere.
 // Default symbol loader — only fills slots that have NO asset yet.
@@ -8439,7 +8511,9 @@ function buildFeatureOverlay(screenKey, def){
     _ovInfinityReels(ov, cx, cy, cw, ch, c1);
   } else if(type==='cluster'){
     _ovClusterPays(ov, cx, cy, cw, ch, c1);
-  } else if(type==='gamble'){
+  } else if(type==='gamble_pick'){
+    _ovGamble(ov, cx, cy, cw, ch, c1);
+  } else if(type==='super_gamble'){
     _ovSuperGamble(ov, cx, cy, cw, ch, c1);
   } else if(type==='winseq_big' || type==='winseq_mega' || type==='winseq_epic'){
     // Shared composition across the three tiers — only the title art slot
@@ -9344,33 +9418,152 @@ if(document.readyState==='loading'){
   _initFirstRun();
 }
 
-// ─── SUPER GAMBLE ───
+// ─────────────────────────────────────────────────────────────────────────────
+// GAMBLE
+// Layout: viewport bg → header → pick element (centred card/coin) → two
+// option buttons (Option A / Option B) → collect button → round meter +
+// footer. Every piece is a singleton, so users can re-lay out to taste.
+// ─────────────────────────────────────────────────────────────────────────────
+function _ovGamble(ov, cx, cy, cw, ch, c1){
+  const VPP = VP.portrait, VPL = VP.landscape;
+
+  // 1. Background
+  ov.appendChild(_posSlot('gamble.bg',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'BG', c1, 'cover'));
+
+  // 2. Header
+  const hwP = Math.round(VPP.cw * 0.70), hhP = Math.round(VPP.ch * 0.07);
+  const hwL = Math.round(VPL.cw * 0.50), hhL = Math.round(VPL.ch * 0.10);
+  ov.appendChild(_posSlot('gamble.header',
+    { x: VPP.cx + Math.round((VPP.cw - hwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.06), w: hwP, h: hhP },
+    { x: VPL.cx + Math.round((VPL.cw - hwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.06), w: hwL, h: hhL },
+    'GAMBLE', c1));
+
+  // 3. Pick element (card / coin / symbol) — centred, prominent
+  const pickP = Math.min(Math.round(VPP.cw * 0.56), Math.round(VPP.ch * 0.32));
+  const pickL = Math.min(Math.round(VPL.cw * 0.32), Math.round(VPL.ch * 0.50));
+  ov.appendChild(_posSlot('gamble.pick_element',
+    { x: VPP.cx + Math.round((VPP.cw - pickP) / 2), y: VPP.cy + Math.round(VPP.ch*0.22), w: pickP, h: pickP },
+    { x: VPL.cx + Math.round((VPL.cw - pickL) / 2), y: VPL.cy + Math.round(VPL.ch*0.16), w: pickL, h: pickL },
+    'Pick', c1, 'contain'));
+
+  // 4. Two option buttons side by side below the pick element
+  const optWP = Math.round(VPP.cw * 0.32), optHP = Math.round(VPP.ch * 0.10);
+  const optWL = Math.round(VPL.cw * 0.18), optHL = Math.round(VPL.ch * 0.14);
+  const gapP = 40, gapL = 48;
+  const totalP = optWP * 2 + gapP, totalL = optWL * 2 + gapL;
+  const optY_P = VPP.cy + Math.round(VPP.ch * 0.60);
+  const optY_L = VPL.cy + Math.round(VPL.ch * 0.70);
+  ov.appendChild(_posSlot('gamble.option_a',
+    { x: VPP.cx + Math.round((VPP.cw - totalP) / 2),             y: optY_P, w: optWP, h: optHP },
+    { x: VPL.cx + Math.round((VPL.cw - totalL) / 2),             y: optY_L, w: optWL, h: optHL },
+    'Option A', c1, 'contain'));
+  ov.appendChild(_posSlot('gamble.option_b',
+    { x: VPP.cx + Math.round((VPP.cw - totalP) / 2) + optWP + gapP, y: optY_P, w: optWP, h: optHP },
+    { x: VPL.cx + Math.round((VPL.cw - totalL) / 2) + optWL + gapL, y: optY_L, w: optWL, h: optHL },
+    'Option B', c1, 'contain'));
+
+  // 5. Collect button
+  const bwP = Math.round(VPP.cw * 0.40), bhP = Math.round(VPP.ch * 0.07);
+  const bwL = Math.round(VPL.cw * 0.22), bhL = Math.round(VPL.ch * 0.10);
+  ov.appendChild(_posSlot('gamble.button_collect',
+    { x: VPP.cx + Math.round((VPP.cw - bwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.76), w: bwP, h: bhP },
+    { x: VPL.cx + Math.round((VPL.cw - bwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.86), w: bwL, h: bhL },
+    'Collect', c1, 'contain'));
+
+  // 6. Round meter — top-right of the pick element
+  const mwP = Math.round(VPP.cw * 0.30), mhP = Math.round(VPP.ch * 0.05);
+  const mwL = Math.round(VPL.cw * 0.18), mhL = Math.round(VPL.ch * 0.07);
+  ov.appendChild(_posSlot('gamble.meter',
+    { x: VPP.cx + Math.round((VPP.cw - mwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.16), w: mwP, h: mhP },
+    { x: VPL.cx + Math.round((VPL.cw - mwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.08), w: mwL, h: mhL },
+    'Round 1 of 5', c1));
+
+  // 7. Footer
+  const fwP = Math.round(VPP.cw * 0.70), fhP = Math.round(VPP.ch * 0.055);
+  const fwL = Math.round(VPL.cw * 0.40), fhL = Math.round(VPL.ch * 0.075);
+  ov.appendChild(_posSlot('gamble.footer',
+    { x: VPP.cx + Math.round((VPP.cw - fwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.90), w: fwP, h: fhP },
+    { x: VPL.cx + Math.round((VPL.cw - fwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.94), w: fwL, h: fhL },
+    'Current prize: €200', c1));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPER GAMBLE
+// Layout: viewport bg → header → ladder (step tiles top-to-bottom, highest
+// step at the top) → optional meter → collect + gamble buttons → footer.
+// Step count is configurable via P.superGambleSettings.maxSteps; each step
+// is a shared-key tile rendered at computed positions (not individually
+// draggable). Collect + gamble buttons are first-class singletons.
+// ─────────────────────────────────────────────────────────────────────────────
 function _ovSuperGamble(ov, cx, cy, cw, ch, c1){
-  const steps=parseInt(document.getElementById('gamble-steps')?.value)||5;
-  const stepH=Math.round(ch*0.09), panelW=Math.round(cw*0.7);
-  const px=cx+Math.round((cw-panelW)/2), py=cy+Math.round(ch*0.08);
-  const panel=_el('div',`position:absolute;left:${px}px;top:${py}px;width:${panelW}px;background:#0a0a1aee;border:2px solid ${c1}66;border-radius:20px;padding:30px;display:flex;flex-direction:column;gap:10px`);
-  const title=_el('div',`font-size:${Math.round(panelW*0.045)}px;font-weight:700;color:${c1};font-family:Space Grotesk,sans-serif;text-align:center;margin-bottom:8px;letter-spacing:.06em`);
-  title.textContent='SUPER GAMBLE';
-  panel.appendChild(title);
-  for(let i=steps-1;i>=0;i--){
-    const isActive=(i===2), isPast=(i<2);
-    const row=_el('div',`display:flex;align-items:center;gap:12px;height:${stepH-8}px;background:${isActive?c1+'22':isPast?'#5eca8a11':'#ffffff06'};border:2px solid ${isActive?c1:isPast?'#5eca8a44':'#2a2a3a'};border-radius:10px;padding:0 20px`);
-    const stepNum=_el('div',`font-size:14px;color:#8080a8;width:24px;font-family:DM Mono,monospace`); stepNum.textContent=`${i+1}`;
-    const prize=_el('div',`flex:1;font-size:${Math.round(stepH*0.3)}px;font-weight:700;color:${isActive?c1:isPast?'#5eca8a':'#666'};font-family:Space Grotesk,sans-serif`);
-    const multipliers=[1,2,3,5,8,12,20,50,100];
-    prize.textContent=`${multipliers[Math.min(i,multipliers.length-1)]}× stake`;
-    const action=isActive?_el('div',`font-size:14px;color:${c1};font-family:Space Grotesk,sans-serif`):null;
-    if(action){action.textContent='◀ YOU ARE HERE';}
-    row.appendChild(stepNum); row.appendChild(prize); if(action)row.appendChild(action);
-    panel.appendChild(row);
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const settings = P.superGambleSettings || { maxSteps: 5 };
+  const steps    = Math.max(3, Math.min(10, Number(settings.maxSteps) || 5));
+
+  // 1. Background
+  ov.appendChild(_posSlot('supergamble.bg',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'BG', c1, 'cover'));
+
+  // 2. Header
+  const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.07);
+  const hwL = Math.round(VPL.cw * 0.48), hhL = Math.round(VPL.ch * 0.10);
+  ov.appendChild(_posSlot('supergamble.header',
+    { x: VPP.cx + Math.round((VPP.cw - hwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.05), w: hwP, h: hhP },
+    { x: VPL.cx + Math.round((VPL.cw - hwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.05), w: hwL, h: hhL },
+    'SUPER GAMBLE', c1));
+
+  // 3. Ladder — shared-key tiles stacked vertically
+  const vp        = P.viewport === 'landscape' ? VPL : VPP;
+  const availH    = Math.round(vp.ch * 0.58);
+  const stepH     = Math.round(availH / steps);
+  const stepW     = Math.round(vp.cw * 0.48);
+  const stepY0    = vp.cy + Math.round(vp.ch * 0.16);
+  const stepX     = vp.cx + Math.round((vp.cw - stepW) / 2);
+  const activeIdx = Math.floor(steps / 2);
+  for (let i = 0; i < steps; i++) {
+    const yy = stepY0 + (steps - 1 - i) * stepH;
+    const key = (i === activeIdx && EL_ASSETS['supergamble.step_active'])
+      ? 'supergamble.step_active'
+      : 'supergamble.step';
+    ov.appendChild(_slot(key, stepX, yy, stepW, stepH - 4, `Step ${i + 1}`, c1, 'contain'));
   }
-  const btns=_el('div',`display:flex;gap:14px;margin-top:10px`);
-  const collect=_el('div',`flex:1;height:52px;background:#5eca8a33;border:2px solid #5eca8a;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#5eca8a;font-family:Space Grotesk,sans-serif;cursor:pointer`);collect.textContent='COLLECT';
-  const gamble=_el('div',`flex:1;height:52px;background:${c1}22;border:2px solid ${c1};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:${c1};font-family:Space Grotesk,sans-serif;cursor:pointer`);gamble.textContent='GAMBLE UP';
-  btns.appendChild(collect); btns.appendChild(gamble);
-  panel.appendChild(btns);
-  ov.appendChild(panel);
+
+  // 4. Multiplier meter — right of the ladder
+  const mwP = Math.round(VPP.cw * 0.26), mhP = Math.round(VPP.ch * 0.08);
+  const mwL = Math.round(VPL.cw * 0.18), mhL = Math.round(VPL.ch * 0.12);
+  ov.appendChild(_posSlot('supergamble.meter',
+    { x: VPP.cx + Math.round((VPP.cw - mwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.10), w: mwP, h: mhP },
+    { x: VPL.cx + Math.round((VPL.cw - mwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.08), w: mwL, h: mhL },
+    'x5', c1));
+
+  // 5. Buttons — Collect + Gamble side by side
+  const bwP = Math.round(VPP.cw * 0.40), bhP = Math.round(VPP.ch * 0.06);
+  const bwL = Math.round(VPL.cw * 0.22), bhL = Math.round(VPL.ch * 0.09);
+  const gapP = 24, gapL = 24;
+  const totalP = bwP * 2 + gapP, totalL = bwL * 2 + gapL;
+  const btnRowY_P = VPP.cy + Math.round(VPP.ch * 0.82);
+  const btnRowY_L = VPL.cy + Math.round(VPL.ch * 0.86);
+  ov.appendChild(_posSlot('supergamble.button_collect',
+    { x: VPP.cx + Math.round((VPP.cw - totalP) / 2),            y: btnRowY_P, w: bwP, h: bhP },
+    { x: VPL.cx + Math.round((VPL.cw - totalL) / 2),            y: btnRowY_L, w: bwL, h: bhL },
+    'Collect', c1, 'contain'));
+  ov.appendChild(_posSlot('supergamble.button_gamble',
+    { x: VPP.cx + Math.round((VPP.cw - totalP) / 2) + bwP + gapP, y: btnRowY_P, w: bwP, h: bhP },
+    { x: VPL.cx + Math.round((VPL.cw - totalL) / 2) + bwL + gapL, y: btnRowY_L, w: bwL, h: bhL },
+    'Gamble Up', c1, 'contain'));
+
+  // 6. Footer
+  const fwP = Math.round(VPP.cw * 0.70), fhP = Math.round(VPP.ch * 0.055);
+  const fwL = Math.round(VPL.cw * 0.40), fhL = Math.round(VPL.ch * 0.075);
+  ov.appendChild(_posSlot('supergamble.footer',
+    { x: VPP.cx + Math.round((VPP.cw - fwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.92), w: fwP, h: fhP },
+    { x: VPL.cx + Math.round((VPL.cw - fwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.94), w: fwL, h: fhL },
+    'Current prize: €1,600', c1));
 }
 
 // ═══════════════════════════════════════════════════════
@@ -10815,6 +11008,8 @@ window._sfApplyPayload = function(payload){
   try { if(s.bonusPickSettings)   Object.assign(P.bonusPickSettings,   s.bonusPickSettings);   } catch(e){}
   try { if(s.wheelBonusSettings)  Object.assign(P.wheelBonusSettings,  s.wheelBonusSettings);  } catch(e){}
   try { if(s.ladderBonusSettings) Object.assign(P.ladderBonusSettings, s.ladderBonusSettings); } catch(e){}
+  try { if(s.gambleSettings)      Object.assign(P.gambleSettings,      s.gambleSettings);      } catch(e){}
+  try { if(s.superGambleSettings) Object.assign(P.superGambleSettings, s.superGambleSettings); } catch(e){}
   // Restore character, ante, and other settings missing from earlier versions
   // Use explicit property assignment for boolean flags to avoid Object.assign edge-cases
   try {
@@ -10949,6 +11144,8 @@ window._sfBridge = (function(){
       bonusPickSettings:JSON.parse(JSON.stringify(P.bonusPickSettings || {})),
       wheelBonusSettings: JSON.parse(JSON.stringify(P.wheelBonusSettings || {})),
       ladderBonusSettings:JSON.parse(JSON.stringify(P.ladderBonusSettings || {})),
+      gambleSettings:      JSON.parse(JSON.stringify(P.gambleSettings      || {})),
+      superGambleSettings: JSON.parse(JSON.stringify(P.superGambleSettings || {})),
       assets:           JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
       library:     JSON.parse(JSON.stringify(P.library  || [])),
       adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ    !== 'undefined' ? EL_ADJ    : {})),
@@ -11195,6 +11392,8 @@ window._sfBridge = (function(){
         bonusPickSettings: p.bonusPickSettings,
         wheelBonusSettings:  p.wheelBonusSettings,
         ladderBonusSettings: p.ladderBonusSettings,
+        gambleSettings:      p.gambleSettings,
+        superGambleSettings: p.superGambleSettings,
         ovProps:           p.ovProps,
         ovPos:          p.ovPos,
         elVP:           p.elVP,
