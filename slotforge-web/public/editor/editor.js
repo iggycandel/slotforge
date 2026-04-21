@@ -2680,9 +2680,25 @@ function _sendLayersUpdate(){
     var screen = P.screen || 'base';
     var sdef = SDEFS[screen];
     if(!sdef || !sdef.keys) return;
-    var keys = sdef.keys;
+    // On popup screens the underlying base game (logo, reelFrame, spin
+    // button, bannerBet, …) is rendered behind the popup via the isPopup
+    // branch in buildCanvas — but _sendLayersUpdate used to iterate only
+    // sdef.keys and silently dropped all those base layers from the panel.
+    // Union BASE_KEYS into the list so the user can see + select + toggle
+    // anything that's actually drawn on canvas.
+    var panelKeys = [];
+    var seenBaseKey = new Set();
+    var isPopupScreen = sdef.group === 'popup' || screen === 'win';
+    if (isPopupScreen && typeof BASE_KEYS !== 'undefined') {
+      BASE_KEYS.forEach(function(bk){
+        if (!seenBaseKey.has(bk)) { seenBaseKey.add(bk); panelKeys.push(bk); }
+      });
+    }
+    sdef.keys.forEach(function(k){
+      if (!seenBaseKey.has(k)) { seenBaseKey.add(k); panelKeys.push(k); }
+    });
     var layers = [];
-    keys.forEach(function(k){
+    panelKeys.forEach(function(k){
       var def = PSD[k]; if(!def) return;
       layers.push({
         key: k,
@@ -2705,12 +2721,16 @@ function _sendLayersUpdate(){
     // sets as base layers so hide / lock / select ops round-trip cleanly.
     try {
       var overlayEl = document.getElementById('feature-screen-overlay');
-      // Feature slots can also be hidden when the current overlay was torn
-      // down but the hidden set still holds their keys — enumerate those
-      // too so the Layers panel can surface an "unhide" control.
       var seen = new Set();
       if (overlayEl) {
         var slotEls = overlayEl.querySelectorAll('[data-asset-key]');
+        // Feat-slots render inside #feature-screen-overlay which has
+        // z-index:600 — so visually they sit on top of every base layer
+        // (typical z 1..540). Assign panel z of 700+idx to mirror that
+        // stacking; otherwise the panel showed feat-slots at the bottom
+        // while the canvas stacked them at the top. idx is the DOM order
+        // after _applyFeatSlotOrder runs, so back-of-overlay = lowest idx
+        // = lowest panel z.
         slotEls.forEach(function(node, idx){
           var k = node.getAttribute('data-asset-key');
           if (!k || seen.has(k)) return;
@@ -2720,7 +2740,7 @@ function _sendLayersUpdate(){
             key:        k,
             label:      label,
             type:       'feature',
-            z:          100 + idx,
+            z:          700 + idx,
             hasAsset:   !!EL_ASSETS[k],
             isOff:      false,
             isHidden:   HIDDEN_LAYERS.has(k),
@@ -9137,45 +9157,29 @@ const FEAT_SVG_PLACEHOLDERS = {
   `),
 };
 
+// Placeholders are deliberately invisible — the SVG silhouette layer we
+// tried before turned into a parallel rendering system with its own z /
+// drag / hit-testing quirks, and the user asked us to drop it. Now every
+// empty feat-slot emits a transparent stub that still carries an id +
+// data-asset-key so the Layers panel can enumerate it and the user can
+// select / drag / right-click / upload as with any other layer. Uploaded
+// slots render through _imgSlot and are fully visible.
 function _phSlot(key, x, y, w, h, label, c1, opts){
   opts = opts || {};
-  const svgStr = FEAT_SVG_PLACEHOLDERS[key];
-  // No SVG for this slot → emit an invisible stub so the Layers panel can
-  // still enumerate it, but the canvas stays clean. This hits every .bg
-  // slot, every full-viewport FX slot that has no unique silhouette, and
-  // the Win Sequence title-art slots (where CSS text does the job).
-  if (!svgStr) {
-    const stub = document.createElement('div');
-    stub.dataset.assetKey   = key;
-    stub.dataset.assetLabel = label || key;
-    stub.dataset.placeholder = '1';
-    if (opts.singleton) {
-      stub.id = 'el-' + key;
-      stub.dataset.key = key;
-      stub.className = 'cel feat-slot placeholder' + (isLocked(key) ? ' locked' : '') + (SEL_KEY === key ? ' selected' : '');
-    } else {
-      stub.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
-    }
-    stub.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:${opts.singleton ? 'auto' : 'none'};opacity:0;box-sizing:border-box;${opts.singleton ? 'cursor:move;' : ''}`;
-    if (opts.singleton) _wireSlotEvents(stub, key, opts);
-    return stub;
-  }
-  const d = document.createElement('div');
-  d.dataset.assetKey = key;
-  d.dataset.placeholder = '1';
+  const stub = document.createElement('div');
+  stub.dataset.assetKey    = key;
+  stub.dataset.assetLabel  = label || key;
+  stub.dataset.placeholder = '1';
   if (opts.singleton) {
-    d.id = 'el-' + key;
-    d.dataset.key = key;
-    d.className = 'cel feat-slot placeholder' + (isLocked(key) ? ' locked' : '') + (SEL_KEY === key ? ' selected' : '');
+    stub.id = 'el-' + key;
+    stub.dataset.key = key;
+    stub.className = 'cel feat-slot placeholder' + (isLocked(key) ? ' locked' : '') + (SEL_KEY === key ? ' selected' : '');
   } else {
-    d.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
+    stub.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
   }
-  // Transparent background — SVG silhouette tints from `color` (currentColor).
-  // No dashed frame, no upload text. Clean.
-  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;color:${c1 || '#c9a84c'};pointer-events:auto;box-sizing:border-box;${opts.singleton ? '' : 'cursor:pointer;'}`;
-  d.innerHTML = svgStr;
-  _wireSlotEvents(d, key, opts);
-  return d;
+  stub.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:${opts.singleton ? 'auto' : 'none'};opacity:0;box-sizing:border-box;${opts.singleton ? 'cursor:move;' : ''}`;
+  if (opts.singleton) _wireSlotEvents(stub, key, opts);
+  return stub;
 }
 
 // Wire click / drag / contextmenu / drop handlers. Singletons route through
@@ -11943,6 +11947,20 @@ window._sfBridge = (function(){
       var hasEditor = typeof P !== 'undefined' && typeof SDEFS !== 'undefined' && typeof buildCanvas === 'function' && typeof ZOOM !== 'undefined' && typeof applyZoom === 'function';
       if(!hasEditor) return null;
 
+      // Cover the canvas during the screen-swap + zoom dance so the user
+      // doesn't see a flash of the base-game screen at 100 % zoom while
+      // we capture. Without this, every autosave that happened while the
+      // user was on a popup / feature screen briefly revealed the base
+      // game at a different zoom, then restored — the "ghost screen"
+      // flash they reported.
+      var canvasWrap = document.getElementById('canvas-wrap');
+      var cover = null;
+      if (canvasWrap) {
+        cover = document.createElement('div');
+        cover.style.cssText = 'position:absolute;inset:0;background:#07080d;z-index:10000;pointer-events:none';
+        canvasWrap.appendChild(cover);
+      }
+
       // ── 1. Swap to base screen if needed ──
       var savedScreen = P.screen;
       var cleanScreens = { base: 1, splash: 1 };
@@ -12008,9 +12026,11 @@ window._sfBridge = (function(){
           P.screen = savedScreen;
           try { buildCanvas(); } catch(e) { /* non-fatal */ }
         }
+        if (cover && cover.parentNode) cover.parentNode.removeChild(cover);
       }
     } catch(e){
       console.warn('[getThumbnail]', e);
+      try { if (typeof cover !== 'undefined' && cover && cover.parentNode) cover.parentNode.removeChild(cover); } catch(_) {}
       return null;
     }
   }
