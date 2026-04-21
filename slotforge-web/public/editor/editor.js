@@ -6899,129 +6899,262 @@ function gfdRePopulate(){
 }
 
 function _gfdAutoPopulate(d){
-  // ── Layout constants ─────────────────────────────────────────────────────────
-  // Top-to-bottom: each "layer" is a new row (Y axis), features spread as columns (X axis)
+  // ── Layout constants ─────────────────────────────────────────────────────
   const NW=GFD_NODE_W, NH=GFD_NODE_H;
-  const PAD=60;          // canvas edge padding
-  const COL_W=NW+70;    // horizontal gap between feature columns
-  const ROW_H=NH+80;    // vertical gap between layers
+  const PAD=60;
+  const COL_W=NW+70;
+  const ROW_H=NH+80;
 
-  // ── Detect enabled features ───────────────────────────────────────────────
-  const hasFreeSpins=d.enabledFeatures.some(f=>/free.?spin/i.test(f));
-  const hasHoldSpin =d.enabledFeatures.some(f=>/hold.{0,5}spin/i.test(f));
-  const hasBuy      =d.enabledFeatures.some(f=>/buy.?feature/i.test(f));
-  const hasPick     =d.enabledFeatures.some(f=>/bonus.?pick|pick.?game/i.test(f));
-  const hasWheel    =d.enabledFeatures.some(f=>/wheel/i.test(f));
+  // ── Feature detection (read P.features directly for precision) ──────────
+  // Every feature registered in lib/features/registry.ts + the core
+  // toggles in P.features gets a chance to add nodes. Using raw keys
+  // (not regex on labels) so a future rename doesn't break detection.
+  const F = (typeof P !== 'undefined' && P.features) ? P.features : {};
+  const has = (k) => F[k] === true;
 
-  // ── Calculate canvas width from feature count ─────────────────────────────
-  const nFeatureCols=[hasFreeSpins,hasHoldSpin,hasBuy,hasPick,hasWheel].filter(Boolean).length + 2; // +1 spin-res, +1 settings
-  const nWinTypes   =4+(d.jps.length?1:0);
-  const nCols       =Math.max(nFeatureCols, nWinTypes, 3);
-  const totalW      =nCols*COL_W;
-  // Center x for the single-node rows (START, LOAD, BASE GAME)
-  const cx=PAD+totalW/2-NW/2;
+  // Full-screen features — each gets a vertical column (trigger → screen)
+  const hasFreeSpins    = has('freespin');
+  const hasHoldSpin     = has('holdnspin');
+  const hasPick         = has('bonus_pick');
+  const hasWheel        = has('wheel_bonus');
+  const hasLadder       = has('ladder_bonus');
+  const hasSuperGamble  = has('super_gamble');
+  const hasBonusStore   = has('bonus_store');
 
-  // ── Layer 0: System lifecycle ─────────────────────────────────────────────
-  const startId=gfdAddNode('system','START',    cx-COL_W,PAD,           'Game session initialises. Assets loaded.');
-  const enId   =gfdAddNode('system','SESSION END',cx+COL_W,PAD,         'Player exits or session timer expires.');
+  // Action / modifier features
+  const hasBuy          = has('buy_feature');
+  const hasAnte         = has('ante_bet') || (typeof P !== 'undefined' && P.ante && P.ante.enabled);
+  const hasGamble       = has('gamble');
 
-  // ── Layer 1: Load/Splash ──────────────────────────────────────────────────
-  const loadId =gfdAddNode('screen','LOAD / SPLASH',cx,       PAD+ROW_H,    'Intro animation plays. Studio logo shown.');
+  // Reel-level modifiers (Tier B + wild-mechanics variants). Rolled into
+  // a single "REEL MECHANICS" aggregator node connected to MATH so the
+  // graph stays readable instead of spawning 10+ side nodes.
+  const reelMechanics = [];
+  if (has('expanding_wild'))  reelMechanics.push(['Expanding Wild', 'Wild expands to fill its reel column on landing.']);
+  if (has('sticky_wild'))     reelMechanics.push(['Sticky Wild',    'Wilds remain locked for N subsequent spins.']);
+  if (has('walking_wild'))    reelMechanics.push(['Walking Wild',   'Wild shifts by one reel per spin.']);
+  if (has('stacked_wild'))    reelMechanics.push(['Stacked Wilds',  'Wilds appear in stacks covering full columns.']);
+  if (has('multiplier_wild')) reelMechanics.push(['Multiplier Wild','Wild carries a multiplier applied to wins it contributes to.']);
+  if (has('colossal_wild'))   reelMechanics.push(['Colossal Wild',  'Oversized 2×2+ wild spanning multiple cells.']);
+  if (has('cascade'))         reelMechanics.push(['Cascade',        'Winning symbols removed; new symbols fall in, enabling chain wins.']);
+  if (has('tumble'))          reelMechanics.push(['Tumble',         'Symbols collapse after a win; replaced from above.']);
+  if (has('win_multiplier'))  reelMechanics.push(['Win Multiplier', 'Chain-win multiplier counter increments each consecutive win.']);
+  if (has('cluster_pays'))    reelMechanics.push(['Cluster Pays',   'Wins from clusters of 5+ adjacent matching symbols.']);
+  if (has('infinity_reels'))  reelMechanics.push(['Infinity Reels', 'Grid grows by one reel per consecutive winning spin.']);
+  if (has('megaways'))        reelMechanics.push(['Megaways™',      'Variable reel height per spin (2–7 symbols per reel).']);
+  if (has('ways'))            reelMechanics.push(['All Ways / MultiWays','Pays any left-to-right combination regardless of position.']);
+  if (has('mystery_symbol'))  reelMechanics.push(['Mystery Symbol', 'Special symbol transforms into a random match after landing.']);
+  if (has('symbol_upgrade'))  reelMechanics.push(['Symbol Upgrade', 'Symbols upgrade to higher-value versions during a bonus.']);
 
-  // ── Layer 2: Base Game ────────────────────────────────────────────────────
-  const baseId =gfdAddNode('screen','BASE GAME',    cx,       PAD+ROW_H*2,  'Main reel loop. Player bets and spins.');
+  const screenColCount = [hasFreeSpins,hasHoldSpin,hasPick,hasWheel,hasLadder,hasSuperGamble,hasBonusStore].filter(Boolean).length;
+  const nFeatureCols = screenColCount + (hasBuy?1:0) + 2; // +RNG/Math col, +Settings col
+  const nWinTypes    = 4 + (d.jps.length ? 1 : 0);
+  const nCols        = Math.max(nFeatureCols, nWinTypes, 3);
+  const totalW       = nCols * COL_W;
+  const cx = PAD + totalW/2 - NW/2;
 
-  gfdConnect(startId,loadId,'',null,1);
-  gfdConnect(loadId, baseId,'Intro complete',null,1);
-  gfdConnect(baseId, enId,  'Player exits',{field:'sessionActive',op:'==',value:false},99);
+  // ── Layer 0: System lifecycle ─────────────────────────────────────────
+  const startId = gfdAddNode('system','START',        cx-COL_W, PAD,       'Game session initialises. Assets loaded.');
+  const enId    = gfdAddNode('system','SESSION END',  cx+COL_W, PAD,       'Player exits or session timer expires.');
 
-  // ── Layer 3+: Feature columns (each feature = single column, flowing downward) ──
-  const featureMap={};
-  let col=0;
+  // ── Layer 1: Load/Splash ──────────────────────────────────────────────
+  const loadId  = gfdAddNode('screen','LOAD / SPLASH', cx, PAD+ROW_H,      'Intro animation plays. Studio logo shown.');
 
-  function colX(c){ return PAD+c*COL_W; }
-  const L3=PAD+ROW_H*3;  // trigger / 1st feature node
-  const L4=PAD+ROW_H*4;  // popup / 2nd feature node
-  const L5=PAD+ROW_H*5;  // main feature screen
+  // ── Layer 2: Base Game ────────────────────────────────────────────────
+  // Base-game description aggregates optional base-level mechanics so a
+  // designer reading the graph sees the full active picture at a glance.
+  let baseNotes = 'Main reel loop. Player bets and spins.';
+  if (hasAnte) baseNotes += '\n• Ante Bet: optional side-bet raises scatter trigger probability.';
+  const baseId  = gfdAddNode('screen','BASE GAME',     cx, PAD+ROW_H*2,    baseNotes);
 
-  if(hasFreeSpins){
-    const ev=gfdAddNode('event', 'FS TRIGGER', colX(col),L3,'3+ Scatter symbols land on reels 1, 2, 3');
-    const pp=gfdAddNode('screen','FS POPUP',   colX(col),L4,'Displays free spin count & multiplier. Player confirms.');
-    const fs=gfdAddNode('screen','FREE SPINS', colX(col),L5,'Enhanced reels with multipliers. Retriggerable.');
-    gfdConnect(baseId,ev,'3+ Scatters',{field:'scatter',op:'>=',value:3},10);
-    gfdConnect(ev,pp,'Trigger fires',null,1);
-    gfdConnect(pp,fs,'Player taps START',null,1);
-    gfdConnect(fs,baseId,'Spins exhausted',{field:'features.freeSpin.count',op:'<=',value:0},1);
-    gfdConnect(fs,fs,'Retrigger',{field:'scatter',op:'>=',value:3},10);
-    featureMap.fs=fs; col++;
+  gfdConnect(startId, loadId, '', null, 1);
+  gfdConnect(loadId,  baseId, 'Intro complete', null, 1);
+  gfdConnect(baseId,  enId,   'Player exits', {field:'sessionActive',op:'==',value:false}, 99);
+
+  // ── Layer 3+: Feature columns ─────────────────────────────────────────
+  const featureMap = {};
+  let col = 0;
+  function colX(c){ return PAD + c * COL_W; }
+  const L3 = PAD + ROW_H*3;  // trigger
+  const L4 = PAD + ROW_H*4;  // intro / popup
+  const L5 = PAD + ROW_H*5;  // main feature screen
+  const L6 = PAD + ROW_H*6;  // outro / tail
+
+  // Free Spins
+  if (hasFreeSpins) {
+    const ev = gfdAddNode('event',  'FS TRIGGER', colX(col), L3, '3+ Scatter symbols land on reels 1, 2, 3');
+    const pp = gfdAddNode('screen', 'FS INTRO',   colX(col), L4, 'Displays free spin count & multiplier. Player confirms.');
+    const fs = gfdAddNode('screen', 'FREE SPINS', colX(col), L5, 'Enhanced reels with multipliers. Retriggerable.');
+    const ot = gfdAddNode('screen', 'FS OUTRO',   colX(col), L6, 'Total-win celebration. Collect + return to base.');
+    gfdConnect(baseId, ev, '3+ Scatters', {field:'scatter',op:'>=',value:3}, 10);
+    gfdConnect(ev, pp, 'Trigger fires', null, 1);
+    gfdConnect(pp, fs, 'Player taps START', null, 1);
+    gfdConnect(fs, fs, 'Retrigger', {field:'scatter',op:'>=',value:3}, 10);
+    gfdConnect(fs, ot, 'Spins exhausted', {field:'features.freeSpin.count',op:'<=',value:0}, 1);
+    gfdConnect(ot, baseId, 'Collect', null, 1);
+    featureMap.fs = fs; col++;
   }
-  if(hasHoldSpin){
-    const ev=gfdAddNode('event', 'H&S TRIGGER',colX(col),L3,'6+ Coin symbols land on any position');
-    const pp=gfdAddNode('screen','H&S POPUP',  colX(col),L4,'Announces Hold & Spin. 3 respins allocated.');
-    const hs=gfdAddNode('screen','HOLD & SPIN',colX(col),L5,'Coins held. Respins reset on each new coin land.');
-    gfdConnect(baseId,ev,'6+ Coins',{field:'coinCount',op:'>=',value:6},10);
-    gfdConnect(ev,pp,'Trigger fires',null,1);
-    gfdConnect(pp,hs,'Player taps START',null,1);
-    gfdConnect(hs,baseId,'Respins exhausted',{field:'features.respin.count',op:'<=',value:0},1);
-    featureMap.hs=hs; col++;
+  // Hold & Spin
+  if (hasHoldSpin) {
+    const ev = gfdAddNode('event',  'H&S TRIGGER', colX(col), L3, '6+ Coin symbols land on any position');
+    const pp = gfdAddNode('screen', 'H&S INTRO',   colX(col), L4, 'Announces Hold & Spin. 3 respins allocated.');
+    const hs = gfdAddNode('screen', 'HOLD & SPIN', colX(col), L5, 'Coins held. Respins reset on each new coin land.');
+    const ot = gfdAddNode('screen', 'H&S OUTRO',   colX(col), L6, 'Jackpot / prize total reveal. Collect.');
+    gfdConnect(baseId, ev, '6+ Coins', {field:'coinCount',op:'>=',value:6}, 10);
+    gfdConnect(ev, pp, 'Trigger fires', null, 1);
+    gfdConnect(pp, hs, 'Player taps START', null, 1);
+    gfdConnect(hs, ot, 'Respins exhausted', {field:'features.respin.count',op:'<=',value:0}, 1);
+    gfdConnect(ot, baseId, 'Collect', null, 1);
+    featureMap.hs = hs; col++;
   }
-  if(hasBuy){
-    const bp=gfdAddNode('action',  'BUY FEATURE',colX(col),L3,'Cost: 100× total bet. Player views cost & confirms.');
-    const dc=gfdAddNode('decision','CONFIRMED?', colX(col),L4,'');
-    gfdConnect(baseId,bp,'Player taps BUY',null,20);
-    gfdConnect(bp,dc,'',null,1);
-    if(featureMap.fs) gfdConnect(dc,featureMap.fs,'Yes',{field:'buyConfirmed',op:'==',value:true},1);
-    else gfdConnect(dc,baseId,'Yes',{field:'buyConfirmed',op:'==',value:true},1);
-    gfdConnect(dc,baseId,'No — cancel',{field:'buyConfirmed',op:'==',value:false},2);
+  // Bonus Pick
+  if (hasPick) {
+    const ev = gfdAddNode('event',  'PICK TRIGGER', colX(col), L3, '3+ Bonus symbols land.');
+    const pp = gfdAddNode('screen', 'PICK INTRO',   colX(col), L4, 'Intro banner. "Tap anywhere to continue".');
+    const pk = gfdAddNode('screen', 'BONUS PICK',   colX(col), L5, 'Player picks from hidden items to reveal cash prizes.');
+    const ot = gfdAddNode('screen', 'PICK OUTRO',   colX(col), L6, 'Total-win celebration. Collect.');
+    gfdConnect(baseId, ev, '3+ Bonus', {field:'bonusCount',op:'>=',value:3}, 10);
+    gfdConnect(ev, pp, 'Trigger fires', null, 1);
+    gfdConnect(pp, pk, 'Player taps START', null, 1);
+    gfdConnect(pk, ot, 'All picks revealed', null, 1);
+    gfdConnect(ot, baseId, 'Collect', null, 1);
+    featureMap.pick = pk; col++;
+  }
+  // Wheel Bonus
+  if (hasWheel) {
+    const ev = gfdAddNode('event',  'WHEEL TRIGGER', colX(col), L3, 'Wheel trigger met (typically 3+ bonus).');
+    const pp = gfdAddNode('screen', 'WHEEL INTRO',   colX(col), L4, 'Intro banner — "Spin the wheel to reveal your prize".');
+    const wh = gfdAddNode('screen', 'WHEEL SPIN',    colX(col), L5, 'Prize wheel spin. Multiplier or feature award.');
+    const ot = gfdAddNode('screen', 'WHEEL OUTRO',   colX(col), L6, 'Prize reveal. Collect.');
+    gfdConnect(baseId, ev, 'Trigger met', {field:'wheelTrigger',op:'==',value:true}, 10);
+    gfdConnect(ev, pp, 'Trigger fires', null, 1);
+    gfdConnect(pp, wh, 'Player taps SPIN', null, 1);
+    gfdConnect(wh, ot, 'Pointer lands', null, 1);
+    gfdConnect(ot, baseId, 'Collect', null, 1);
+    featureMap.wheel = wh; col++;
+  }
+  // Ladder Bonus
+  if (hasLadder) {
+    const ev = gfdAddNode('event',  'LADDER TRIGGER', colX(col), L3, 'Ladder trigger met (typically 3+ bonus).');
+    const pp = gfdAddNode('screen', 'LADDER INTRO',   colX(col), L4, 'Intro banner — "Climb for more, or collect".');
+    const lb = gfdAddNode('screen', 'LADDER CLIMB',   colX(col), L5, 'Per-step climb/collect decision. Each step increases the prize.');
+    const ot = gfdAddNode('screen', 'LADDER OUTRO',   colX(col), L6, 'Prize total. Collect.');
+    gfdConnect(baseId, ev, 'Trigger met', {field:'ladderTrigger',op:'==',value:true}, 10);
+    gfdConnect(ev, pp, 'Trigger fires', null, 1);
+    gfdConnect(pp, lb, 'Player taps START', null, 1);
+    gfdConnect(lb, lb, 'Climb', {field:'ladderClimbOk',op:'==',value:true}, 3);
+    gfdConnect(lb, ot, 'Collect', {field:'ladderCollect',op:'==',value:true}, 1);
+    gfdConnect(lb, ot, 'Lost (bust)', {field:'ladderClimbOk',op:'==',value:false}, 2);
+    gfdConnect(ot, baseId, 'Return', null, 1);
+    featureMap.ladder = lb; col++;
+  }
+  // Super Gamble
+  if (hasSuperGamble) {
+    const ev = gfdAddNode('event',  'SG TRIGGER',   colX(col), L3, 'Post-win — player elects Super Gamble.');
+    const pp = gfdAddNode('screen', 'SG INTRO',     colX(col), L4, 'Intro — "Climb the multiplier ladder".');
+    const sg = gfdAddNode('screen', 'SG LADDER',    colX(col), L5, 'Per-step gamble-up / collect decision.');
+    const ot = gfdAddNode('screen', 'SG OUTRO',     colX(col), L6, 'Final multiplier / collect.');
+    gfdConnect(baseId, ev, 'Player taps GAMBLE', null, 15);
+    gfdConnect(ev, pp, 'Trigger fires', null, 1);
+    gfdConnect(pp, sg, 'Player taps START', null, 1);
+    gfdConnect(sg, sg, 'Gamble up', {field:'sgGambleOk',op:'==',value:true}, 3);
+    gfdConnect(sg, ot, 'Collect', {field:'sgCollect',op:'==',value:true}, 1);
+    gfdConnect(sg, ot, 'Bust',    {field:'sgGambleOk',op:'==',value:false}, 2);
+    gfdConnect(ot, baseId, 'Return', null, 1);
+    featureMap.superGamble = sg; col++;
+  }
+  // Bonus Store — persistent scatter-collector + feature shop
+  if (hasBonusStore) {
+    const st = gfdAddNode('screen', 'BONUS STORE',  colX(col), L3, 'Persistent scatter counter. Player browses feature-entry offers.');
+    const bu = gfdAddNode('action', 'STORE PURCHASE', colX(col), L4, 'Player spends collected scatters for a feature entry.');
+    gfdConnect(baseId, st, 'Player taps STORE', null, 20);
+    gfdConnect(st, bu, 'Select offer', null, 1);
+    // If Free Spins is enabled, a store purchase can route directly into it.
+    if (featureMap.fs) gfdConnect(bu, featureMap.fs, 'Free Spins bought', null, 1);
+    else gfdConnect(bu, baseId, 'Feature started', null, 1);
+    gfdConnect(st, baseId, 'Close', null, 2); col++;
+  }
+  // Buy Feature — can fast-path into any active bonus round
+  if (hasBuy) {
+    const bp = gfdAddNode('action',   'BUY FEATURE', colX(col), L3, 'Cost: 100× total bet. Player views cost & confirms.');
+    const dc = gfdAddNode('decision', 'CONFIRMED?',  colX(col), L4, '');
+    gfdConnect(baseId, bp, 'Player taps BUY', null, 20);
+    gfdConnect(bp, dc, '', null, 1);
+    // Route confirmation to the preferred target (FS → Pick → HnS → base fallback)
+    const target = featureMap.fs || featureMap.pick || featureMap.hs || featureMap.wheel || featureMap.ladder || baseId;
+    gfdConnect(dc, target, 'Yes', {field:'buyConfirmed',op:'==',value:true}, 1);
+    gfdConnect(dc, baseId, 'No — cancel', {field:'buyConfirmed',op:'==',value:false}, 2);
     col++;
   }
-  if(hasPick){
-    const pk=gfdAddNode('screen','BONUS PICK', colX(col),L3,'Player picks from hidden items to reveal cash prizes.');
-    gfdConnect(baseId,pk,'3+ Bonus symbols',{field:'bonusCount',op:'>=',value:3},10);
-    gfdConnect(pk,baseId,'All picks revealed',null,1); col++;
-  }
-  if(hasWheel){
-    const wh=gfdAddNode('screen','WHEEL BONUS',colX(col),L3,'Prize wheel spin. Multiplier or feature award.');
-    gfdConnect(baseId,wh,'Trigger met',{field:'wheelTrigger',op:'==',value:true},10);
-    gfdConnect(wh,baseId,'Prize awarded',null,1); col++;
-  }
-  // ── Spin Resolution column (core path — always present) ──────────────────────
-  // RNG and Math nodes document the certifiable spin loop for compliance handoff.
-  const rngId =gfdAddNode('rng',  'RNG RESOLUTION',colX(col),L3,
+
+  // ── Spin Resolution column (core path — always present) ─────────────────
+  const rngId  = gfdAddNode('rng',  'RNG RESOLUTION', colX(col), L3,
     'Certified RNG call. One call per spin. Seeded outcome determines reel stops.');
-  const mathId=gfdAddNode('math', 'MATH ENGINE',   colX(col),L4,
+  const mathId = gfdAddNode('math', 'MATH ENGINE',    colX(col), L4,
     'Evaluates reel stops → win amount. Applies multipliers. RTP-critical path.');
-  // Override defaults with slot-domain context
-  const _rngN=GFD.nodes.find(n=>n.id===rngId);
-  if(_rngN) _rngN.meta={calls:1,distribution:'uniform',outcomes:'normal,freeSpin,bonus,jackpot',notes:'GLI-11 / BMM certified RNG required'};
-  const _maN=GFD.nodes.find(n=>n.id===mathId);
-  if(_maN) _maN.meta={formula:'bet × winLines × mult',affects:'winAmount',rtp:true,notes:'All code paths must be submitted in math cert doc'};
-  gfdConnect(baseId,rngId, 'Reel spin',         null,5);
-  gfdConnect(rngId, mathId,'Reel stops',         null,1);
-  gfdConnect(mathId,baseId,'Result applied',      null,1);
+  const _rngN = GFD.nodes.find(n=>n.id===rngId);
+  if (_rngN) _rngN.meta = { calls:1, distribution:'uniform', outcomes:'normal,freeSpin,bonus,jackpot', notes:'GLI-11 / BMM certified RNG required' };
+  const _maN = GFD.nodes.find(n=>n.id===mathId);
+  if (_maN) _maN.meta = { formula:'bet × winLines × mult', affects:'winAmount', rtp:true, notes:'All code paths must be submitted in math cert doc' };
+  gfdConnect(baseId, rngId,  'Reel spin',      null, 5);
+  gfdConnect(rngId,  mathId, 'Reel stops',     null, 1);
+  gfdConnect(mathId, baseId, 'Result applied', null, 1);
+  // Reel mechanics aggregator — branches off MATH so the compliance story
+  // (what modifies the base paytable result) is preserved in one node.
+  if (reelMechanics.length) {
+    const notes = 'Active reel-level mechanics applied during resolution:\n\n'
+      + reelMechanics.map(([l, n]) => `• ${l} — ${n}`).join('\n');
+    const mechId = gfdAddNode('math', 'REEL MECHANICS', colX(col), L5, notes);
+    gfdConnect(mathId, mechId, 'Apply modifiers', null, 1);
+    gfdConnect(mechId, baseId, 'Modified result', null, 1);
+  }
   col++;
 
   // Settings — always the last feature column
-  const sg=gfdAddNode('screen','SETTINGS',colX(col),L3,'Paytable · History · Audio · Info · Responsible Gambling');
-  gfdConnect(baseId,sg,'Taps ⚙',null,50);
-  gfdConnect(sg,baseId,'Close / Back',null,1); col++;
+  const sg2 = gfdAddNode('screen', 'SETTINGS', colX(col), L3, 'Paytable · History · Audio · Info · Responsible Gambling');
+  gfdConnect(baseId, sg2, 'Taps ⚙', null, 50);
+  gfdConnect(sg2, baseId, 'Close / Back', null, 1); col++;
 
-  // ── Bottom layer: Win resolution nodes ────────────────────────────────────
-  const winY=PAD+ROW_H*(hasFreeSpins||hasHoldSpin?6:4);
-  const winTypes=[
+  // ── Bottom layer: Win resolution nodes ────────────────────────────────
+  // Pushed below the deepest feature column (row 7) so screens + outros
+  // sit above the win row.
+  const winY = PAD + ROW_H * 7;
+  const winTypes = [
     ['win','SMALL WIN','Silent — balance update only. No overlay.'],
     ['win','BIG WIN','Animated counter overlay. Coin shower FX.'],
     ['win','MEGA WIN','Full-screen celebration. Holds 3 sec.'],
     ['win','EPIC WIN','Cinematic sequence. Music swell. Lightning FX.'],
   ];
-  if(d.jps.length) winTypes.push(['win','JACKPOT WIN','Ultimate celebration. Full cinematic + collect sequence.']);
-  const winTotalW=(winTypes.length-1)*COL_W;
-  const winStartX=cx-winTotalW/2;
-  winTypes.forEach(([type,label,notes],i)=>{
-    const wid=gfdAddNode(type,label,winStartX+i*COL_W,winY,notes);
-    gfdConnect(baseId,wid,'Win resolved',null,5+i);
-    gfdConnect(wid,baseId,label==='SMALL WIN'?'Auto-dismiss':'Win dismissed',null,1);
+  if (d.jps.length) winTypes.push(['win','JACKPOT WIN','Ultimate celebration. Full cinematic + collect sequence.']);
+  const winTotalW = (winTypes.length-1) * COL_W;
+  const winStartX = cx - winTotalW/2;
+  const winIds = [];
+  winTypes.forEach(([type, label, notes], i) => {
+    const wid = gfdAddNode(type, label, winStartX + i*COL_W, winY, notes);
+    gfdConnect(baseId, wid, 'Win resolved', null, 5+i);
+    gfdConnect(wid, baseId, label === 'SMALL WIN' ? 'Auto-dismiss' : 'Win dismissed', null, 1);
+    winIds.push({ id: wid, label });
   });
+
+  // ── Post-win Gamble (decision + pick) — only if Gamble is enabled ─────
+  // Gamble is offered after BIG / MEGA / EPIC wins (not SMALL — too
+  // low-stakes). Loops through the pick until player collects or busts.
+  if (hasGamble) {
+    const gy      = winY + ROW_H;
+    const gx      = cx;
+    const gOffer  = gfdAddNode('decision', 'GAMBLE?',      gx - COL_W,   gy, 'Offered after significant wins. Player can gamble or collect.');
+    const gPick   = gfdAddNode('screen',   'GAMBLE PICK',  gx,           gy, 'Player picks red/black or heads/tails to double the prize.');
+    const gBust   = gfdAddNode('action',   'PRIZE LOST',   gx + COL_W,   gy, 'Wrong pick. Prize returns to zero; base game resumes.');
+    winIds.forEach(({ id, label }) => {
+      if (label === 'SMALL WIN' || label === 'JACKPOT WIN') return;
+      gfdConnect(id, gOffer, 'Offer gamble', null, 30);
+    });
+    gfdConnect(gOffer, gPick,  'Yes — gamble', {field:'gambleChoice',op:'==',value:true}, 1);
+    gfdConnect(gOffer, baseId, 'No — collect', {field:'gambleChoice',op:'==',value:false}, 2);
+    gfdConnect(gPick,  gOffer, 'Correct — double', {field:'gambleWin',op:'==',value:true}, 1);
+    gfdConnect(gPick,  gBust,  'Wrong', {field:'gambleWin',op:'==',value:false}, 1);
+    gfdConnect(gBust,  baseId, 'Return to base', null, 1);
+  }
 }
 
 // ─── Render ──────────────────────────────────────────────
