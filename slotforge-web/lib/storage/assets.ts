@@ -22,15 +22,25 @@ export async function uploadGeneratedAsset(
   const id       = crypto.randomUUID()
   const path     = `${projectId}/generated/${type}-${Date.now()}.png`
 
-  // Get image bytes — either decode base64 data URL directly or fetch remote URL
+  // Get image bytes — either decode base64 data URL directly or fetch remote URL.
+  // Respect the source content-type: providers sometimes return SVG/JPEG/WebP
+  // even when the URL ends in `.png`. Uploading SVG bytes with a hardcoded
+  // `image/png` header produced broken-image tiles in the UI (the browser
+  // can't decode SVG as PNG). We sniff the MIME from the source and preserve
+  // it on upload.
   let buffer: Buffer
+  let contentType = 'image/png'
   if (sourceUrl.startsWith('data:')) {
+    const mimeMatch = sourceUrl.match(/^data:([^;]+);base64,/)
+    if (mimeMatch?.[1]) contentType = mimeMatch[1]
     const base64 = sourceUrl.split(',')[1]
     if (!base64) throw new Error('[storage] Invalid data URL')
     buffer = Buffer.from(base64, 'base64')
   } else {
     const imageRes = await fetch(sourceUrl)
     if (!imageRes.ok) throw new Error(`[storage] Failed to download image: ${imageRes.status}`)
+    const ct = imageRes.headers.get('content-type')?.split(';')[0]?.trim()
+    if (ct && ct.startsWith('image/')) contentType = ct
     buffer = Buffer.from(await imageRes.arrayBuffer())
   }
 
@@ -38,7 +48,7 @@ export async function uploadGeneratedAsset(
   const { error: uploadErr } = await supabase.storage
     .from(BUCKET)
     .upload(path, buffer, {
-      contentType: 'image/png',
+      contentType,
       upsert:      true,
     })
 

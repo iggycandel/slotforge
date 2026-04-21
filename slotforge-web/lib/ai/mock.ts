@@ -46,8 +46,11 @@ export async function generateWithMock(
   const dims   = isWide ? '1792x1024' : '1024x1024'
   const label  = encodeURIComponent(`${type}\n${theme}`)
 
+  // `.png` suffix forces placehold.co to rasterise — the default response is
+  // SVG, which the storage layer used to upload with a mismatched
+  // content-type: image/png header, producing broken-icon tiles in the UI.
   return {
-    url:      `https://placehold.co/${dims}/${color}/ffffff?text=${label}&font=raleway`,
+    url:      `https://placehold.co/${dims}/${color}/ffffff.png?text=${label}&font=raleway`,
     provider: 'mock',
   }
 }
