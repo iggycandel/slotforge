@@ -3788,9 +3788,34 @@ function deleteAnyLayer(key){
     deleteCustomLayer(key);
     return;
   }
-  // Built-in: confirm then remove from current screen's key list
   const def = PSD[key];
   const label = def?.label || key;
+
+  // Feat-slots aren't listed in SDEFS[screen].keys — they're dynamically
+  // rendered by each feature's overlay function. "Delete" on a feat-slot
+  // means reset to defaults: clear the uploaded asset, stored position,
+  // adjustments, blend mode, mask, visibility and lock flags. The slot
+  // then re-renders at its registered default on the next overlay rebuild.
+  if (def && def.type === 'feat_slot') {
+    if (!confirm('Reset "' + label + '" to its default position and clear any uploaded asset?')) return;
+    try { delete EL_ASSETS[key]; } catch(e){}
+    ['portrait','landscape','desktop'].forEach(vp => {
+      try { if (EL_VP[vp]) delete EL_VP[vp][key]; } catch(e){}
+    });
+    try { delete EL_BLEND_MODES[key]; } catch(e){}
+    try { delete EL_ADJ[key];         } catch(e){}
+    try { delete EL_MASKS[key];       } catch(e){}
+    try { HIDDEN_LAYERS.delete(key);  } catch(e){}
+    try { USER_LOCKS.delete(key);     } catch(e){}
+    if (SEL_KEY === key) SEL_KEY = null;
+    try { buildCanvas(); } catch(e){}
+    try { _rebuildFeatureOverlay(); } catch(e){}
+    renderLayers(); markDirty();
+    pushHistory('reset '+key);
+    return;
+  }
+
+  // Built-in PSD layer: confirm then remove from current screen's key list.
   if(!confirm('Remove "' + label + '" from the current screen?\n\nThis removes it from the canvas on this screen only. It can be added back by rebuilding the canvas or switching screens.')) return;
   const sc = SDEFS[P.screen];
   if(sc && sc.keys){
@@ -4520,8 +4545,20 @@ function applyAssetToLayer(k, dataUrl, afterFn){
   // This keeps the save payload small (URLs instead of base64).
   _sfUploadDataUrlToStorage(k, dataUrl);
 
+  // buildCanvas() wipes #gf (including #feature-screen-overlay), so after
+  // every upload the feature overlay must be rebuilt — otherwise uploads
+  // to any feat-slot (wheel.disc, ladder.rail, freespins.multiplier_badge,
+  // winsequence.*, etc.) leave the canvas blank until the user navigates.
+  const _refreshCanvas = () => {
+    buildCanvas();
+    try { _rebuildFeatureOverlay(); } catch(e){}
+    renderLayers();
+    renderLibrary();
+    markDirty();
+  };
+
   if(isBg){
-    buildCanvas(); renderLayers(); renderLibrary(); markDirty();
+    _refreshCanvas();
     pushHistory('upload '+k);
     if(afterFn) afterFn(); return;
   }
@@ -4540,11 +4577,11 @@ function applyAssetToLayer(k, dataUrl, afterFn){
         if(EL_VP[vp][k].w===undefined) EL_VP[vp][k].w = curW;
       });
     }
-    buildCanvas(); renderLayers(); renderLibrary(); markDirty();
+    _refreshCanvas();
     pushHistory('upload '+k);
     if(afterFn) afterFn();
   };
-  tmpImg.onerror = ()=>{ buildCanvas(); renderLayers(); renderLibrary(); markDirty(); pushHistory('upload '+k); if(afterFn) afterFn(); };
+  tmpImg.onerror = ()=>{ _refreshCanvas(); pushHistory('upload '+k); if(afterFn) afterFn(); };
   tmpImg.src = dataUrl;
 }
 
@@ -9205,6 +9242,36 @@ function selectFeatureSlot(key){
   _rebuildFeatureOverlay();
 }
 
+// Apply blend mode, brightness/contrast/saturation/opacity adjustments,
+// and mask CSS to a feat-slot DOM element — the same treatment base PSD
+// layers get inside buildCanvas(). Without this, feat-slots silently
+// ignored every right-click context-panel tweak (blend, adjustments,
+// mask). Called from _imgSlot / _phSlot / _slot's stub path.
+function _applyLayerStyles(el, key){
+  if (!el) return;
+  try {
+    if (typeof EL_ADJ !== 'undefined' && EL_ADJ[key]) {
+      const adj = EL_ADJ[key];
+      const b = typeof adj.brightness === 'number' ? adj.brightness : 0;
+      const c = typeof adj.contrast   === 'number' ? adj.contrast   : 0;
+      const s = typeof adj.saturation === 'number' ? adj.saturation : 0;
+      const o = typeof adj.opacity    === 'number' ? adj.opacity    : 100;
+      const filterParts = [];
+      if (b !== 0) filterParts.push(`brightness(${1 + b/100})`);
+      if (c !== 0) filterParts.push(`contrast(${1 + c/100})`);
+      if (s !== 0) filterParts.push(`saturate(${1 + s/100})`);
+      if (filterParts.length) el.style.filter = filterParts.join(' ');
+      if (o !== 100)          el.style.opacity = (o / 100).toFixed(2);
+    }
+    if (typeof EL_BLEND_MODES !== 'undefined' && EL_BLEND_MODES[key] && EL_BLEND_MODES[key] !== 'normal') {
+      el.style.mixBlendMode = EL_BLEND_MODES[key];
+    }
+    // applyMaskToEl looks up `el-<key>` — works for singleton feat-slots
+    // (which get that id); no-op for shared / repeated feat-slots.
+    if (typeof applyMaskToEl === 'function') applyMaskToEl(key);
+  } catch(e) { /* non-fatal */ }
+}
+
 // Shared shorthand. Hidden slots still emit a stub so _sendLayersUpdate
 // can list them in the Layers panel (with an "unhide" affordance). When
 // called with opts.singleton=true, the slot participates fully in the
@@ -9223,6 +9290,7 @@ function _slot(key, x, y, w, h, label, c1, fit, opts){
     ? _imgSlot(key, x, y, w, h, fit, opts)
     : _phSlot(key, x, y, w, h, label, c1, opts);
   if (label) el.dataset.assetLabel = label;
+  _applyLayerStyles(el, key);
   return el;
 }
 
@@ -12088,11 +12156,15 @@ window._sfBridge = (function(){
             _sendLayersUpdate();
           }
         }
+        // Every branch that mutates canvas-visible state must rebuild the
+        // feature overlay — buildCanvas() wipes #gf (which contains
+        // #feature-screen-overlay), so without the rebuild, feat-slots
+        // silently disappear after every layer-panel op.
         else if(op==='toggleVisibility'&&k){ if(HIDDEN_LAYERS.has(k))HIDDEN_LAYERS.delete(k);else HIDDEN_LAYERS.add(k); buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); pushHistory('toggle visibility '+k); markDirty(); }
-        else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); renderLayers(); _sendLayersUpdate(); pushHistory('toggle lock '+k); markDirty(); }
-        else if(op==='delete'&&k){ deleteAnyLayer(k); pushHistory('delete '+k); }
-        else if(op==='duplicate'&&k){ duplicateLayer(k); pushHistory('duplicate '+k); }
-        else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas(); pushHistory('blend '+k); markDirty(); }
+        else if(op==='toggleLock'&&k){ if(USER_LOCKS.has(k))USER_LOCKS.delete(k);else USER_LOCKS.add(k); buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); _sendLayersUpdate(); pushHistory('toggle lock '+k); markDirty(); }
+        else if(op==='delete'&&k){ deleteAnyLayer(k); try{_rebuildFeatureOverlay();}catch(e){} pushHistory('delete '+k); }
+        else if(op==='duplicate'&&k){ duplicateLayer(k); try{_rebuildFeatureOverlay();}catch(e){} pushHistory('duplicate '+k); }
+        else if(op==='setBlendMode'&&k){ EL_BLEND_MODES[k]=msg.blendMode||'normal'; buildCanvas(); _rebuildFeatureOverlay(); _sendLayersUpdate(); pushHistory('blend '+k); markDirty(); }
         else if(op==='addLayer'){ document.getElementById('add-layer-btn')?.click(); }
         else if(op==='reorder' && k && msg.targetKey){
           var tgt=msg.targetKey;
@@ -12105,21 +12177,21 @@ window._sfBridge = (function(){
               arr.splice(fromIdx,1);
               toIdx=arr.indexOf(tgt);
               arr.splice(msg.position==='before'?toIdx:toIdx+1,0,k);
-              buildCanvas(); renderLayers(); pushHistory('reorder '+k); markDirty();
+              buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); pushHistory('reorder '+k); markDirty();
             }
           }
         }
-        else if(op==='zForward'&&k){ layerReorder(k,'forward'); pushHistory('z-forward '+k); }
-        else if(op==='zFront'&&k){   layerReorder(k,'front');   pushHistory('z-front '+k); }
-        else if(op==='zBackward'&&k){ layerReorder(k,'backward'); pushHistory('z-backward '+k); }
-        else if(op==='zBack'&&k){    layerReorder(k,'back');    pushHistory('z-back '+k); }
+        else if(op==='zForward'&&k){ layerReorder(k,'forward');  try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-forward '+k); }
+        else if(op==='zFront'&&k){   layerReorder(k,'front');    try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-front '+k); }
+        else if(op==='zBackward'&&k){ layerReorder(k,'backward'); try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-backward '+k); }
+        else if(op==='zBack'&&k){    layerReorder(k,'back');     try{_rebuildFeatureOverlay();}catch(e){} pushHistory('z-back '+k); }
         else if(op==='addGroup'){
           var gNum=Object.keys(PSD).filter(function(x){return x.startsWith('group_');}).length+1;
           var gKey='group_'+gNum;
           PSD[gKey]={label:'Group '+gNum,type:'group',x:0,y:0,w:200,h:200,keys:SEL_KEY?[SEL_KEY]:[]};
           if(SDEFS[P.screen]&&SDEFS[P.screen].keys) SDEFS[P.screen].keys.push(gKey);
           SEL_KEY=gKey;
-          buildCanvas(); renderLayers(); pushHistory('add group '+gKey); markDirty();
+          buildCanvas(); _rebuildFeatureOverlay(); renderLayers(); pushHistory('add group '+gKey); markDirty();
         }
       } catch(ex){ console.error('[SF_LAYER_OP]',ex); }
     }
