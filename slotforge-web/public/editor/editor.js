@@ -1088,8 +1088,14 @@ function makeSymbolCell(idx, cellW, cellH){
     panel.style.left=px+'px'; panel.style.top=py+'px';
     panel.classList.add('show');
   });
-  // Left-click = open Reel Settings panel
+  // Single-click on a symbol cell is intentionally a no-op — it used to
+  // open the full-screen Reel Settings modal which was surprising and
+  // disruptive. Double-click is the dedicated gesture for editing reel
+  // layout; right-click opens the adjustments context panel.
   wrapper.addEventListener('click', e=>{
+    e.stopPropagation();
+  });
+  wrapper.addEventListener('dblclick', e=>{
     e.stopPropagation();
     if(typeof openReelSettings === 'function') openReelSettings();
   });
@@ -1838,12 +1844,14 @@ function buildCanvas(){
           startMove(e,k);
         });
         el.addEventListener('click', e=>{
-          // Symbol cell click or reel area click → Reel Settings panel
+          // Symbol cells are decorative — makeSymbolCell already swallows the
+          // click so this branch only fires for non-symbol child nodes inside
+          // the reel area (gaps, framing). reelArea itself now behaves like
+          // every other layer on single click (select, not launch-modal);
+          // double-click is the dedicated gesture for Reel Settings.
           const symCell = e.target.closest ? e.target.closest('[data-sym-idx]') : null;
-          if(symCell || k==='reelArea'){
+          if(symCell) {
             e.stopPropagation();
-            if(TOOL==='pan') return;
-            if(typeof openReelSettings==='function') openReelSettings();
             return;
           }
           if(e.target.dataset.symIdx) return;
@@ -1855,6 +1863,16 @@ function buildCanvas(){
             selectEl(k);
           }
         });
+        // Double-click on the reel area (or a symbol cell via bubble) opens
+        // Reel Settings. Users who drag/resize the reel layer use single
+        // click + handles; the modal is the "edit symbol grid" escape hatch.
+        if (k === 'reelArea') {
+          el.addEventListener('dblclick', e=>{
+            e.stopPropagation();
+            if(TOOL==='pan') return;
+            if(typeof openReelSettings==='function') openReelSettings();
+          });
+        }
       } else if(k!=='bg'){
         // Locked non-bg layers: selectable but not moveable.
         // Fix A: dimLayer covers the whole viewport and sits behind overlay
