@@ -8576,8 +8576,337 @@ function _imgSlot(key, x, y, w, h, fit, opts){
   _wireSlotEvents(d, key, opts);
   return d;
 }
+// ─── SVG placeholder registry ────────────────────────────────────────────
+// Representative silhouettes per feat-slot key. Each entry is an inline
+// SVG string using `currentColor` for strokes/fills so the project's
+// primary colour (c1) tints the placeholder. All SVGs have transparent
+// backgrounds — no grey frames, no full-screen placeholders.
+//
+// Keys NOT in this map return an invisible stub from _phSlot — the slot
+// still appears in the Layers panel (enumerable by data-asset-key) and
+// remains uploadable from the Art workspace, but nothing visible is
+// painted on canvas. That keeps backgrounds, full-viewport FX, and the
+// Win Sequence title-art slots (where the CSS text already fills the role)
+// out of the way until the user explicitly uploads art.
+const _svg = (vb, inner) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block;overflow:visible">${inner}</svg>`;
+const _btnSvg = (label) => _svg('0 0 160 50', `
+  <rect x="2" y="2" width="156" height="46" rx="10" fill="currentColor" fill-opacity="0.18"/>
+  <rect x="2" y="2" width="156" height="46" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.8"/>
+  <text x="80" y="32" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="700" fill="currentColor" letter-spacing="1.5">${label}</text>
+`);
+const _bandSvg = (label) => _svg('0 0 240 40', `
+  <text x="120" y="26" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="600" fill="currentColor" fill-opacity="0.85" letter-spacing="1.5">${label}</text>
+`);
+const _pillSvg = (label) => _svg('0 0 140 40', `
+  <rect x="2" y="2" width="136" height="36" rx="18" fill="currentColor" fill-opacity="0.82"/>
+  <text x="70" y="26" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="800" fill="#0a0a14" letter-spacing="1">${label}</text>
+`);
+
+const FEAT_SVG_PLACEHOLDERS = {
+  // ─── Win Sequence ───
+  // title_art / button_collect intentionally omitted: the CSS text sub-
+  // elements (ov-bigwin_title / ov-bigwin_btn etc.) already fill those
+  // roles, so showing a silhouette on top would duplicate.
+  'winsequence.frame': _svg('0 0 240 130', `
+    <rect x="8" y="10" width="224" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-opacity="0.9"/>
+    <rect x="2" y="4" width="236" height="122" rx="14" fill="none" stroke="currentColor" stroke-width="1" stroke-opacity="0.45"/>
+    <g fill="currentColor" fill-opacity="0.85">
+      <path d="M 10 28 L 4 14 L 16 8 Z"/>
+      <path d="M 230 28 L 236 14 L 224 8 Z"/>
+      <path d="M 10 102 L 4 116 L 16 122 Z"/>
+      <path d="M 230 102 L 236 116 L 224 122 Z"/>
+    </g>
+  `),
+  'winsequence.coins_fx': _svg('0 0 200 100', `
+    <g fill="currentColor">
+      <circle cx="20"  cy="42" r="10" fill-opacity="0.55"/>
+      <circle cx="42"  cy="24" r="12" fill-opacity="0.75"/>
+      <circle cx="64"  cy="64" r="9"  fill-opacity="0.55"/>
+      <circle cx="90"  cy="36" r="13" fill-opacity="0.85"/>
+      <circle cx="112" cy="58" r="10" fill-opacity="0.65"/>
+      <circle cx="136" cy="28" r="12" fill-opacity="0.75"/>
+      <circle cx="160" cy="64" r="9"  fill-opacity="0.55"/>
+      <circle cx="182" cy="38" r="11" fill-opacity="0.8"/>
+    </g>
+  `),
+
+  // ─── Wheel Bonus ───
+  'wheel.header':      _bandSvg('SPIN TO WIN'),
+  'wheel.disc': _svg('0 0 200 200', `
+    <circle cx="100" cy="100" r="92" fill="none" stroke="currentColor" stroke-width="3" stroke-opacity="0.85"/>
+    <g stroke="currentColor" stroke-width="1.4" stroke-opacity="0.6">
+      <line x1="100" y1="8" x2="100" y2="192"/>
+      <line x1="8" y1="100" x2="192" y2="100"/>
+      <line x1="34" y1="34" x2="166" y2="166"/>
+      <line x1="166" y1="34" x2="34" y2="166"/>
+    </g>
+    <circle cx="100" cy="100" r="12" fill="currentColor" fill-opacity="0.9"/>
+  `),
+  'wheel.pointer': _svg('0 0 60 80', `
+    <polygon points="30,6 52,46 8,46" fill="currentColor" fill-opacity="0.9"/>
+    <rect x="26" y="40" width="8" height="34" fill="currentColor" fill-opacity="0.7"/>
+  `),
+  'wheel.hub': _svg('0 0 60 60', `
+    <circle cx="30" cy="30" r="28" fill="currentColor" fill-opacity="0.15"/>
+    <circle cx="30" cy="30" r="22" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.85"/>
+    <circle cx="30" cy="30" r="6" fill="currentColor"/>
+  `),
+  'wheel.segment_bg': _svg('0 0 100 60', `
+    <path d="M 50 50 L 10 10 A 50 50 0 0 1 90 10 Z" fill="currentColor" fill-opacity="0.28"/>
+  `),
+  'wheel.button_spin': _btnSvg('SPIN'),
+  'wheel.footer':     _bandSvg('Prize awarded'),
+
+  // ─── Ladder Bonus ───
+  'ladder.header': _bandSvg('LADDER'),
+  'ladder.rail': _svg('0 0 60 300', `
+    <rect x="6" y="8" width="6" height="284" fill="currentColor" fill-opacity="0.35"/>
+    <rect x="48" y="8" width="6" height="284" fill="currentColor" fill-opacity="0.35"/>
+  `),
+  'ladder.step': _svg('0 0 200 40', `
+    <rect x="6" y="14" width="188" height="14" rx="3" fill="currentColor" fill-opacity="0.22"/>
+    <rect x="6" y="14" width="188" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.7"/>
+  `),
+  'ladder.step_active': _svg('0 0 200 40', `
+    <rect x="4" y="12" width="192" height="18" rx="4" fill="currentColor" fill-opacity="0.38"/>
+    <rect x="4" y="12" width="192" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+  `),
+  'ladder.player_marker': _svg('0 0 40 40', `
+    <polygon points="6,20 24,6 24,14 34,14 34,26 24,26 24,34" fill="currentColor"/>
+  `),
+  'ladder.button_climb':   _btnSvg('CLIMB'),
+  'ladder.button_collect': _btnSvg('COLLECT'),
+  'ladder.footer':         _bandSvg('Current prize'),
+
+  // ─── Gamble ───
+  'gamble.header': _bandSvg('GAMBLE'),
+  'gamble.pick_element': _svg('0 0 80 110', `
+    <rect x="4" y="4" width="72" height="102" rx="8" fill="currentColor" fill-opacity="0.15"/>
+    <rect x="4" y="4" width="72" height="102" rx="8" fill="none" stroke="currentColor" stroke-width="2"/>
+    <text x="40" y="66" text-anchor="middle" font-family="serif" font-size="48" font-weight="800" fill="currentColor">?</text>
+  `),
+  'gamble.option_a': _svg('0 0 80 110', `
+    <rect x="4" y="4" width="72" height="102" rx="8" fill="#ef7a7a" fill-opacity="0.22"/>
+    <rect x="4" y="4" width="72" height="102" rx="8" fill="none" stroke="#ef7a7a" stroke-width="2"/>
+    <path d="M 40 28 C 30 18, 16 26, 22 42 L 40 66 L 58 42 C 64 26, 50 18, 40 28 Z" fill="#ef7a7a"/>
+  `),
+  'gamble.option_b': _svg('0 0 80 110', `
+    <rect x="4" y="4" width="72" height="102" rx="8" fill="currentColor" fill-opacity="0.15"/>
+    <rect x="4" y="4" width="72" height="102" rx="8" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M 40 24 L 58 52 L 40 64 L 22 52 Z" fill="currentColor"/>
+    <rect x="36" y="64" width="8" height="14" fill="currentColor"/>
+  `),
+  'gamble.button_collect': _btnSvg('COLLECT'),
+  'gamble.meter': _svg('0 0 200 40', `
+    <rect x="2" y="8" width="196" height="24" rx="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.7"/>
+    <text x="100" y="26" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="12" font-weight="600" fill="currentColor" letter-spacing="1">Round 1 of 5</text>
+  `),
+  'gamble.footer': _bandSvg('Current prize'),
+
+  // ─── Super Gamble ───
+  'supergamble.header':         _bandSvg('SUPER GAMBLE'),
+  'supergamble.step':           _svg('0 0 200 40', `<rect x="6" y="14" width="188" height="14" rx="3" fill="currentColor" fill-opacity="0.22"/><rect x="6" y="14" width="188" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.7"/>`),
+  'supergamble.step_active':    _svg('0 0 200 40', `<rect x="4" y="12" width="192" height="18" rx="4" fill="currentColor" fill-opacity="0.38"/><rect x="4" y="12" width="192" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>`),
+  'supergamble.meter': _svg('0 0 140 50', `
+    <rect x="2" y="2" width="136" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.7"/>
+    <text x="70" y="32" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="18" font-weight="800" fill="currentColor">×5</text>
+  `),
+  'supergamble.button_collect': _btnSvg('COLLECT'),
+  'supergamble.button_gamble':  _btnSvg('GAMBLE'),
+  'supergamble.footer':         _bandSvg('Current prize'),
+
+  // ─── Free Spins ───
+  // intro/outro banners intentionally omitted: CSS text ov-fs-intro_*
+  // sub-elements already render the banner.
+  'freespins.spin_counter_frame': _svg('0 0 200 50', `
+    <rect x="2" y="2" width="196" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.75"/>
+    <text x="100" y="32" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="15" font-weight="700" fill="currentColor" letter-spacing="1.5">SPINS 3 / 10</text>
+  `),
+  'freespins.multiplier_badge': _svg('0 0 60 60', `
+    <circle cx="30" cy="30" r="26" fill="currentColor" fill-opacity="0.22"/>
+    <circle cx="30" cy="30" r="26" fill="none" stroke="currentColor" stroke-width="2"/>
+    <text x="30" y="39" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="20" font-weight="800" fill="currentColor">×2</text>
+  `),
+  'freespins.retrigger_celebration': _pillSvg('+5 SPINS'),
+
+  // ─── Hold & Spin ───
+  'holdnspin.coin_symbol_locked': _svg('0 0 60 60', `
+    <circle cx="30" cy="30" r="24" fill="currentColor" fill-opacity="0.7"/>
+    <path d="M 24 32 L 24 24 A 6 6 0 0 1 36 24 L 36 32" fill="none" stroke="#0a0a14" stroke-width="2.5" stroke-opacity="0.8"/>
+    <rect x="22" y="30" width="16" height="14" rx="2" fill="#0a0a14" fill-opacity="0.55"/>
+  `),
+  'holdnspin.coin_symbol_glowing': _svg('0 0 60 60', `
+    <circle cx="30" cy="30" r="27" fill="currentColor" fill-opacity="0.35"/>
+    <circle cx="30" cy="30" r="20" fill="currentColor" fill-opacity="0.88"/>
+    <text x="30" y="38" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="20" font-weight="800" fill="#0a0a14">€</text>
+  `),
+  'holdnspin.respin_counter_frame': _svg('0 0 240 50', `
+    <rect x="2" y="2" width="236" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.75"/>
+    <text x="120" y="32" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="16" font-weight="700" fill="currentColor" letter-spacing="2">RESPINS 3</text>
+  `),
+  'holdnspin.jackpot_grand': _pillSvg('GRAND'),
+  'holdnspin.jackpot_major': _pillSvg('MAJOR'),
+  'holdnspin.jackpot_minor': _pillSvg('MINOR'),
+  'holdnspin.jackpot_mini':  _pillSvg('MINI'),
+
+  // ─── Bonus Pick ───
+  'bonuspick.header': _bandSvg('CHOOSE YOUR PRIZE'),
+  'bonuspick.tile_closed': _svg('0 0 100 100', `
+    <rect x="6" y="6" width="88" height="88" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.55"/>
+    <text x="50" y="64" text-anchor="middle" font-family="serif" font-size="40" font-weight="900" fill="currentColor" fill-opacity="0.65">?</text>
+  `),
+  'bonuspick.prize_coin': _svg('0 0 60 60', `
+    <circle cx="30" cy="30" r="24" fill="currentColor" fill-opacity="0.7"/>
+    <text x="30" y="38" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="18" font-weight="800" fill="#0a0a14">€</text>
+  `),
+  'bonuspick.prize_multiplier': _svg('0 0 60 60', `
+    <circle cx="30" cy="30" r="24" fill="currentColor" fill-opacity="0.6"/>
+    <text x="30" y="38" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="16" font-weight="800" fill="#0a0a14">×5</text>
+  `),
+  'bonuspick.prize_freespin': _svg('0 0 60 60', `
+    <circle cx="30" cy="30" r="24" fill="currentColor" fill-opacity="0.6"/>
+    <polygon points="22,20 22,40 40,30" fill="#0a0a14"/>
+  `),
+  'bonuspick.prize_jackpot': _svg('0 0 60 60', `
+    <polygon points="30,8 36,22 52,24 40,34 44,50 30,42 16,50 20,34 8,24 24,22" fill="currentColor" fill-opacity="0.8"/>
+  `),
+  'bonuspick.footer': _bandSvg('Pick · awaiting'),
+
+  // ─── Tier B reel overlays ───
+  'stickywild.lock_frame': _svg('0 0 80 80', `
+    <rect x="4" y="4" width="72" height="72" rx="8" fill="currentColor" fill-opacity="0.15"/>
+    <rect x="4" y="4" width="72" height="72" rx="8" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M 28 48 L 28 32 C 28 24, 34 20, 40 20 C 46 20, 52 24, 52 32 L 52 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <rect x="22" y="42" width="36" height="28" rx="3" fill="currentColor" fill-opacity="0.5"/>
+  `),
+  'stickywild.badge':         _pillSvg('STICKY'),
+  'stickywild.counter_frame': _svg('0 0 200 50', `
+    <rect x="2" y="2" width="196" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.75"/>
+    <text x="100" y="32" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="14" font-weight="700" fill="currentColor" letter-spacing="1.5">STICKY ×2</text>
+  `),
+
+  'walkingwild.wild_frame': _svg('0 0 80 80', `
+    <rect x="4" y="4" width="72" height="72" rx="8" fill="currentColor" fill-opacity="0.2"/>
+    <rect x="4" y="4" width="72" height="72" rx="8" fill="none" stroke="currentColor" stroke-width="2"/>
+    <text x="40" y="54" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="34" font-weight="900" fill="currentColor">W</text>
+  `),
+  'walkingwild.trail': _svg('0 0 80 80', `
+    <polygon points="24,16 24,64 60,40" fill="currentColor" fill-opacity="0.5"/>
+  `),
+  'walkingwild.hint_label': _bandSvg('← Wild moves left'),
+
+  'cascade.highlight': _svg('0 0 80 80', `
+    <rect x="4" y="4" width="72" height="72" rx="6" fill="currentColor" fill-opacity="0.15"/>
+    <rect x="4" y="4" width="72" height="72" rx="6" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 2"/>
+  `),
+  'cascade.explosion_fx': _svg('0 0 80 80', `
+    <g fill="currentColor">
+      <polygon points="40,6 44,30 40,34 36,30" fill-opacity="0.85"/>
+      <polygon points="40,74 36,50 40,34 44,50" fill-opacity="0.85"/>
+      <polygon points="6,40 30,36 34,40 30,44" fill-opacity="0.85"/>
+      <polygon points="74,40 50,44 34,40 50,36" fill-opacity="0.85"/>
+      <polygon points="16,16 32,30 34,32 30,30" fill-opacity="0.55"/>
+      <polygon points="64,16 48,30 34,32 50,30" fill-opacity="0.55"/>
+      <polygon points="16,64 32,50 34,48 30,50" fill-opacity="0.55"/>
+      <polygon points="64,64 48,50 34,48 50,50" fill-opacity="0.55"/>
+    </g>
+    <circle cx="40" cy="40" r="7" fill="currentColor"/>
+  `),
+  'cascade.falling_symbol': _svg('0 0 80 80', `
+    <circle cx="40" cy="34" r="22" fill="currentColor" fill-opacity="0.3"/>
+    <polygon points="32,26 48,26 48,44 56,44 40,62 24,44 32,44" fill="currentColor"/>
+  `),
+  'cascade.chain_badge': _pillSvg('CHAIN ×3'),
+
+  'tumble.highlight': _svg('0 0 80 80', `
+    <rect x="4" y="4" width="72" height="72" rx="6" fill="currentColor" fill-opacity="0.15"/>
+    <rect x="4" y="4" width="72" height="72" rx="6" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 2"/>
+  `),
+  'tumble.trail_fx': _svg('0 0 80 80', `
+    <g stroke="currentColor" stroke-width="2" stroke-opacity="0.55" fill="none">
+      <line x1="20" y1="12" x2="20" y2="62"/>
+      <line x1="40" y1="12" x2="40" y2="62"/>
+      <line x1="60" y1="12" x2="60" y2="62"/>
+    </g>
+    <g fill="currentColor" fill-opacity="0.7">
+      <polygon points="20,70 14,58 26,58"/>
+      <polygon points="40,70 34,58 46,58"/>
+      <polygon points="60,70 54,58 66,58"/>
+    </g>
+  `),
+  'tumble.chain_badge': _pillSvg('TUMBLE ×2'),
+
+  'winmult.frame': _svg('0 0 80 80', `
+    <rect x="4" y="4" width="72" height="72" rx="10" fill="currentColor" fill-opacity="0.25"/>
+    <rect x="4" y="4" width="72" height="72" rx="10" fill="none" stroke="currentColor" stroke-width="2"/>
+    <text x="40" y="52" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="26" font-weight="900" fill="currentColor">×2</text>
+  `),
+  // glow_fx: omitted (pure FX, gets generated visually via the uploaded
+  // asset). No placeholder needed — would just be a blob overlapping the
+  // frame.
+  'winmult.ladder': _svg('0 0 320 40', `
+    <g font-family="Space Grotesk,sans-serif" font-size="12" font-weight="700" fill="currentColor">
+      <text x="25"  y="26" text-anchor="middle">1×</text>
+      <text x="80"  y="26" text-anchor="middle">2×</text>
+      <text x="135" y="26" text-anchor="middle" fill-opacity="0.55">3×</text>
+      <text x="190" y="26" text-anchor="middle" fill-opacity="0.4">5×</text>
+      <text x="245" y="26" text-anchor="middle" fill-opacity="0.3">8×</text>
+      <text x="300" y="26" text-anchor="middle" fill-opacity="0.25">10×</text>
+    </g>
+    <g stroke="currentColor" stroke-width="1" stroke-opacity="0.3">
+      <line x1="38"  y1="22" x2="65"  y2="22"/>
+      <line x1="95"  y1="22" x2="120" y2="22"/>
+      <line x1="148" y1="22" x2="175" y2="22"/>
+      <line x1="203" y1="22" x2="230" y2="22"/>
+      <line x1="260" y1="22" x2="285" y2="22"/>
+    </g>
+  `),
+
+  'cluster.highlight': _svg('0 0 80 80', `
+    <rect x="4" y="4" width="72" height="72" rx="12" fill="currentColor" fill-opacity="0.2"/>
+    <rect x="4" y="4" width="72" height="72" rx="12" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  `),
+  'cluster.count_badge': _pillSvg('CLUSTER ×4'),
+  // cluster.trail_fx omitted — overlaps the highlight cluster; user can
+  // still upload from Art workspace.
+
+  'infinity.extra_reel_art': _svg('0 0 120 300', `
+    <rect x="4" y="4" width="112" height="292" rx="10" fill="currentColor" fill-opacity="0.12"/>
+    <rect x="4" y="4" width="112" height="292" rx="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="5 3"/>
+    <text x="60" y="162" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="28" font-weight="900" fill="currentColor" fill-opacity="0.75">+1</text>
+  `),
+  'infinity.counter_badge':    _pillSvg('6 REELS'),
+  'infinity.multiplier_frame': _svg('0 0 120 40', `
+    <rect x="2" y="2" width="116" height="36" rx="8" fill="currentColor" fill-opacity="0.22"/>
+    <rect x="2" y="2" width="116" height="36" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <text x="60" y="26" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="13" font-weight="800" fill="currentColor">×3 TOTAL</text>
+  `),
+};
+
 function _phSlot(key, x, y, w, h, label, c1, opts){
   opts = opts || {};
+  const svgStr = FEAT_SVG_PLACEHOLDERS[key];
+  // No SVG for this slot → emit an invisible stub so the Layers panel can
+  // still enumerate it, but the canvas stays clean. This hits every .bg
+  // slot, every full-viewport FX slot that has no unique silhouette, and
+  // the Win Sequence title-art slots (where CSS text does the job).
+  if (!svgStr) {
+    const stub = document.createElement('div');
+    stub.dataset.assetKey   = key;
+    stub.dataset.assetLabel = label || key;
+    stub.dataset.placeholder = '1';
+    if (opts.singleton) {
+      stub.id = 'el-' + key;
+      stub.dataset.key = key;
+      stub.className = 'cel feat-slot placeholder' + (isLocked(key) ? ' locked' : '') + (SEL_KEY === key ? ' selected' : '');
+    } else {
+      stub.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
+    }
+    stub.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;pointer-events:${opts.singleton ? 'auto' : 'none'};opacity:0;box-sizing:border-box;${opts.singleton ? 'cursor:move;' : ''}`;
+    if (opts.singleton) _wireSlotEvents(stub, key, opts);
+    return stub;
+  }
   const d = document.createElement('div');
   d.dataset.assetKey = key;
   d.dataset.placeholder = '1';
@@ -8588,20 +8917,10 @@ function _phSlot(key, x, y, w, h, label, c1, opts){
   } else {
     d.className = 'feat-slot placeholder' + (SEL_KEY === key ? ' selected' : '');
   }
-  const fz = Math.max(10, Math.min(w, h) * 0.18);
-  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:#0a0a1a99;border:2px dashed ${c1}55;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:Space Grotesk,sans-serif;color:${c1}cc;text-align:center;padding:8px;box-sizing:border-box;pointer-events:auto;${opts.singleton ? '' : 'cursor:pointer;'}`;
-  const big = document.createElement('div');
-  big.style.cssText = `font-size:${fz}px;font-weight:700;letter-spacing:.04em`;
-  big.textContent = label;
-  d.appendChild(big);
-  const tag = document.createElement('div');
-  tag.style.cssText = `font-size:${Math.max(8, fz*0.42)}px;font-weight:500;color:${c1}77;font-family:DM Mono,monospace;opacity:.85;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`;
-  tag.textContent = key;
-  d.appendChild(tag);
-  const hint = document.createElement('div');
-  hint.style.cssText = `font-size:${Math.max(7, fz*0.32)}px;font-weight:500;color:${c1}55;font-family:Space Grotesk,sans-serif;letter-spacing:.14em;text-transform:uppercase;margin-top:2px`;
-  hint.textContent = '⬆ upload';
-  d.appendChild(hint);
+  // Transparent background — SVG silhouette tints from `color` (currentColor).
+  // No dashed frame, no upload text. Clean.
+  d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;color:${c1 || '#c9a84c'};pointer-events:auto;box-sizing:border-box;${opts.singleton ? '' : 'cursor:pointer;'}`;
+  d.innerHTML = svgStr;
   _wireSlotEvents(d, key, opts);
   return d;
 }
@@ -9287,27 +9606,22 @@ function _ovWalkingWild(ov, cx, cy, cw, ch, c1){
 }
 
 // ─── CASCADE / AVALANCHE ───
+// Single demo cell: highlight + explosion stacked in one tile, plus a
+// falling_symbol above the reel area and a chain badge at the top.
+// Keeping only one winning cell avoids stacking multiple placeholders.
 function _ovCascade(ov, cx, cy, cw, ch, c1){
   const VPP = VP.portrait, VPL = VP.landscape;
   const r = _demoReelRect();
   if (r) {
     const { ra, CELL, GAP } = r;
-    // Highlight a winning row
-    for (let col = 0; col < 3; col++) {
-      const x = ra.x + col * (CELL + GAP);
-      const y = ra.y + 1 * (CELL + GAP);
-      ov.appendChild(_posSlot('cascade.highlight', { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Winning cell', c1, 'contain'));
-    }
-    // Explosion FX on the first highlighted cell
-    const fxX = ra.x + 1 * (CELL + GAP);
-    const fxY = ra.y + 1 * (CELL + GAP);
-    ov.appendChild(_posSlot('cascade.explosion_fx', { x: fxX, y: fxY, w: CELL, h: CELL }, { x: fxX, y: fxY, w: CELL, h: CELL }, 'FX', c1, 'contain'));
-    // Incoming falling symbol — top-of-reels area
-    const fsX = ra.x + 1 * (CELL + GAP);
+    const col = 1, row = 1;
+    const x = ra.x + col * (CELL + GAP);
+    const y = ra.y + row * (CELL + GAP);
+    ov.appendChild(_posSlot('cascade.highlight',   { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Winning cell', c1, 'contain'));
+    ov.appendChild(_posSlot('cascade.explosion_fx',{ x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'FX', c1, 'contain'));
     const fsY = ra.y - CELL - GAP;
-    ov.appendChild(_posSlot('cascade.falling_symbol', { x: fsX, y: fsY, w: CELL, h: CELL }, { x: fsX, y: fsY, w: CELL, h: CELL }, 'New symbol', c1, 'contain'));
+    ov.appendChild(_posSlot('cascade.falling_symbol', { x, y: fsY, w: CELL, h: CELL }, { x, y: fsY, w: CELL, h: CELL }, 'New symbol', c1, 'contain'));
   }
-  // Chain counter badge — top-center
   const bwP = Math.round(VPP.cw * 0.22), bhP = Math.round(VPP.ch * 0.05);
   const bwL = Math.round(VPL.cw * 0.14), bhL = Math.round(VPL.ch * 0.07);
   ov.appendChild(_posSlot('cascade.chain_badge',
@@ -9317,19 +9631,19 @@ function _ovCascade(ov, cx, cy, cw, ch, c1){
 }
 
 // ─── TUMBLE / REEL COLLAPSE ───
+// Single highlight cell + trail directly below it (not overlapping the
+// highlight). Plus the chain badge at the top.
 function _ovTumble(ov, cx, cy, cw, ch, c1){
   const VPP = VP.portrait, VPL = VP.landscape;
   const r = _demoReelRect();
   if (r) {
     const { ra, CELL, GAP } = r;
-    for (let col = 1; col <= 3; col++) {
-      const x = ra.x + col * (CELL + GAP);
-      const y = ra.y + 0 * (CELL + GAP);
-      ov.appendChild(_posSlot('tumble.highlight', { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Winning cell', c1, 'contain'));
-      const tx = ra.x + col * (CELL + GAP);
-      const ty = ra.y + 1 * (CELL + GAP);
-      ov.appendChild(_posSlot('tumble.trail_fx', { x: tx, y: ty, w: CELL, h: CELL }, { x: tx, y: ty, w: CELL, h: CELL }, 'Trail', c1, 'contain'));
-    }
+    const col = 1;
+    const hx = ra.x + col * (CELL + GAP);
+    const hy = ra.y + 0 * (CELL + GAP);
+    ov.appendChild(_posSlot('tumble.highlight', { x: hx, y: hy, w: CELL, h: CELL }, { x: hx, y: hy, w: CELL, h: CELL }, 'Winning cell', c1, 'contain'));
+    const ty = ra.y + 1 * (CELL + GAP);
+    ov.appendChild(_posSlot('tumble.trail_fx', { x: hx, y: ty, w: CELL, h: CELL }, { x: hx, y: ty, w: CELL, h: CELL }, 'Trail', c1, 'contain'));
   }
   const bwP = Math.round(VPP.cw * 0.22), bhP = Math.round(VPP.ch * 0.05);
   const bwL = Math.round(VPL.cw * 0.14), bhL = Math.round(VPL.ch * 0.07);
@@ -9387,31 +9701,29 @@ function _ovInfinityReels(ov, cx, cy, cw, ch, c1){
 }
 
 // ─── CLUSTER PAYS ───
+// Compact 2×2 cluster in the top-left — enough to show the "cluster"
+// concept without the 6-cell + trail_fx overlap that used to clutter the
+// whole reel area. trail_fx omitted entirely (user can still upload).
 function _ovClusterPays(ov, cx, cy, cw, ch, c1){
   const VPP = VP.portrait, VPL = VP.landscape;
   const r = _demoReelRect();
   if (r) {
     const { ra, CELL, GAP } = r;
     const [cols, rows] = parseReel(P.reelset);
-    const cluster = [[0, 0], [1, 0], [0, 1], [1, 1], [2, 1], [1, 2]];
+    const cluster = [[0, 0], [1, 0], [0, 1], [1, 1]];
     cluster.forEach(([col, row]) => {
       if (col >= cols || row >= rows) return;
       const x = ra.x + col * (CELL + GAP);
       const y = ra.y + row * (CELL + GAP);
       ov.appendChild(_posSlot('cluster.highlight', { x, y, w: CELL, h: CELL }, { x, y, w: CELL, h: CELL }, 'Cluster', c1, 'contain'));
     });
-    // Trail FX attached to the centre of the cluster
-    const tx = ra.x + 1 * (CELL + GAP);
-    const ty = ra.y + 1 * (CELL + GAP);
-    ov.appendChild(_posSlot('cluster.trail_fx', { x: tx - CELL / 2, y: ty - CELL / 2, w: CELL * 2, h: CELL * 2 }, { x: tx - CELL / 2, y: ty - CELL / 2, w: CELL * 2, h: CELL * 2 }, 'Trail', c1, 'contain'));
   }
-  // Size badge — bottom-left
   const bwP = Math.round(VPP.cw * 0.26), bhP = Math.round(VPP.ch * 0.05);
   const bwL = Math.round(VPL.cw * 0.16), bhL = Math.round(VPL.ch * 0.07);
   ov.appendChild(_posSlot('cluster.count_badge',
     { x: VPP.cx + Math.round(VPP.cw * 0.06), y: VPP.cy + Math.round(VPP.ch * 0.88), w: bwP, h: bhP },
     { x: VPL.cx + Math.round(VPL.cw * 0.06), y: VPL.cy + Math.round(VPL.ch * 0.88), w: bwL, h: bhL },
-    'Cluster ×6', c1));
+    'Cluster ×4', c1));
 }
 
 // ════════════════════════════════════════════════════════
