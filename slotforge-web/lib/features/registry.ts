@@ -249,6 +249,81 @@ const winSequence: FeatureDef<WinSequenceSettings> = {
   screens: ['Big Win', 'Mega Win', 'Epic Win'],
 }
 
+// ─── 7. Wheel Bonus ─────────────────────────────────────────────────────────
+// Spin-the-wheel bonus: a large disc divided into segments, each awarding a
+// prize when the pointer lands on it. Art is composed of a shared disc body,
+// a pointer, a hub centre piece, and per-segment decoration/prize icons.
+
+const WheelBonusSchema = z.object({
+  triggerSymbol:    z.enum(['scatter', 'bonus']).default('bonus'),
+  triggerCount:     z.number().int().min(3).max(5).default(3),
+  segments:         z.number().int().min(6).max(16).default(8),
+  spinsAwarded:     z.number().int().min(1).max(5).default(1),
+  prizeTypes:       z.array(z.enum(['coin', 'multiplier', 'freespin', 'jackpot', 'bonus'])).default(['coin', 'multiplier', 'freespin', 'jackpot']),
+  allowRespin:      z.boolean().default(false),
+})
+type WheelBonusSettings = z.infer<typeof WheelBonusSchema>
+
+const wheelBonus: FeatureDef<WheelBonusSettings> = {
+  id:          'wheel_bonus',
+  label:       'Wheel Bonus',
+  group:       'bonus',
+  description: 'Spin-the-wheel bonus awarding prizes, multipliers or feature entries per segment.',
+  settingsSchema:  WheelBonusSchema,
+  defaultSettings: WheelBonusSchema.parse({}),
+  assetSlots: [
+    { key: 'wheel.bg',              label: 'Background',           requirement: 'required' },
+    { key: 'wheel.header',          label: '"Spin the Wheel" header', requirement: 'optional' },
+    { key: 'wheel.disc',            label: 'Wheel disc',           requirement: 'required',
+      description: 'The wheel body with segment divisions. Single image; pointer + hub overlay on top.' },
+    { key: 'wheel.pointer',         label: 'Pointer / indicator',  requirement: 'required' },
+    { key: 'wheel.hub',             label: 'Centre hub',           requirement: 'optional' },
+    { key: 'wheel.segment_bg',      label: 'Segment decoration',   requirement: 'optional',
+      description: 'Optional art overlaid on each segment (e.g. glow, starburst).' },
+    { key: 'wheel.button_spin',     label: 'Spin button',          requirement: 'required' },
+    { key: 'wheel.footer',          label: '"Prize awarded" footer', requirement: 'optional' },
+  ],
+  screens: ['Wheel Bonus · Intro', 'Wheel Bonus · Spin', 'Wheel Bonus · Outro'],
+}
+
+// ─── 8. Ladder / Trail Bonus ─────────────────────────────────────────────────
+// Climb-a-ladder bonus: player chooses to collect the current step's prize
+// or continue climbing for a bigger prize (with risk of losing it all).
+
+const LadderBonusSchema = z.object({
+  triggerSymbol:    z.enum(['scatter', 'bonus']).default('bonus'),
+  triggerCount:     z.number().int().min(3).max(5).default(3),
+  steps:            z.number().int().min(4).max(12).default(8),
+  collectAvailable: z.boolean().default(true),
+  climbOdds:        z.number().min(0).max(1).default(0.6),
+})
+type LadderBonusSettings = z.infer<typeof LadderBonusSchema>
+
+const ladderBonus: FeatureDef<LadderBonusSettings> = {
+  id:          'ladder_bonus',
+  label:       'Ladder Bonus',
+  group:       'bonus',
+  description: 'Player climbs a ladder collecting prizes at each step; may cash out early or risk a step for a bigger prize.',
+  settingsSchema:  LadderBonusSchema,
+  defaultSettings: LadderBonusSchema.parse({}),
+  assetSlots: [
+    { key: 'ladder.bg',             label: 'Background',           requirement: 'required' },
+    { key: 'ladder.header',         label: 'Header art',           requirement: 'optional' },
+    { key: 'ladder.rail',           label: 'Ladder rail',          requirement: 'required',
+      description: 'Vertical ladder / trail art that the steps attach to.' },
+    { key: 'ladder.step',           label: 'Step tile',            requirement: 'required',
+      description: 'Single step tile — rendered once per ladder step at computed positions.' },
+    { key: 'ladder.step_active',    label: 'Step (current)',       requirement: 'optional',
+      description: 'Highlighted variant used for the player\'s current position.' },
+    { key: 'ladder.player_marker',  label: 'Player marker',        requirement: 'optional' },
+    { key: 'ladder.button_climb',   label: 'Climb button',         requirement: 'required' },
+    { key: 'ladder.button_collect', label: 'Collect button',       requirement: 'conditional',
+      isApplicable: s => s.collectAvailable },
+    { key: 'ladder.footer',         label: 'Prize label / footer', requirement: 'optional' },
+  ],
+  screens: ['Ladder Bonus · Intro', 'Ladder Bonus · Climb', 'Ladder Bonus · Outro'],
+}
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -259,6 +334,8 @@ export const FEATURE_REGISTRY: Record<FeatureId, FeatureDef<any>> = {
   holdnspin:       holdAndSpin,
   expanding_wild:  expandingWild,
   win_sequence:    winSequence,
+  wheel_bonus:     wheelBonus,
+  ladder_bonus:    ladderBonus,
 }
 
 export const FEATURE_IDS = Object.keys(FEATURE_REGISTRY) as FeatureId[]

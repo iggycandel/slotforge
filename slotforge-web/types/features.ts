@@ -28,6 +28,8 @@ export type FeatureId =
   | 'holdnspin'       // Hold & Spin / Lock & Win
   | 'expanding_wild'  // Expanding Wild
   | 'win_sequence'    // Big / Mega / Epic Win popup sequence
+  | 'wheel_bonus'     // Spin-the-wheel bonus
+  | 'ladder_bonus'    // Ladder / Trail climbing bonus
 
 export type FeatureGroup =
   | 'bonus'      // Bonus Rounds

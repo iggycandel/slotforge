@@ -381,6 +381,8 @@ const FEATURE_SUB_SCREENS = [
   'bonus_pick_intro','bonus_pick_outro',
   'freespin_intro','freespin_outro',
   'holdnspin_intro','holdnspin_outro',
+  'wheel_bonus_intro','wheel_bonus_outro',
+  'ladder_bonus_intro','ladder_bonus_outro',
 ];
 
 function registerFeatureScreens(){
@@ -468,6 +470,43 @@ function registerFeatureScreens(){
       dot:   '#5eca8a',
       featureKey:  'holdnspin',
       parentScreen:'holdnspin',
+    };
+  }
+  if(P.features.wheel_bonus){
+    // The in-round 'wheel_bonus' screen is auto-registered in step 3 via
+    // FEATURE_SCREEN_DEFS. Its SDEFS entry exposes the bg as the only base
+    // layer; the overlay renders the wheel body / pointer / hub / buttons.
+    // Intro + outro mirror the bonus-round pattern: dim + text + (optional)
+    // bg, with the overlay function routing through the feature registry.
+    SDEFS.wheel_bonus_intro = {
+      label: 'Wheel Bonus · Intro',
+      keys:  ['bg', 'dimLayer', 'ov-wb-intro_banner', 'ov-wb-intro_sub'],
+      dot:   '#ef7a7a',
+      featureKey:  'wheel_bonus',
+      parentScreen:'wheel_bonus',
+    };
+    SDEFS.wheel_bonus_outro = {
+      label: 'Wheel Bonus · Outro',
+      keys:  ['bg', 'dimLayer', 'ov-wb-outro_label', 'ov-wb-outro_amount', 'ov-wb-outro_btn'],
+      dot:   '#ef7a7a',
+      featureKey:  'wheel_bonus',
+      parentScreen:'wheel_bonus',
+    };
+  }
+  if(P.features.ladder_bonus){
+    SDEFS.ladder_bonus_intro = {
+      label: 'Ladder Bonus · Intro',
+      keys:  ['bg', 'dimLayer', 'ov-lb-intro_banner', 'ov-lb-intro_sub'],
+      dot:   '#b07aef',
+      featureKey:  'ladder_bonus',
+      parentScreen:'ladder_bonus',
+    };
+    SDEFS.ladder_bonus_outro = {
+      label: 'Ladder Bonus · Outro',
+      keys:  ['bg', 'dimLayer', 'ov-lb-outro_label', 'ov-lb-outro_amount', 'ov-lb-outro_btn'],
+      dot:   '#b07aef',
+      featureKey:  'ladder_bonus',
+      parentScreen:'ladder_bonus',
     };
   }
 }
@@ -562,6 +601,26 @@ const OV_SUBS={
     {id:'amount', label:'Amount',     type:'text',   dText:'€ 1,500',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
     {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#0a2a1a'},
   ],
+  // Wheel Bonus intro / outro text overlays
+  'ov-wb-intro':[
+    {id:'banner', label:'Banner',     type:'text',   dText:'WHEEL BONUS!',           dColor:'#ef7a7a', dSize:120, dWeight:800, dSpacing:'.04em'},
+    {id:'sub',    label:'Sub-copy',   type:'text',   dText:'Spin the wheel to reveal your prize', dColor:'#ef7a7acc', dSize:34, dWeight:600, dSpacing:'.1em'},
+  ],
+  'ov-wb-outro':[
+    {id:'label',  label:'"Total Win"',type:'text',   dText:'TOTAL WIN',              dColor:'#ef7a7a', dSize:56,  dWeight:700, dSpacing:'.14em'},
+    {id:'amount', label:'Amount',     type:'text',   dText:'€ 1,000',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
+    {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#2a0a0a'},
+  ],
+  // Ladder Bonus intro / outro text overlays
+  'ov-lb-intro':[
+    {id:'banner', label:'Banner',     type:'text',   dText:'LADDER BONUS!',          dColor:'#b07aef', dSize:110, dWeight:800, dSpacing:'.04em'},
+    {id:'sub',    label:'Sub-copy',   type:'text',   dText:'Climb for more — or collect',  dColor:'#b07aefcc', dSize:34, dWeight:600, dSpacing:'.1em'},
+  ],
+  'ov-lb-outro':[
+    {id:'label',  label:'"Total Win"',type:'text',   dText:'TOTAL WIN',              dColor:'#b07aef', dSize:56,  dWeight:700, dSpacing:'.14em'},
+    {id:'amount', label:'Amount',     type:'text',   dText:'€ 3,200',                dColor:'#ffffff', dSize:180, dWeight:800, dSpacing:'-.02em'},
+    {id:'btn',    label:'Collect Btn',type:'button', dText:'COLLECT',                dColor:'#1a0a2a'},
+  ],
 };
 // Overlay backdrop colors and layout styles
 const OV_META={
@@ -583,6 +642,10 @@ const OV_META={
   'ov-fs-outro': {bg:null, layout:'col'},
   'ov-hns-intro':{bg:null, layout:'col'},
   'ov-hns-outro':{bg:null, layout:'col'},
+  'ov-wb-intro': {bg:null, layout:'col'},
+  'ov-wb-outro': {bg:null, layout:'col'},
+  'ov-lb-intro': {bg:null, layout:'col'},
+  'ov-lb-outro': {bg:null, layout:'col'},
 };
 
 // Map ALL OV_SUBS seamlessly into the PSD layer structure.
@@ -627,14 +690,14 @@ PSD['dimLayer'] = {
   const portraitBanner = { x:441, w:984 };
   const landscapeBanner= { x:0,   w:2000 };
   // Intro: banner at top-center, sub-copy below
-  ['ov-bp-intro','ov-fs-intro','ov-hns-intro'].forEach(ov => {
+  ['ov-bp-intro','ov-fs-intro','ov-hns-intro','ov-wb-intro','ov-lb-intro'].forEach(ov => {
     PSD[`${ov}_banner`].portrait  = { ...portraitBanner,  y: 620, h: 200 };
     PSD[`${ov}_banner`].landscape = { ...landscapeBanner, y: 260, h: 160 };
     PSD[`${ov}_sub`].portrait     = { ...portraitBanner,  y: 840, h: 80 };
     PSD[`${ov}_sub`].landscape    = { ...landscapeBanner, y: 440, h: 60 };
   });
   // Outro: "TOTAL WIN" label, then big amount, then COLLECT button
-  ['ov-bp-outro','ov-fs-outro','ov-hns-outro'].forEach(ov => {
+  ['ov-bp-outro','ov-fs-outro','ov-hns-outro','ov-wb-outro','ov-lb-outro'].forEach(ov => {
     PSD[`${ov}_label`].portrait  = { ...portraitBanner,  y: 500, h: 110 };
     PSD[`${ov}_label`].landscape = { ...landscapeBanner, y: 220, h: 80 };
     PSD[`${ov}_amount`].portrait = { ...portraitBanner,  y: 620, h: 260 };
@@ -4752,6 +4815,23 @@ P.bonusPickSettings = P.bonusPickSettings || {
   cols: 4,   // 3..6
   rows: 3,   // 2..5
   gap:  14,  // 4..32 px, in canvas space
+};
+
+// ═══ WHEEL BONUS SETTINGS ═══
+// Mirrors lib/features/registry.ts WheelBonusSchema defaults so the editor
+// overlay has sensible values even if the Features workspace UI hasn't
+// been filled in yet. Persists via the payload serialiser.
+P.wheelBonusSettings = P.wheelBonusSettings || {
+  segments: 8,
+  spinsAwarded: 1,
+  allowRespin: false,
+};
+
+// ═══ LADDER BONUS SETTINGS ═══
+P.ladderBonusSettings = P.ladderBonusSettings || {
+  steps: 8,
+  collectAvailable: true,
+  climbOdds: 0.6,
 };
 
 // ─── Load default symbol assets via fetch → base64 dataURL ──────────────────
@@ -8887,78 +8967,167 @@ function _ovWinSequence(ov, cx, cy, cw, ch, c1, tier){
     'Collect button', c1, 'contain'));
 }
 
-// ─── WHEEL BONUS ───
+// ─────────────────────────────────────────────────────────────────────────────
+// WHEEL BONUS
+// Layout: viewport bg → header → (disc + hub + pointer stacked centre) →
+// spin button → footer. Disc/hub/pointer are singletons so users can drag
+// the hub/pointer off-centre if they want an asymmetric wheel look. The
+// older SVG procedural wheel is gone — designers upload their own wheel
+// art (single disc image) and position the pointer / hub on top.
+// ─────────────────────────────────────────────────────────────────────────────
 function _ovWheel(ov, cx, cy, cw, ch, c1){
-  const R = Math.round(Math.min(cw,ch)*0.32);
-  const wx = cx+Math.round(cw*0.5), wy = cy+Math.round(ch*0.48);
-  const ns='http://www.w3.org/2000/svg';
-  const svg=document.createElementNS(ns,'svg');
-  svg.style.cssText=`position:absolute;left:${wx-R-10}px;top:${wy-R-10}px;width:${(R+10)*2}px;height:${(R+10)*2}px;pointer-events:none`;
-  svg.setAttribute('viewBox',`0 0 ${(R+10)*2} ${(R+10)*2}`);
-  const segments=8;
-  const segColors=['#ef7a7a','#f0a84c','#e8c96d','#5eca8a','#4ac8f0','#7a8aef','#c9a84c','#ef7a7a'];
-  const prizes=['2×','BONUS','5×','FREE','10×','WILD','3×','JACKPOT'];
-  const cx2=R+10, cy2=R+10;
-  for(let i=0;i<segments;i++){
-    const a1=(i/segments)*Math.PI*2-Math.PI/2;
-    const a2=((i+1)/segments)*Math.PI*2-Math.PI/2;
-    const path=document.createElementNS(ns,'path');
-    const x1=cx2+R*Math.cos(a1), y1=cy2+R*Math.sin(a1);
-    const x2=cx2+R*Math.cos(a2), y2=cy2+R*Math.sin(a2);
-    path.setAttribute('d',`M${cx2},${cy2} L${x1},${y1} A${R},${R} 0 0,1 ${x2},${y2}Z`);
-    path.setAttribute('fill',segColors[i]+'cc');
-    path.setAttribute('stroke','#000000aa'); path.setAttribute('stroke-width','2');
-    svg.appendChild(path);
-    // Label
-    const midA=(a1+a2)/2, lr=R*0.65;
-    const tx=cx2+lr*Math.cos(midA), ty=cy2+lr*Math.sin(midA);
-    const txt=document.createElementNS(ns,'text');
-    txt.setAttribute('x',tx); txt.setAttribute('y',ty);
-    txt.setAttribute('text-anchor','middle'); txt.setAttribute('dominant-baseline','middle');
-    txt.setAttribute('font-size',Math.round(R*0.13)); txt.setAttribute('font-weight','700');
-    txt.setAttribute('fill','#fff'); txt.setAttribute('font-family','Space Grotesk,sans-serif');
-    txt.textContent=prizes[i];
-    svg.appendChild(txt);
-  }
-  // Centre hub
-  const hub=document.createElementNS(ns,'circle');
-  hub.setAttribute('cx',cx2); hub.setAttribute('cy',cy2); hub.setAttribute('r',Math.round(R*0.12));
-  hub.setAttribute('fill','#0a0a14'); hub.setAttribute('stroke',c1); hub.setAttribute('stroke-width','3');
-  svg.appendChild(hub);
-  // Pointer
-  const ptr=document.createElementNS(ns,'polygon');
-  const pw=Math.round(R*0.08);
-  ptr.setAttribute('points',`${cx2-pw},${cy2-R-8} ${cx2+pw},${cy2-R-8} ${cx2},${cy2-R+pw}`);
-  ptr.setAttribute('fill',c1);
-  svg.appendChild(ptr);
-  ov.appendChild(svg);
+  const VPP = VP.portrait, VPL = VP.landscape;
 
-  // Spin button
-  const spinBtn = _el('div',`position:absolute;left:${wx-70}px;top:${wy+R+20}px;width:140px;height:50px;background:linear-gradient(135deg,${c1},#e8c96d);border-radius:25px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#1a1200;font-family:Space Grotesk,sans-serif;cursor:pointer`);
-  spinBtn.textContent='SPIN!';
-  ov.appendChild(spinBtn);
+  // 1. Full-viewport background
+  ov.appendChild(_posSlot('wheel.bg',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'BG', c1, 'cover'));
+
+  // 2. Header band
+  const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.07);
+  const hwL = Math.round(VPL.cw * 0.60), hhL = Math.round(VPL.ch * 0.10);
+  ov.appendChild(_posSlot('wheel.header',
+    { x: VPP.cx + Math.round((VPP.cw - hwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.06), w: hwP, h: hhP },
+    { x: VPL.cx + Math.round((VPL.cw - hwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.06), w: hwL, h: hhL },
+    'SPIN THE WHEEL', c1));
+
+  // 3. Disc — the wheel body (square frame, displayed contain to keep round)
+  const discP = Math.min(Math.round(VPP.cw * 0.82), Math.round(VPP.ch * 0.52));
+  const discL = Math.min(Math.round(VPL.cw * 0.46), Math.round(VPL.ch * 0.70));
+  ov.appendChild(_posSlot('wheel.disc',
+    { x: VPP.cx + Math.round((VPP.cw - discP) / 2), y: VPP.cy + Math.round(VPP.ch*0.20), w: discP, h: discP },
+    { x: VPL.cx + Math.round((VPL.cw - discL) / 2), y: VPL.cy + Math.round(VPL.ch*0.18), w: discL, h: discL },
+    'Wheel disc', c1, 'contain'));
+
+  // 4. Pointer — above the disc, pointing down
+  const ptrP = Math.round(discP * 0.14);
+  const ptrL = Math.round(discL * 0.14);
+  ov.appendChild(_posSlot('wheel.pointer',
+    { x: VPP.cx + Math.round((VPP.cw - ptrP) / 2), y: VPP.cy + Math.round(VPP.ch*0.20) - Math.round(ptrP*0.4), w: ptrP, h: ptrP },
+    { x: VPL.cx + Math.round((VPL.cw - ptrL) / 2), y: VPL.cy + Math.round(VPL.ch*0.18) - Math.round(ptrL*0.4), w: ptrL, h: ptrL },
+    'Pointer', c1, 'contain'));
+
+  // 5. Hub — centre of the disc
+  const hubP = Math.round(discP * 0.20);
+  const hubL = Math.round(discL * 0.20);
+  ov.appendChild(_posSlot('wheel.hub',
+    { x: VPP.cx + Math.round((VPP.cw - hubP) / 2), y: VPP.cy + Math.round(VPP.ch*0.20) + Math.round((discP - hubP)/2), w: hubP, h: hubP },
+    { x: VPL.cx + Math.round((VPL.cw - hubL) / 2), y: VPL.cy + Math.round(VPL.ch*0.18) + Math.round((discL - hubL)/2), w: hubL, h: hubL },
+    'Hub', c1, 'contain'));
+
+  // 6. Spin button — below the disc
+  const bwP = Math.round(VPP.cw * 0.40), bhP = Math.round(VPP.ch * 0.07);
+  const bwL = Math.round(VPL.cw * 0.24), bhL = Math.round(VPL.ch * 0.10);
+  ov.appendChild(_posSlot('wheel.button_spin',
+    { x: VPP.cx + Math.round((VPP.cw - bwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.78), w: bwP, h: bhP },
+    { x: VPL.cx + Math.round((VPL.cw - bwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.78), w: bwL, h: bhL },
+    'SPIN!', c1, 'contain'));
+
+  // 7. Footer status band
+  const fwP = Math.round(VPP.cw * 0.70), fhP = Math.round(VPP.ch * 0.055);
+  const fwL = Math.round(VPL.cw * 0.48), fhL = Math.round(VPL.ch * 0.075);
+  ov.appendChild(_posSlot('wheel.footer',
+    { x: VPP.cx + Math.round((VPP.cw - fwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.88), w: fwP, h: fhP },
+    { x: VPL.cx + Math.round((VPL.cw - fwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.90), w: fwL, h: fhL },
+    'Prize awarded', c1));
 }
 
-// ─── LADDER / TRAIL ───
+// ─────────────────────────────────────────────────────────────────────────────
+// LADDER / TRAIL BONUS
+// Layout: viewport bg → header → rail (centred column) → repeated step tiles
+// up the rail (grid-managed, shared key) → player marker → collect / climb
+// buttons → footer. Step count drives how many tiles render.
+// ─────────────────────────────────────────────────────────────────────────────
 function _ovLadder(ov, cx, cy, cw, ch, c1){
-  const steps=8, stepH=Math.round(ch*0.08), stepW=Math.round(cw*0.55);
-  const lx=cx+Math.round((cw-stepW)/2), ly=cy+Math.round(ch*0.08);
-  for(let i=0;i<steps;i++){
-    const y=ly+i*stepH;
-    const isActive=(i===2);
-    const step=_el('div',`position:absolute;left:${lx}px;top:${y}px;width:${stepW}px;height:${stepH-6}px;background:${isActive?c1+'33':'#ffffff08'};border:2px solid ${isActive?c1:'#333'};border-radius:10px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;box-sizing:border-box`);
-    const prize=_el('div',`font-size:${Math.round(stepH*0.35)}px;font-weight:700;color:${isActive?c1:'#888'};font-family:Space Grotesk,sans-serif`);
-    const prizes=['€0.50','€1.00','€2.50','€5.00','€10','€25','€100','🏆 JACKPOT'];
-    prize.textContent=prizes[steps-1-i];
-    const arrow=_el('div',`font-size:${Math.round(stepH*0.4)}px;color:${isActive?c1:'#444'}`);
-    arrow.textContent=i===0?'🏆':isActive?'▶':'·';
-    step.appendChild(arrow); step.appendChild(prize);
-    if(isActive){const marker=_el('div',`position:absolute;right:-36px;top:50%;transform:translateY(-50%);font-size:24px`);marker.textContent='⬅';step.appendChild(marker);}
-    ov.appendChild(step);
+  const VPP = VP.portrait, VPL = VP.landscape;
+  const settings = P.ladderBonusSettings || { steps: 8, collectAvailable: true };
+  const steps    = Math.max(4, Math.min(12, Number(settings.steps) || 8));
+
+  // 1. Background
+  ov.appendChild(_posSlot('ladder.bg',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'BG', c1, 'cover'));
+
+  // 2. Header
+  const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.065);
+  const hwL = Math.round(VPL.cw * 0.50), hhL = Math.round(VPL.ch * 0.09);
+  ov.appendChild(_posSlot('ladder.header',
+    { x: VPP.cx + Math.round((VPP.cw - hwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.05), w: hwP, h: hhP },
+    { x: VPL.cx + Math.round((VPL.cw - hwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.05), w: hwL, h: hhL },
+    'LADDER BONUS', c1));
+
+  // 3. Rail — the ladder spine that runs up through the middle
+  const railWP = Math.round(VPP.cw * 0.18), railHP = Math.round(VPP.ch * 0.62);
+  const railWL = Math.round(VPL.cw * 0.10), railHL = Math.round(VPL.ch * 0.66);
+  const railYP = VPP.cy + Math.round(VPP.ch * 0.16);
+  const railYL = VPL.cy + Math.round(VPL.ch * 0.16);
+  ov.appendChild(_posSlot('ladder.rail',
+    { x: VPP.cx + Math.round((VPP.cw - railWP) / 2), y: railYP, w: railWP, h: railHP },
+    { x: VPL.cx + Math.round((VPL.cw - railWL) / 2), y: railYL, w: railWL, h: railHL },
+    'Rail', c1, 'contain'));
+
+  // 4. Repeated step tiles — driven by the `steps` setting. Uses the existing
+  // shared-key pattern (one asset upload renders every step). The middle-most
+  // step shows the "current position" variant if the user uploaded one.
+  const vp         = P.viewport === 'landscape' ? VPL : VPP;
+  const stepH      = Math.round(vp.ch * 0.60 / steps);
+  const stepWvp    = Math.round(vp.cw * 0.38);
+  const stepY0     = vp.cy + Math.round(vp.ch * 0.18);
+  const stepX      = vp.cx + Math.round((vp.cw - stepWvp) / 2);
+  const activeIdx  = Math.floor(steps / 2);
+  for (let i = 0; i < steps; i++) {
+    // Render bottom → top visually: highest step at the top (i=0 at bottom)
+    const yy = stepY0 + (steps - 1 - i) * stepH;
+    const key = (i === activeIdx && EL_ASSETS['ladder.step_active'])
+      ? 'ladder.step_active'
+      : 'ladder.step';
+    ov.appendChild(_slot(key, stepX, yy, stepWvp, stepH - 4, `Step ${i + 1}`, c1, 'contain'));
   }
-  const info=_el('div',`position:absolute;left:${cx+20}px;bottom:${2000-cy-ch+20}px;font-size:20px;color:#888;font-family:Space Grotesk,sans-serif`);
-  info.textContent='▶ Climb the ladder — collect or gamble each step';
-  ov.appendChild(info);
+
+  // 5. Player marker — decorative indicator placed beside the active step
+  const markerSz = Math.round(stepH * 0.9);
+  const markerX  = stepX + stepWvp + Math.round(markerSz * 0.3);
+  const markerY  = stepY0 + (steps - 1 - activeIdx) * stepH + Math.round((stepH - markerSz) / 2);
+  // Player marker is a singleton so users can nudge it — defaults stay in
+  // sync across viewport switches because the formula above works for both.
+  const pmP = { x: markerX, y: markerY, w: markerSz, h: markerSz };
+  ov.appendChild(_posSlot('ladder.player_marker', pmP, pmP, 'Marker', c1, 'contain'));
+
+  // 6. Buttons — Climb + (conditional) Collect
+  const bwP = Math.round(VPP.cw * 0.40), bhP = Math.round(VPP.ch * 0.06);
+  const bwL = Math.round(VPL.cw * 0.22), bhL = Math.round(VPL.ch * 0.09);
+  const btnRowY_P = VPP.cy + Math.round(VPP.ch * 0.82);
+  const btnRowY_L = VPL.cy + Math.round(VPL.ch * 0.86);
+  const showCollect = settings.collectAvailable !== false;
+  if (showCollect) {
+    // Two buttons side by side
+    const gapP = 24, gapL = 24;
+    const totalP = bwP * 2 + gapP;
+    const totalL = bwL * 2 + gapL;
+    ov.appendChild(_posSlot('ladder.button_collect',
+      { x: VPP.cx + Math.round((VPP.cw - totalP) / 2),            y: btnRowY_P, w: bwP, h: bhP },
+      { x: VPL.cx + Math.round((VPL.cw - totalL) / 2),            y: btnRowY_L, w: bwL, h: bhL },
+      'Collect', c1, 'contain'));
+    ov.appendChild(_posSlot('ladder.button_climb',
+      { x: VPP.cx + Math.round((VPP.cw - totalP) / 2) + bwP + gapP, y: btnRowY_P, w: bwP, h: bhP },
+      { x: VPL.cx + Math.round((VPL.cw - totalL) / 2) + bwL + gapL, y: btnRowY_L, w: bwL, h: bhL },
+      'Climb', c1, 'contain'));
+  } else {
+    ov.appendChild(_posSlot('ladder.button_climb',
+      { x: VPP.cx + Math.round((VPP.cw - bwP) / 2), y: btnRowY_P, w: bwP, h: bhP },
+      { x: VPL.cx + Math.round((VPL.cw - bwL) / 2), y: btnRowY_L, w: bwL, h: bhL },
+      'Climb', c1, 'contain'));
+  }
+
+  // 7. Footer — current prize or status text
+  const fwP = Math.round(VPP.cw * 0.70), fhP = Math.round(VPP.ch * 0.055);
+  const fwL = Math.round(VPL.cw * 0.40), fhL = Math.round(VPL.ch * 0.075);
+  ov.appendChild(_posSlot('ladder.footer',
+    { x: VPP.cx + Math.round((VPP.cw - fwP) / 2), y: VPP.cy + Math.round(VPP.ch*0.92), w: fwP, h: fhP },
+    { x: VPL.cx + Math.round((VPL.cw - fwL) / 2), y: VPL.cy + Math.round(VPL.ch*0.94), w: fwL, h: fhL },
+    'Next prize: €100', c1));
 }
 
 // ─── STICKY WILD ───
@@ -10643,7 +10812,9 @@ window._sfApplyPayload = function(payload){
   try { if(s.library  !== undefined) P.library  = s.library;  } catch(e){}
   try { if(s.expandWild) Object.assign(P.expandWild, s.expandWild); } catch(e){}
   try { if(s.reelSettings) Object.assign(P.reelSettings, s.reelSettings); } catch(e){}
-  try { if(s.bonusPickSettings) Object.assign(P.bonusPickSettings, s.bonusPickSettings); } catch(e){}
+  try { if(s.bonusPickSettings)   Object.assign(P.bonusPickSettings,   s.bonusPickSettings);   } catch(e){}
+  try { if(s.wheelBonusSettings)  Object.assign(P.wheelBonusSettings,  s.wheelBonusSettings);  } catch(e){}
+  try { if(s.ladderBonusSettings) Object.assign(P.ladderBonusSettings, s.ladderBonusSettings); } catch(e){}
   // Restore character, ante, and other settings missing from earlier versions
   // Use explicit property assignment for boolean flags to avoid Object.assign edge-cases
   try {
@@ -10776,6 +10947,8 @@ window._sfBridge = (function(){
       expandWild:  JSON.parse(JSON.stringify(P.expandWild || {})),
       reelSettings:     JSON.parse(JSON.stringify(P.reelSettings || {})),
       bonusPickSettings:JSON.parse(JSON.stringify(P.bonusPickSettings || {})),
+      wheelBonusSettings: JSON.parse(JSON.stringify(P.wheelBonusSettings || {})),
+      ladderBonusSettings:JSON.parse(JSON.stringify(P.ladderBonusSettings || {})),
       assets:           JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
       library:     JSON.parse(JSON.stringify(P.library  || [])),
       adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ    !== 'undefined' ? EL_ADJ    : {})),
@@ -11020,6 +11193,8 @@ window._sfBridge = (function(){
         expandWild:     p.expandWild,
         reelSettings:      p.reelSettings,
         bonusPickSettings: p.bonusPickSettings,
+        wheelBonusSettings:  p.wheelBonusSettings,
+        ladderBonusSettings: p.ladderBonusSettings,
         ovProps:           p.ovProps,
         ovPos:          p.ovPos,
         elVP:           p.elVP,
