@@ -160,9 +160,24 @@ export function SingleGeneratePopup({
           // reference_images: refImages,  // P3 — server ignores today
         }),
       })
-      const data = await res.json().catch(() => ({}))
+      // Read the body as text first, then try JSON. A non-JSON response
+      // (e.g. Vercel CDN serving an HTML 404 page, a plain-text 500 from
+      // a crashed edge runtime) previously collapsed into the generic
+      // "Generation failed (<status>)" message and hid the actual cause.
+      const raw = await res.text()
+      let data: { error?: string; asset?: GeneratedAsset; url?: string } = {}
+      try { data = raw ? JSON.parse(raw) : {} } catch { /* non-JSON body, fall through */ }
       if (!res.ok || data?.error) {
-        throw new Error(data?.error ?? `Generation failed (${res.status})`)
+        // Prefer the structured error; fall back to the first line of the
+        // raw body (so CDN HTML 404s surface *some* signal), then status.
+        const rawSnippet = raw
+          .replace(/<[^>]+>/g, '')    // strip HTML tags
+          .split('\n').map(l => l.trim()).filter(Boolean).slice(0, 1).join(' ')
+          .slice(0, 180)
+        const msg = data?.error
+          || rawSnippet
+          || `Generation failed (${res.status})`
+        throw new Error(msg)
       }
       const asset = data?.asset as GeneratedAsset | undefined
       if (!asset?.url) throw new Error('Generation returned no URL')
