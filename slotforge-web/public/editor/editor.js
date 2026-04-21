@@ -1515,9 +1515,15 @@ function buildCanvas(){
       // Intro/outro sub-tabs reuse the parent feature's bg so the dim
       // overlays sit on the correct backdrop.
       const featureBgMap = {
-        freespin:          'freespins.bg',  freespin_intro:   'freespins.bg',  freespin_outro:   'freespins.bg',
-        holdnspin:         'holdnspin.bg',  holdnspin_intro:  'holdnspin.bg',  holdnspin_outro:  'holdnspin.bg',
-        bonus_pick:        'bonuspick.bg',  bonus_pick_intro: 'bonuspick.bg',  bonus_pick_outro: 'bonuspick.bg',
+        freespin:          'freespins.bg',   freespin_intro:       'freespins.bg',   freespin_outro:       'freespins.bg',
+        holdnspin:         'holdnspin.bg',   holdnspin_intro:      'holdnspin.bg',   holdnspin_outro:      'holdnspin.bg',
+        bonus_pick:        'bonuspick.bg',   bonus_pick_intro:     'bonuspick.bg',   bonus_pick_outro:     'bonuspick.bg',
+        wheel_bonus:       'wheel.bg',       wheel_bonus_intro:    'wheel.bg',       wheel_bonus_outro:    'wheel.bg',
+        ladder_bonus:      'ladder.bg',      ladder_bonus_intro:   'ladder.bg',      ladder_bonus_outro:   'ladder.bg',
+        gamble:            'gamble.bg',      gamble_intro:         'gamble.bg',      gamble_outro:         'gamble.bg',
+        super_gamble:      'supergamble.bg', super_gamble_intro:   'supergamble.bg', super_gamble_outro:   'supergamble.bg',
+        // Win Sequence popups (Big/Mega/Epic) all share one backdrop slot.
+        popup_win:         'winsequence.bg', popup_megawin:        'winsequence.bg', popup_epicwin:        'winsequence.bg',
       };
       const featureBg    = featureBgMap[P.screen];
       const bgKey = (featureBg && EL_ASSETS[featureBg]) ? featureBg
@@ -8439,9 +8445,14 @@ function renderSplitView(){
       if(k==='bg'){
         el.style.borderRadius='0';
         const _featureBgMap = {
-          freespin:          'freespins.bg',  freespin_intro:   'freespins.bg',  freespin_outro:   'freespins.bg',
-          holdnspin:         'holdnspin.bg',  holdnspin_intro:  'holdnspin.bg',  holdnspin_outro:  'holdnspin.bg',
-          bonus_pick:        'bonuspick.bg',  bonus_pick_intro: 'bonuspick.bg',  bonus_pick_outro: 'bonuspick.bg',
+          freespin:          'freespins.bg',   freespin_intro:       'freespins.bg',   freespin_outro:       'freespins.bg',
+          holdnspin:         'holdnspin.bg',   holdnspin_intro:      'holdnspin.bg',   holdnspin_outro:      'holdnspin.bg',
+          bonus_pick:        'bonuspick.bg',   bonus_pick_intro:     'bonuspick.bg',   bonus_pick_outro:     'bonuspick.bg',
+          wheel_bonus:       'wheel.bg',       wheel_bonus_intro:    'wheel.bg',       wheel_bonus_outro:    'wheel.bg',
+          ladder_bonus:      'ladder.bg',      ladder_bonus_intro:   'ladder.bg',      ladder_bonus_outro:   'ladder.bg',
+          gamble:            'gamble.bg',      gamble_intro:         'gamble.bg',      gamble_outro:         'gamble.bg',
+          super_gamble:      'supergamble.bg', super_gamble_intro:   'supergamble.bg', super_gamble_outro:   'supergamble.bg',
+          popup_win:         'winsequence.bg', popup_megawin:        'winsequence.bg', popup_epicwin:        'winsequence.bg',
         };
         const _featureBg    = _featureBgMap[P.screen];
         const bgKey = (_featureBg && EL_ASSETS[_featureBg]) ? _featureBg
@@ -8607,7 +8618,14 @@ document.getElementById('kbd-modal')?.addEventListener('click',e=>{if(e.target==
 function buildFeatureOverlay(screenKey, def){
   const ov = document.createElement('div');
   ov.id = 'feature-screen-overlay';
-  ov.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:90';
+  // z-index has to sit above dimLayer (z:499) so feat-slots stay visible
+  // on popup / feature-intro / feature-outro screens that include a dim
+  // scrim. It also clears the CSS text sub-elements (z ~500–540) so
+  // uploaded title art / button art can cover the default CSS text when
+  // the designer wants to replace it. Decorative slots (frame, coins_fx
+  // etc.) are built with transparent interiors so the CSS text still
+  // reads through when no upload is present.
+  ov.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:600';
 
   const vp = P.viewport==='desktop'?'landscape':P.viewport;
   const vpDef = VP[vp];
@@ -9212,12 +9230,8 @@ function _ovPickGame(ov, cx, cy, cw, ch, c1){
   const totalTiles = cols * rows;
   const VPP = VP.portrait, VPL = VP.landscape;
 
-  // 1. Background — spans the full viewport in each orientation. User can
-  // still drag/resize if they want a smaller frame.
-  ov.appendChild(_posSlot('bonuspick.bg',
-    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
-    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
-    'BG', c1, 'cover'));
+  // bonuspick.bg is rendered by the base 'bg' layer via featureBgMap —
+  // not added here to avoid stacking two copies of the same image.
 
   // 2. Header — top-center band
   const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.075);
@@ -9460,13 +9474,12 @@ function _ovHnsOutro(){ /* no-op */ }
 function _ovWinSequence(ov, cx, cy, cw, ch, c1, tier){
   const VPP = VP.portrait, VPL = VP.landscape;
 
-  // 1. Full-viewport background art (covers the dim overlay when uploaded)
-  ov.appendChild(_posSlot('winsequence.bg',
-    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
-    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
-    'Popup BG', c1, 'cover'));
+  // winsequence.bg is now rendered by the base 'bg' layer via featureBgMap
+  // (popup_win / popup_megawin / popup_epicwin → winsequence.bg). Rendering
+  // it again here would stack two copies of the same image on top of each
+  // other, so this path is intentionally empty.
 
-  // 2. Decorative frame around the amount area — centred, ~78% viewport width,
+  // 1. Decorative frame around the amount area — centred, ~78% viewport width,
   // tall enough to wrap title + amount + button.
   const frW_P = Math.round(VPP.cw * 0.82), frH_P = Math.round(VPP.ch * 0.55);
   const frW_L = Math.round(VPL.cw * 0.58), frH_L = Math.round(VPL.ch * 0.72);
@@ -9513,11 +9526,7 @@ function _ovWinSequence(ov, cx, cy, cw, ch, c1, tier){
 function _ovWheel(ov, cx, cy, cw, ch, c1){
   const VPP = VP.portrait, VPL = VP.landscape;
 
-  // 1. Full-viewport background
-  ov.appendChild(_posSlot('wheel.bg',
-    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
-    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
-    'BG', c1, 'cover'));
+  // wheel.bg is rendered by the base 'bg' layer via featureBgMap.
 
   // 2. Header band
   const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.07);
@@ -9579,11 +9588,7 @@ function _ovLadder(ov, cx, cy, cw, ch, c1){
   const settings = P.ladderBonusSettings || { steps: 8, collectAvailable: true };
   const steps    = Math.max(4, Math.min(12, Number(settings.steps) || 8));
 
-  // 1. Background
-  ov.appendChild(_posSlot('ladder.bg',
-    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
-    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
-    'BG', c1, 'cover'));
+  // ladder.bg is rendered by the base 'bg' layer via featureBgMap.
 
   // 2. Header
   const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.065);
@@ -9940,11 +9945,7 @@ if(document.readyState==='loading'){
 function _ovGamble(ov, cx, cy, cw, ch, c1){
   const VPP = VP.portrait, VPL = VP.landscape;
 
-  // 1. Background
-  ov.appendChild(_posSlot('gamble.bg',
-    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
-    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
-    'BG', c1, 'cover'));
+  // gamble.bg is rendered by the base 'bg' layer via featureBgMap.
 
   // 2. Header
   const hwP = Math.round(VPP.cw * 0.70), hhP = Math.round(VPP.ch * 0.07);
@@ -10016,11 +10017,7 @@ function _ovSuperGamble(ov, cx, cy, cw, ch, c1){
   const settings = P.superGambleSettings || { maxSteps: 5 };
   const steps    = Math.max(3, Math.min(10, Number(settings.maxSteps) || 5));
 
-  // 1. Background
-  ov.appendChild(_posSlot('supergamble.bg',
-    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
-    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
-    'BG', c1, 'cover'));
+  // supergamble.bg is rendered by the base 'bg' layer via featureBgMap.
 
   // 2. Header
   const hwP = Math.round(VPP.cw * 0.72), hhP = Math.round(VPP.ch * 0.07);
