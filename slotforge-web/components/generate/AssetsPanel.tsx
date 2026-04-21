@@ -18,6 +18,7 @@ import type { AssetType, GeneratedAsset } from '@/types/assets'
 import type { FeatureDef, FeatureId, AssetSlot } from '@/types/features'
 import { activeAssetSlots } from '@/types/features'
 import { FEATURE_REGISTRY } from '@/lib/features/registry'
+import { SingleGeneratePopup } from './SingleGeneratePopup'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -300,6 +301,8 @@ function AssetLibraryContent({
   projectId, orgSlug, onAddToCanvas, assetRefreshTick, projectMeta,
 }: { projectId: string; orgSlug: string; onAddToCanvas: (type: AssetType, url: string) => void; assetRefreshTick?: number; projectMeta?: Record<string, unknown> }) {
   const [assets,  setAssets]  = useState<Record<string, GeneratedAsset>>({})
+  // Slot the generate popup is currently open for. null = closed.
+  const [popupSlot, setPopupSlot] = useState<{ key: string; label: string; url?: string } | null>(null)
   // Collapsed group keys — all groups default to expanded. Header click toggles.
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const toggleGroup = useCallback((key: string) => {
@@ -354,36 +357,16 @@ function AssetLibraryContent({
     }
   }, [projectId, loadAssets])
 
-  // AI generate for a legacy AssetType — same /api/ai-single path as the
-  // feature-slot generate, so every row in the panel offers Upload + ✨ AI.
+  // AI generate for a legacy AssetType. The button now opens the Single
+  // regenerate popup instead of firing /api/ai-single directly — users can
+  // pick aspect ratio, graphic style, upload reference images, and override
+  // the prompt. The popup calls the same API and routes the result back
+  // through onAddToCanvas + loadAssets (same terminal flow as before).
   const generateAsset = useCallback(async (assetType: AssetType): Promise<{ ok: boolean; error?: string }> => {
-    const theme   = (projectMeta?.themeKey as string | undefined)
-                  ?? (projectMeta?.gameName as string | undefined)
-                  ?? ''
-    const styleId = (projectMeta?.styleId as string | undefined) ?? undefined
-    const res = await fetch('/api/ai-single', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        asset_type:   assetType,
-        theme,
-        project_id:   projectId,
-        provider:     'auto',
-        style_id:     styleId,
-        project_meta: projectMeta,
-      }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok || data?.error) {
-      const msg = data?.error ?? `Generation failed (${res.status})`
-      console.error('[AssetsPanel] legacy generate failed:', msg)
-      return { ok: false, error: String(msg) }
-    }
-    const url = (data?.asset?.url ?? data?.url) as string | undefined
-    if (url) onAddToCanvas(assetType, url)
-    loadAssets()
+    const label = ASSET_LABELS[assetType] ?? assetType
+    setPopupSlot({ key: assetType, label, url: assets[assetType]?.url })
     return { ok: true }
-  }, [projectId, projectMeta, loadAssets, onAddToCanvas])
+  }, [assets])
 
   // ── Feature slot upload — same endpoint, but the slot key has a namespace
   // (e.g. "bonuspick.bg") and the canvas position is fixed in editor.js, so
@@ -410,37 +393,21 @@ function AssetLibraryContent({
     loadAssets()
   }, [projectId, loadAssets, onAddToCanvas])
 
-  // Generate a feature slot asset via AI. Uses the same /api/ai-single path
-  // as legacy regens — route now accepts namespaced slot keys. On success the
-  // generated URL is auto-injected into the canvas (same flow as upload).
+  // Open the Single regenerate popup for a feature slot. The popup talks to
+  // /api/ai-single with user-chosen ratio / style / custom prompt, then
+  // routes the new URL through onAddToCanvas + loadAssets — same terminal
+  // flow as the legacy-type path above.
   const generateFeatureSlot = useCallback(async (slotKey: string): Promise<{ ok: boolean; error?: string }> => {
-    const theme    = (projectMeta?.themeKey as string | undefined)
-                   ?? (projectMeta?.gameName as string | undefined)
-                   ?? ''
-    const styleId  = (projectMeta?.styleId as string | undefined) ?? undefined
-    const res = await fetch('/api/ai-single', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        asset_type:   slotKey,
-        theme,
-        project_id:   projectId,
-        provider:     'auto',
-        style_id:     styleId,
-        project_meta: projectMeta,
-      }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok || data?.error) {
-      const msg = data?.error ?? `Generation failed (${res.status})`
-      console.error('[AssetsPanel] feature slot generate failed:', msg)
-      return { ok: false, error: String(msg) }
+    // Look up the slot label from the feature registry so the popup header
+    // shows "Bonus Pick · Background" instead of a raw namespaced key.
+    let label = slotKey
+    for (const fdef of Object.values(FEATURE_REGISTRY) as FeatureDef[]) {
+      const slot = fdef.assetSlots.find(s => s.key === slotKey)
+      if (slot) { label = `${fdef.label} · ${slot.label}`; break }
     }
-    const url = (data?.asset?.url ?? data?.url) as string | undefined
-    if (url) onAddToCanvas(slotKey as AssetType, url)
-    loadAssets()
+    setPopupSlot({ key: slotKey, label, url: assets[slotKey]?.url })
     return { ok: true }
-  }, [projectId, projectMeta, loadAssets, onAddToCanvas])
+  }, [assets])
 
   // Build display groups dynamically from project symbol counts
   const displayGroups = useMemo(() => buildDisplayGroups(projectMeta), [projectMeta])
@@ -600,6 +567,28 @@ function AssetLibraryContent({
           </div>
         )
       })}
+
+      {/* Single-asset regenerate popup. Opens when the ✨ button on any row
+          is clicked; closed by the user or after a successful generation. */}
+      {popupSlot && (
+        <SingleGeneratePopup
+          open={!!popupSlot}
+          onClose={() => setPopupSlot(null)}
+          slotKey={popupSlot.key}
+          slotLabel={popupSlot.label}
+          currentUrl={popupSlot.url}
+          projectId={projectId}
+          theme={((projectMeta?.themeKey as string | undefined)
+               ?? (projectMeta?.gameName as string | undefined)
+               ?? '')}
+          projectMeta={projectMeta ?? {}}
+          defaultStyleId={projectMeta?.styleId as string | undefined}
+          onGenerated={(key, url) => {
+            onAddToCanvas(key as AssetType, url)
+          }}
+          onReloadAssets={loadAssets}
+        />
+      )}
     </div>
   )
 }
