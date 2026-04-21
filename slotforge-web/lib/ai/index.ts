@@ -70,10 +70,15 @@ const RATIO_TABLE: Record<AspectRatio, RatioSpec> = {
 // ─── Provider resolution ─────────────────────────────────────────────────────
 
 function resolveProvider(requested: AIProvider): 'runway' | 'openai' | 'mock' {
+  // Short, distinct log marker so the line survives Vercel's log-preview
+  // truncation and can be grepped by "[ai_env]".
+  const hasR = !!process.env.RUNWAY_API_KEY
+  const hasO = !!process.env.OPENAI_API_KEY
+  console.log(`[ai_env] requested=${requested} runway=${hasR} openai=${hasO}`)
   if (requested === 'auto') {
-    if (process.env.RUNWAY_API_KEY) return 'runway'
-    if (process.env.OPENAI_API_KEY) return 'openai'
-    console.warn('[ai] No API key found — falling back to mock provider')
+    if (hasR) return 'runway'
+    if (hasO) return 'openai'
+    console.warn('[ai_env] No API key found — falling back to mock provider')
     return 'mock'
   }
   return requested as 'runway' | 'openai' | 'mock'
@@ -186,16 +191,16 @@ export async function generateImage(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
       console.error(`[ai] ${type} attempt ${attempt} failed:`, lastError.message)
-
-      // If primary fails on last attempt, try mock as ultimate fallback
-      if (attempt === MAX_RETRIES && resolved !== 'mock') {
-        console.warn(`[ai] Falling back to mock for ${type}`)
-        const r = await generateWithMock(type, built.assetType)
-        return { url: r.url, provider: 'mock' }
-      }
     }
   }
 
+  // Previously we silently fell back to the mock provider after all retries
+  // failed, which made real provider errors (bad API key, no gpt-image-1
+  // access, quota exhausted) invisible to the user — they just saw a
+  // placeholder image with provider="mock" and no explanation. Throw the
+  // last real error instead so the API response + popup display it. The
+  // mock provider is still used when resolveProvider explicitly returns
+  // 'mock' (no API keys present), via the case above.
   throw lastError ?? new Error(`[ai] Generation failed for ${type}`)
 }
 
