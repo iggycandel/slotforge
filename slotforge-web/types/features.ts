@@ -27,6 +27,7 @@ export type FeatureId =
   | 'bonus_pick'      // Bonus Pick Game
   | 'holdnspin'       // Hold & Spin / Lock & Win
   | 'expanding_wild'  // Expanding Wild
+  | 'win_sequence'    // Big / Mega / Epic Win popup sequence
 
 export type FeatureGroup =
   | 'bonus'      // Bonus Rounds

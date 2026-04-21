@@ -1,5 +1,5 @@
 // ═══ STATE ═══
-const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:true,t2:true,t3:true},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{}};
+const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:true,t2:true,t3:true},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,win_sequence:true,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{}};
 let LIB_CAT='All'; // active library category filter
 let LIB_TAB='uploads'; // 'uploads' or 'placeholders'
 
@@ -340,9 +340,13 @@ const SDEFS={
   freespin:    {label:'Free Spins',     keys:REEL_KEYS,   dot:'#4ac8f0', overlay:'fs_round'},
   holdnspin:   {label:'Hold & Spin',    keys:REEL_KEYS,   dot:'#5eca8a', overlay:'hns_round'},
   // Pop-up sub-screens — ONLY specific pop-up UI keys
-  popup_win:   {label:'Big Win',        keys:['dimLayer','ov-bigwin_title','ov-bigwin_amount','ov-bigwin_btn'],    dot:'#c9a84c',  group:'popup'},
-  popup_megawin:{label:'Mega Win',       keys:['dimLayer','ov-megawin_title','ov-megawin_amount','ov-megawin_btn'],    dot:'#e8c96d',  group:'popup'},
-  popup_epicwin:{label:'Epic Win',       keys:['dimLayer','ov-epicwin_title','ov-epicwin_amount','ov-epicwin_btn'],    dot:'#ff7060',  group:'popup'},
+  // Win Sequence — tiered celebration popups. The CSS text sub-elements
+  // (title/amount/btn) stay in keys for editable defaults; the overlay
+  // renders the optional art slots (bg / frame / tier title art / fx /
+  // button art) behind and around them.
+  popup_win:   {label:'Big Win',        keys:['dimLayer','ov-bigwin_title','ov-bigwin_amount','ov-bigwin_btn'],    dot:'#c9a84c',  group:'popup', overlay:'winseq_big',  featureKey:'win_sequence'},
+  popup_megawin:{label:'Mega Win',       keys:['dimLayer','ov-megawin_title','ov-megawin_amount','ov-megawin_btn'],    dot:'#e8c96d',  group:'popup', overlay:'winseq_mega', featureKey:'win_sequence'},
+  popup_epicwin:{label:'Epic Win',       keys:['dimLayer','ov-epicwin_title','ov-epicwin_amount','ov-epicwin_btn'],    dot:'#ff7060',  group:'popup', overlay:'winseq_epic', featureKey:'win_sequence'},
   popup_buy:   {label:'Buy Bonus',      keys:['dimLayer','ov-buypopup_title','ov-buypopup_desc','ov-buypopup_btnCancel','ov-buypopup_btnBuy'],  dot:'#ef7a7a',  group:'popup', requires:'buy_feature'},
   // popup_fs / popup_hns / popup_jp were removed — Free Spins, Hold & Spin
   // and Jackpot intros now live as sub-tabs inside each feature's own tab
@@ -8357,6 +8361,11 @@ function buildFeatureOverlay(screenKey, def){
     _ovClusterPays(ov, cx, cy, cw, ch, c1);
   } else if(type==='gamble'){
     _ovSuperGamble(ov, cx, cy, cw, ch, c1);
+  } else if(type==='winseq_big' || type==='winseq_mega' || type==='winseq_epic'){
+    // Shared composition across the three tiers — only the title art slot
+    // differs. The tier tag drives which tier_title_art slot is pulled.
+    const tier = type.slice('winseq_'.length); // 'big' | 'mega' | 'epic'
+    _ovWinSequence(ov, cx, cy, cw, ch, c1, tier);
   }
 
   // Screen label badge
@@ -8821,6 +8830,62 @@ function _ovHnsRound(ov, cx, cy, cw, ch, c1){
 // Intro / outro handled by SDEFS css_ov + dimLayer (see promotion above).
 function _ovHnsIntro(){ /* no-op */ }
 function _ovHnsOutro(){ /* no-op */ }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WIN SEQUENCE — Big / Mega / Epic Win
+// Three tiered celebration popups sharing one composition:
+//   viewport bg  →  frame (around amount area)  →  coins_fx  →  tier title art
+//                                                              →  collect button
+// Title art is per-tier (bigwin / megawin / epicwin); everything else is
+// shared across tiers so the sequence reads as one sequence. Every slot is
+// optional — if the user hasn't uploaded one, the corresponding CSS text
+// sub-element (ov-bigwin_title, etc.) shows through and keeps the popup
+// usable out of the box.
+// ─────────────────────────────────────────────────────────────────────────────
+function _ovWinSequence(ov, cx, cy, cw, ch, c1, tier){
+  const VPP = VP.portrait, VPL = VP.landscape;
+
+  // 1. Full-viewport background art (covers the dim overlay when uploaded)
+  ov.appendChild(_posSlot('winsequence.bg',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'Popup BG', c1, 'cover'));
+
+  // 2. Decorative frame around the amount area — centred, ~78% viewport width,
+  // tall enough to wrap title + amount + button.
+  const frW_P = Math.round(VPP.cw * 0.82), frH_P = Math.round(VPP.ch * 0.55);
+  const frW_L = Math.round(VPL.cw * 0.58), frH_L = Math.round(VPL.ch * 0.72);
+  ov.appendChild(_posSlot('winsequence.frame',
+    { x: VPP.cx + Math.round((VPP.cw - frW_P) / 2), y: VPP.cy + Math.round(VPP.ch*0.22), w: frW_P, h: frH_P },
+    { x: VPL.cx + Math.round((VPL.cw - frW_L) / 2), y: VPL.cy + Math.round(VPL.ch*0.12), w: frW_L, h: frH_L },
+    'Frame', c1, 'contain'));
+
+  // 3. Tier title art (only the slot for the *current* tier is rendered so
+  // users don't see every tier's placeholder at once).
+  const titleKey = `winsequence.${tier}win_title_art`;
+  const tW_P = Math.round(VPP.cw * 0.72), tH_P = Math.round(VPP.ch * 0.14);
+  const tW_L = Math.round(VPL.cw * 0.48), tH_L = Math.round(VPL.ch * 0.20);
+  const tierLabel = tier === 'big' ? 'BIG WIN' : tier === 'mega' ? 'MEGA WIN!' : 'EPIC WIN!';
+  ov.appendChild(_posSlot(titleKey,
+    { x: VPP.cx + Math.round((VPP.cw - tW_P) / 2), y: VPP.cy + Math.round(VPP.ch*0.28), w: tW_P, h: tH_P },
+    { x: VPL.cx + Math.round((VPL.cw - tW_L) / 2), y: VPL.cy + Math.round(VPL.ch*0.20), w: tW_L, h: tH_L },
+    `${tierLabel} art`, c1, 'contain'));
+
+  // 4. Celebration effect overlay — particles / sparks / coin burst.
+  // Covers the whole viewport so users have room to position a full-bleed FX.
+  ov.appendChild(_posSlot('winsequence.coins_fx',
+    { x: VPP.cx, y: VPP.cy, w: VPP.cw, h: VPP.ch },
+    { x: VPL.cx, y: VPL.cy, w: VPL.cw, h: VPL.ch },
+    'Celebration FX', c1, 'contain'));
+
+  // 5. Collect button art — replaces the CSS button when uploaded.
+  const bW_P = Math.round(VPP.cw * 0.42), bH_P = Math.round(VPP.ch * 0.07);
+  const bW_L = Math.round(VPL.cw * 0.28), bH_L = Math.round(VPL.ch * 0.10);
+  ov.appendChild(_posSlot('winsequence.button_collect',
+    { x: VPP.cx + Math.round((VPP.cw - bW_P) / 2), y: VPP.cy + Math.round(VPP.ch*0.72), w: bW_P, h: bH_P },
+    { x: VPL.cx + Math.round((VPL.cw - bW_L) / 2), y: VPL.cy + Math.round(VPL.ch*0.80), w: bW_L, h: bH_L },
+    'Collect button', c1, 'contain'));
+}
 
 // ─── WHEEL BONUS ───
 function _ovWheel(ov, cx, cy, cw, ch, c1){

@@ -205,6 +205,50 @@ const expandingWild: FeatureDef<ExpandingWildSettings> = {
   screens: [],
 }
 
+// ─── 6. Win Sequence (Big / Mega / Epic Win) ────────────────────────────────
+// Not opt-in — every slot game has a Big/Mega/Epic win celebration when the
+// total win crosses one of the tier thresholds. Tier-specific art slots let
+// designers upload unique title art per tier; everything else shares one
+// asset (bg, frame, coins fx, collect button) so they read as one sequence.
+
+const WinSequenceSchema = z.object({
+  bigThresholdX:   z.number().int().min(5).max(50).default(15),    // total win in bet multiples
+  megaThresholdX:  z.number().int().min(25).max(150).default(50),
+  epicThresholdX:  z.number().int().min(75).max(500).default(150),
+  durationMs:      z.number().int().min(800).max(10000).default(2500),
+  skipOnClick:     z.boolean().default(true),
+})
+type WinSequenceSettings = z.infer<typeof WinSequenceSchema>
+
+const winSequence: FeatureDef<WinSequenceSettings> = {
+  id:          'win_sequence',
+  label:       'Win Sequence',
+  // No perfect group — reuse 'bonus' so it lands alongside FS / HnS / BP in
+  // the Features workspace. The Features panel card treats it as always-on
+  // so there's no enable toggle.
+  group:       'bonus',
+  description: 'Tiered win celebration: Big Win / Mega Win / Epic Win popups driven by total-win bet multiples.',
+  settingsSchema:  WinSequenceSchema,
+  defaultSettings: WinSequenceSchema.parse({}),
+  assetSlots: [
+    { key: 'winsequence.bg',                  label: 'Popup background',         requirement: 'optional',
+      description: 'Full-viewport art behind the dim overlay — fireworks / confetti backdrops work well.' },
+    { key: 'winsequence.frame',               label: 'Frame',                    requirement: 'optional',
+      description: 'Decorative frame around the win amount (gold border, plaque, ribbon, etc.)' },
+    { key: 'winsequence.bigwin_title_art',    label: 'Big Win title art',        requirement: 'optional',
+      description: 'Overrides the CSS "BIG WIN" text when uploaded.' },
+    { key: 'winsequence.megawin_title_art',   label: 'Mega Win title art',       requirement: 'optional',
+      description: 'Overrides the CSS "MEGA WIN!" text when uploaded.' },
+    { key: 'winsequence.epicwin_title_art',   label: 'Epic Win title art',       requirement: 'optional',
+      description: 'Overrides the CSS "EPIC WIN!" text when uploaded.' },
+    { key: 'winsequence.coins_fx',            label: 'Celebration overlay',      requirement: 'optional',
+      description: 'Coins / sparks / particle burst — rendered above the frame.' },
+    { key: 'winsequence.button_collect',      label: 'Collect button',           requirement: 'optional',
+      description: 'Overrides the default CSS COLLECT button.' },
+  ],
+  screens: ['Big Win', 'Mega Win', 'Epic Win'],
+}
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -214,6 +258,7 @@ export const FEATURE_REGISTRY: Record<FeatureId, FeatureDef<any>> = {
   bonus_pick:      bonusPick,
   holdnspin:       holdAndSpin,
   expanding_wild:  expandingWild,
+  win_sequence:    winSequence,
 }
 
 export const FEATURE_IDS = Object.keys(FEATURE_REGISTRY) as FeatureId[]
