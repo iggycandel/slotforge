@@ -211,9 +211,17 @@ const BONUS_MODIFIER =
 // This block goes FIRST — it anchors the entire visual language of the prompt.
 // Style is the dominant signal; theme and game name reinforce the world.
 
-function buildIdentityAnchor(theme: string, meta?: ProjectMeta, styleId?: string): string {
+function buildIdentityAnchor(
+  theme: string,
+  meta?: ProjectMeta,
+  styleId?: string,
+  opts: { omitGameName?: boolean } = {},
+): string {
   const style    = styleId ? getStyleById(styleId) : undefined
-  const gameName = meta?.gameName || ''
+  // Backgrounds skip the game name — gpt-image-1 otherwise treats a name
+  // like "Jim Boom Boom" as a brand to paint across every sign in the
+  // scene. The game name belongs on the logo asset, not the backdrop.
+  const gameName = opts.omitGameName ? '' : (meta?.gameName || '')
   const artStyle = meta?.artStyle || ''
 
   const parts: string[] = []
@@ -336,6 +344,56 @@ function sanitizeUserText(input: string | undefined, maxLen = 240): string {
     .slice(0, maxLen)
 }
 
+// Users commonly put text-inviting words in the Setting / Story fields —
+// "neon signage", "graffiti", "billboard", "logos" — which then fight our
+// NEG_SCENE_TEXT block and usually win (positive prompts beat negatives
+// when both are specific). For BACKGROUND assets we map those words to
+// neutral atmospheric equivalents before injection: "neon signage" →
+// "neon lighting", "graffiti" → "weathered textured walls", etc. The mood
+// is preserved, the literal request for text is removed.
+const TEXT_INVITING_PATTERNS: Array<[RegExp, string]> = [
+  [/\bneon\s+signage\b/gi,      'neon lighting'],
+  [/\bneon\s+signs?\b/gi,       'neon lighting'],
+  [/\bneon\s+text\b/gi,         'neon glow'],
+  [/\bsignages?\b/gi,           'atmospheric props'],
+  [/\bstorefront\s+signs?\b/gi, 'storefronts'],
+  [/\bshop\s+signs?\b/gi,       'shop fronts'],
+  [/\bsigns?\b/gi,              'atmospheric props'],
+  [/\bbillboards?\b/gi,         'abstract architectural panels'],
+  [/\bposters?\b/gi,            'weathered wall surfaces'],
+  [/\bbanners?\b/gi,            'colored fabric draping'],
+  [/\bgraffiti\b/gi,            'textured weathered walls'],
+  [/\btags?\b/gi,               'weathered textures'],
+  [/\btaggings?\b/gi,           'weathered textures'],
+  [/\bvandalism\b/gi,           'gritty atmosphere'],
+  [/\binscriptions?\b/gi,       'decorative marks'],
+  [/\bwriting(s)?\b/gi,         'textures'],
+  [/\bwritten\b/gi,             'decorative'],
+  [/\bwordmark(s)?\b/gi,        'mood accents'],
+  [/\blabels?\b/gi,             'decorative elements'],
+  [/\blogos?\b/gi,              'mood accents'],
+  [/\bbrand(s|ed|ing|names?)?\b/gi, 'style elements'],
+  [/\bname\s+tags?\b/gi,        'decorative tags'],
+  [/\bnameplates?\b/gi,         'decorative plates'],
+  [/\btitles?\b/gi,             'focal points'],
+  [/\btypography\b/gi,          'visual detail'],
+  [/\btexts?\b/gi,              'visual elements'],
+  [/\bletters?\b/gi,            'abstract shapes'],
+]
+
+/** Rewrite a user-supplied setting/story for a BACKGROUND prompt, replacing
+ *  text/signage-inviting words with neutral atmospheric equivalents while
+ *  preserving the rest of the description. Used only for backgrounds — the
+ *  same text is passed through unchanged for symbol/character generation. */
+function sanitizeForBackground(text: string): string {
+  let out = text
+  for (const [pattern, replacement] of TEXT_INVITING_PATTERNS) {
+    out = out.replace(pattern, replacement)
+  }
+  // Collapse any double-spaces produced by the replacement passes.
+  return out.replace(/\s+/g, ' ').trim()
+}
+
 // ─── Build per-asset meta context ────────────────────────────────────────────
 // Injected AFTER the template — adds world/mood/colour specifics for this asset.
 
@@ -369,17 +427,22 @@ function buildAssetContext(type: AssetType, category: PromptCategory, meta?: Pro
     )
   }
 
-  // World-building — backgrounds especially
+  // World-building — backgrounds especially. For backgrounds, the user's
+  // setting/story pass through a second sanitizer (sanitizeForBackground)
+  // that rewrites signage/graffiti/logo/brand-type words into neutral
+  // atmospheric equivalents. Without this, a setting like "urban street
+  // with neon signage and graffiti" directly contradicts our NEG_SCENE_TEXT
+  // block and the model paints text everywhere.
   if (category === 'background') {
-    const setting = sanitizeUserText(meta.setting)
-    const story   = sanitizeUserText(meta.story)
+    const setting = sanitizeForBackground(sanitizeUserText(meta.setting))
+    const story   = sanitizeForBackground(sanitizeUserText(meta.story))
     if (setting) parts.push(`world: ${setting}`)
-    if (story)   parts.push(`narrative context: ${story}`)
+    if (story)   parts.push(`narrative atmosphere: ${story}`)
   }
 
-  // Bonus narrative — bonus background only
+  // Bonus narrative — bonus background only. Same rewrite applies.
   if (type === 'background_bonus') {
-    const bonus = sanitizeUserText(meta.bonusNarrative)
+    const bonus = sanitizeForBackground(sanitizeUserText(meta.bonusNarrative))
     if (bonus) parts.push(`bonus scenario: ${bonus}`)
   }
 
@@ -453,7 +516,10 @@ export function buildPrompt(
   const theme    = userTheme.trim().toLowerCase() || 'slot game'
 
   // ── [1] Identity anchor ────────────────────────────────────────────────────
-  const identityAnchor = buildIdentityAnchor(theme, meta, styleId)
+  // Backgrounds drop the game name (see buildIdentityAnchor for why).
+  const identityAnchor = buildIdentityAnchor(theme, meta, styleId, {
+    omitGameName: category === 'background',
+  })
 
   // ── [2] Asset template ─────────────────────────────────────────────────────
   let assetBlock = TEMPLATES[category]()
@@ -707,7 +773,11 @@ export function buildFeatureSlotPrompt(
   if (!spec) throw new Error(`Unknown feature slot: ${slotKey}`)
   const theme    = userTheme.trim().toLowerCase() || 'slot game'
 
-  const identityAnchor = buildIdentityAnchor(theme, meta, styleId)
+  // Feature-slot backgrounds (bonuspick.bg, freespins.bg, holdnspin.bg)
+  // drop the game name for the same reason legacy backgrounds do.
+  const identityAnchor = buildIdentityAnchor(theme, meta, styleId, {
+    omitGameName: !!spec.isScene,
+  })
 
   // Isolated vs scene — drives both framing and negative prompt
   const framing = spec.isScene ? ENVIRONMENT_BASE : ISOLATED_BASE
