@@ -168,18 +168,24 @@ export function SingleGeneratePopup({
       // a crashed edge runtime) previously collapsed into the generic
       // "Generation failed (<status>)" message and hid the actual cause.
       const raw = await res.text()
-      let data: { error?: string; asset?: GeneratedAsset; url?: string } = {}
+      type ZodDetails = { fieldErrors?: Record<string, string[]>; formErrors?: string[] }
+      let data: { error?: string; details?: ZodDetails; asset?: GeneratedAsset; url?: string } = {}
       try { data = raw ? JSON.parse(raw) : {} } catch { /* non-JSON body, fall through */ }
       if (!res.ok || data?.error) {
-        // Prefer the structured error; fall back to the first line of the
-        // raw body (so CDN HTML 404s surface *some* signal), then status.
+        // For Zod validation failures, append the per-field details so the
+        // user sees *which* field failed (e.g. "asset_type: Unknown
+        // asset_type") instead of just the top-level "Invalid request".
+        const fieldLines = Object.entries(data?.details?.fieldErrors ?? {})
+          .map(([k, msgs]) => `${k}: ${(msgs ?? []).join('; ')}`)
+        const formLines = data?.details?.formErrors ?? []
+        const detailSuffix = [...fieldLines, ...formLines]
+          .filter(Boolean).join(' · ')
         const rawSnippet = raw
           .replace(/<[^>]+>/g, '')    // strip HTML tags
           .split('\n').map(l => l.trim()).filter(Boolean).slice(0, 1).join(' ')
           .slice(0, 180)
-        const msg = data?.error
-          || rawSnippet
-          || `Generation failed (${res.status})`
+        const base = data?.error || rawSnippet || `Generation failed (${res.status})`
+        const msg = detailSuffix ? `${base} — ${detailSuffix}` : base
         throw new Error(msg)
       }
       const asset = data?.asset as GeneratedAsset | undefined

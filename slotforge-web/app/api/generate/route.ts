@@ -8,7 +8,8 @@ import { auth }                  from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                     from 'zod'
 import { generateSlotAssets, ALL_TYPES } from '@/lib/generation/pipeline'
-import type { AssetType, ProjectMeta }  from '@/types/assets'
+import { ASSET_TYPES }                   from '@/types/assets'
+import type { AssetType, ProjectMeta }   from '@/types/assets'
 import { getOrgPlan, canUseAI,
          getOrgCreditStatus,
          consumeCredits }        from '@/lib/billing/subscription'
@@ -87,8 +88,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  // When the caller supplies a specific asset_types list (e.g. the Assets
+  // Workspace's "Generate missing" path passing symbol_high_6/7/8 for a
+  // project with 8 high-value tiers), filter it against the canonical
+  // ASSET_TYPES set — not against the smaller ALL_TYPES default list,
+  // which was historically capped at 5 highs and silently dropped the
+  // extra tiers on bulk runs.
+  const VALID_TYPES = new Set<string>(ASSET_TYPES as readonly string[])
   const activeTypes = asset_types?.length
-    ? asset_types.filter(t => (ALL_TYPES as string[]).includes(t)) as AssetType[]
+    ? asset_types.filter(t => VALID_TYPES.has(t)) as AssetType[]
     : ALL_TYPES
   const TOTAL = activeTypes.length
 

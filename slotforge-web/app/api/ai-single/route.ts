@@ -20,6 +20,7 @@ import { z }                  from 'zod'
 import { buildPrompt, buildFeatureSlotPrompt, isFeatureSlotKey } from '@/lib/ai/promptBuilder'
 import { generateImage }      from '@/lib/ai'
 import { uploadGeneratedAsset } from '@/lib/storage/assets'
+import { ASSET_TYPES } from '@/types/assets'
 import type { AssetType, ProjectMeta } from '@/types/assets'
 import { getOrgPlan, canUseAI,
          getOrgCreditStatus,
@@ -29,24 +30,18 @@ import { assertProjectAccess } from '@/lib/supabase/authz'
 // Extend timeout for single-asset generation (~15-30 s)
 export const maxDuration = 60
 
-// ─── Valid asset type list (matches types/assets.ts) ────────────────────────
-
-const VALID_ASSET_TYPES: AssetType[] = [
-  'background_base', 'background_bonus',
-  'symbol_high_1', 'symbol_high_2', 'symbol_high_3', 'symbol_high_4', 'symbol_high_5',
-  'symbol_low_1',  'symbol_low_2',  'symbol_low_3',  'symbol_low_4',  'symbol_low_5',
-  'symbol_wild', 'symbol_scatter',
-  'logo', 'character',
-  'reel_frame', 'spin_button', 'jackpot_label',
-]
-
 // ─── Request schema ──────────────────────────────────────────────────────────
 // asset_type accepts either:
-//   - a legacy AssetType (symbol_high_1, background_base, etc.)
+//   - a legacy AssetType from types/assets.ts (symbol_high_1 through _8,
+//     symbol_low_1 through _8, symbol_wild, symbol_scatter, symbol_special_3
+//     through _6, background_base/bonus, logo, character, reel_frame,
+//     spin_button, jackpot_label). The canonical list lives in ASSET_TYPES
+//     — previously this route had its own hand-maintained copy that got
+//     stale (capped at _5) and rejected legit 6/7/8 tiers as "Invalid".
 //   - a feature slot key like "bonuspick.bg" / "freespins.intro_banner"
 // The prompt path branches on isFeatureSlotKey().
 
-const VALID_ASSET_TYPE_SET = new Set<string>(VALID_ASSET_TYPES as string[])
+const VALID_ASSET_TYPE_SET = new Set<string>(ASSET_TYPES as readonly string[])
 
 const RATIO_VALUES = ['1:1','3:2','2:3','16:9','9:16','3:1','4:1','1:4'] as const
 
