@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useOrganization } from '@clerk/nextjs'
 import { Plus, Trash2, LayoutGrid, Clock, Sparkles } from 'lucide-react'
+import { WelcomeBanner } from '@/components/dashboard/WelcomeBanner'
 
 interface Project {
   id: string
@@ -70,6 +71,9 @@ export default function DashboardPage() {
       className="flex flex-col h-full overflow-hidden"
       style={{ background: '#07080d' }}
     >
+      {/* 2s paint-brush reveal greeting — fires once per session */}
+      <WelcomeBanner />
+
       {/* Page header */}
       <div
         className="flex items-center justify-between flex-shrink-0"
