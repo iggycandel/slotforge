@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, Sparkles, Loader2, Upload, Info, ChevronDown, ChevronRight, Copy, FileText } from 'lucide-react'
 import type { AspectRatio, GeneratedAsset, PromptSections } from '@/types/assets'
 import { GRAPHIC_STYLES }    from '@/lib/ai/styles'
+import { readPromptOverride } from './ReviewPromptsModal'
 
 export interface SingleGeneratePopupProps {
   open:            boolean
@@ -121,7 +122,12 @@ export function SingleGeneratePopup({
     setRatio(defaultRatioForClient(slotKey))
     setStyleId(defaultStyleId ?? '')
     setQuality('medium')
-    setCustomPrompt('')
+    // If the user previously saved a prompt override for this slot from the
+    // Review Prompts modal, pre-fill the Custom Prompt textarea with it so
+    // regenerations automatically use the override. Empty string means no
+    // override saved — the server composes from scratch.
+    const savedOverride = readPromptOverride(projectId, slotKey) ?? ''
+    setCustomPrompt(savedOverride)
     setRefImages([])
     setError(null)
     setSections(null)
@@ -629,7 +635,14 @@ export function SingleGeneratePopup({
         {/* ── Custom prompt override ────────────────────────────────────── */}
         <Section
           title="Custom prompt"
-          subtitle="Leave blank to use the default composed prompt; or load it above and edit"
+          subtitle={
+            // When an override was pre-filled from the Review Prompts modal
+            // we flag it explicitly so the user knows where it came from
+            // (and can clear it by deleting the textarea content).
+            customPrompt && customPrompt === readPromptOverride(projectId, slotKey)
+              ? 'override loaded from Review Prompts · edit or clear to use default'
+              : 'Leave blank to use the default composed prompt; or load it above and edit'
+          }
         >
           <textarea
             value={customPrompt}

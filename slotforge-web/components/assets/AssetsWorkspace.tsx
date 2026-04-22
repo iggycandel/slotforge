@@ -14,7 +14,7 @@ import {
   Sparkles, ChevronLeft, LayoutGrid, Layers, Box,
   RefreshCw, Download, Loader2, CheckCircle2,
   XCircle, Wand2, ZapIcon, AlignLeft, MessageSquare,
-  ChevronDown, ChevronUp, Eye, Upload, X,
+  ChevronDown, ChevronUp, Eye, Upload, X, FileText,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import { ASSET_LABELS } from '@/types/assets'
@@ -23,6 +23,7 @@ import { activeAssetSlots } from '@/types/features'
 import { FEATURE_REGISTRY } from '@/lib/features/registry'
 import { GRAPHIC_STYLES } from '@/lib/ai/styles'
 import { SingleGeneratePopup } from '@/components/generate/SingleGeneratePopup'
+import { ReviewPromptsModal, readPromptOverrides, type ReviewSlot } from '@/components/generate/ReviewPromptsModal'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -297,6 +298,18 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     url?:   string
   } | null>(null)
 
+  // Review Prompts modal — lets user preview every composed prompt in one
+  // place and edit per-slot overrides before generating.
+  const [reviewOpen,      setReviewOpen]      = useState(false)
+  // Count of slots with a user-saved prompt override (drives the pill on
+  // the Review prompts button). Initialised from localStorage on mount,
+  // refreshed when the modal closes or reports a change.
+  const [overrideCount,   setOverrideCount]   = useState(0)
+  useEffect(() => {
+    const overrides = readPromptOverrides(projectId)
+    setOverrideCount(Object.values(overrides).filter(v => v && v.trim()).length)
+  }, [projectId])
+
   // Failed asset tracking — populated after each batch, cleared on next run
   const [failedTypes, setFailedTypes] = useState<Set<AssetType>>(new Set())
 
@@ -344,6 +357,23 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // Feature slot groups appear below the legacy AssetType groups when the
   // corresponding feature is enabled in projectMeta.features.
   const featureGroups = useMemo(() => buildFeatureSlotGroups(projectMeta), [projectMeta])
+
+  // Flat slot list for the Review Prompts modal — base groups + feature
+  // slots, each tagged with a group label for the modal's section headers.
+  const reviewSlots = useMemo<ReviewSlot[]>(() => {
+    const out: ReviewSlot[] = []
+    for (const g of assetGroups) {
+      for (const t of g.types) {
+        out.push({ key: t, label: (ASSET_LABELS as Record<string, string>)[t] ?? t, group: g.label })
+      }
+    }
+    for (const fg of featureGroups) {
+      for (const s of fg.slots) {
+        out.push({ key: s.key, label: `${fg.label} · ${s.label}`, group: fg.label })
+      }
+    }
+    return out
+  }, [assetGroups, featureGroups])
 
   // ─── In inline mode, pre-load existing assets from API (no server-side fetch) ─
 
@@ -912,6 +942,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             missingCount={assetGroups.flatMap(g => g.types).filter(t => !assets[t]).length}
             showAdvanced={showAdvanced}
             onToggleAdvanced={() => setShowAdvanced(v => !v)}
+            onReviewPrompts={() => setReviewOpen(true)}
+            overrideCount={overrideCount}
           />
 
           {/* SSE Progress Bar */}
@@ -1035,6 +1067,22 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         }}
       />
     )}
+
+    {/* Review Prompts modal — batch preview + per-slot override editor.
+        Opens from the "Review prompts" button in GenerationControlBar. */}
+    <ReviewPromptsModal
+      open={reviewOpen}
+      onClose={() => setReviewOpen(false)}
+      projectId={projectId}
+      projectName={(projectMeta?.gameName as string | undefined) || undefined}
+      theme={theme}
+      styleId={styleId || undefined}
+      projectMeta={(projectMeta ?? {}) as Record<string, unknown>}
+      slots={reviewSlots}
+      onOverridesChanged={(next) => {
+        setOverrideCount(Object.values(next).filter(v => v && v.trim()).length)
+      }}
+    />
     </>
   )
 }
@@ -1319,6 +1367,12 @@ interface GenBarProps {
   missingCount:      number
   showAdvanced:      boolean
   onToggleAdvanced:  () => void
+  /** Opens the Review Prompts modal — lets the user preview + edit every
+   *  composed prompt before hitting Generate. */
+  onReviewPrompts?:  () => void
+  /** Count of slots with a user-saved prompt override (drives the small
+   *  gold pill on the Review Prompts button). */
+  overrideCount?:    number
 }
 
 function GenerationControlBar({
@@ -1326,6 +1380,7 @@ function GenerationControlBar({
   provider, onProviderChange,
   generating, onGenerate, onGenerateMissing, missingCount,
   showAdvanced, onToggleAdvanced,
+  onReviewPrompts, overrideCount = 0,
 }: GenBarProps) {
   return (
     <div style={{
@@ -1412,6 +1467,45 @@ function GenerationControlBar({
             : 'Style'
           }
         </button>
+
+        {/* Review prompts button — opens the modal that lists every
+            composed prompt with edit + save-override controls. Shows a
+            gold pill with the override count when any are active. */}
+        {onReviewPrompts && (
+          <button
+            onClick={onReviewPrompts}
+            className="sf-btn"
+            title="Review every composed prompt + edit per-slot overrides"
+            style={{
+              display:    'flex',
+              alignItems: 'center',
+              gap:        5,
+              padding:    '8px 12px',
+              background: overrideCount > 0 ? 'rgba(201,168,76,.08)' : C.surfHigh,
+              color:      overrideCount > 0 ? C.gold : C.txMuted,
+              border:     `1px solid ${overrideCount > 0 ? 'rgba(201,168,76,.35)' : C.border}`,
+              borderRadius: 8,
+              fontSize:   12,
+              fontWeight: 600,
+              cursor:     'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <FileText size={12} />
+            Review prompts
+            {overrideCount > 0 && (
+              <span style={{
+                marginLeft: 2,
+                padding: '1px 5px', borderRadius: 3,
+                background: 'rgba(201,168,76,.18)',
+                color: C.gold, fontSize: 10,
+                fontFamily: "'DM Mono',monospace",
+              }}>
+                {overrideCount}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* Fill gaps button */}
         {missingCount > 0 && (
