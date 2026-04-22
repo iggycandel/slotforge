@@ -14,7 +14,7 @@ import {
   Sparkles, ChevronLeft, LayoutGrid, Layers, Box,
   RefreshCw, Download, Loader2, CheckCircle2,
   XCircle, Wand2, ZapIcon, AlignLeft, MessageSquare,
-  ChevronDown, ChevronUp, Eye, Upload, X, FileText,
+  Eye, Upload, X, FileText,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import { ASSET_LABELS } from '@/types/assets'
@@ -278,7 +278,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const [theme,       setTheme]       = useState('')
   const [styleId,     setStyleId]     = useState<string>('')
   const [provider,    setProvider]    = useState<'openai' | 'mock'>('openai')
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  // showAdvanced was the toggle that gated the style picker — removed
+  // when the picker became always-visible. Kept the variable declaration
+  // eliminated here rather than above to keep this diff focused.
 
   // Batch generation
   const [batchRunning, setBatchRunning] = useState(false)
@@ -940,8 +942,6 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             onGenerate={handleGenerate}
             onGenerateMissing={handleGenerateMissing}
             missingCount={assetGroups.flatMap(g => g.types).filter(t => !assets[t]).length}
-            showAdvanced={showAdvanced}
-            onToggleAdvanced={() => setShowAdvanced(v => !v)}
             onReviewPrompts={() => setReviewOpen(true)}
             overrideCount={overrideCount}
           />
@@ -1365,8 +1365,6 @@ interface GenBarProps {
   onGenerate:        () => void
   onGenerateMissing: () => void
   missingCount:      number
-  showAdvanced:      boolean
-  onToggleAdvanced:  () => void
   /** Opens the Review Prompts modal — lets the user preview + edit every
    *  composed prompt before hitting Generate. */
   onReviewPrompts?:  () => void
@@ -1379,7 +1377,6 @@ function GenerationControlBar({
   theme, onThemeChange, styleId, onStyleChange,
   provider, onProviderChange,
   generating, onGenerate, onGenerateMissing, missingCount,
-  showAdvanced, onToggleAdvanced,
   onReviewPrompts, overrideCount = 0,
 }: GenBarProps) {
   return (
@@ -1439,34 +1436,6 @@ function GenerationControlBar({
             </button>
           ))}
         </div>
-
-        {/* Advanced / style toggle */}
-        <button
-          onClick={onToggleAdvanced}
-          className="sf-btn"
-          style={{
-            display:    'flex',
-            alignItems: 'center',
-            gap:        4,
-            padding:    '7px 10px',
-            background: showAdvanced ? C.goldBg : styleId ? 'rgba(201,168,76,.06)' : C.surfHigh,
-            border:     `1px solid ${showAdvanced || styleId ? C.gold + '40' : C.border}`,
-            borderRadius: 8,
-            color:      showAdvanced || styleId ? C.gold : C.txMuted,
-            fontSize:   11,
-            cursor:     'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          {styleId
-            ? (() => {
-                const s = GRAPHIC_STYLES.find(g => g.id === styleId)
-                return s ? `${s.emoji} ${s.name}` : 'Style'
-              })()
-            : 'Style'
-          }
-        </button>
 
         {/* Review prompts button — opens the modal that lists every
             composed prompt with edit + save-override controls. Shows a
@@ -1563,15 +1532,16 @@ function GenerationControlBar({
         </button>
       </div>
 
-      {/* Row 2: StylePicker (collapsible) */}
-      {showAdvanced && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: C.txMuted, marginBottom: 8, fontWeight: 600, letterSpacing: '.06em' }}>
-            GRAPHIC STYLE
-          </div>
-          <StylePickerStrip selected={styleId} onSelect={onStyleChange} />
+      {/* Row 2: Graphic style picker — always visible. Users asked to
+          remove the Advanced-toggle gate so the style is never hidden
+          behind a collapsed section; the selected card is always
+          discoverable and the picker doubles as a status readout. */}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 11, color: C.txMuted, marginBottom: 8, fontWeight: 600, letterSpacing: '.06em' }}>
+          GRAPHIC STYLE
         </div>
-      )}
+        <StylePickerStrip selected={styleId} onSelect={onStyleChange} />
+      </div>
     </div>
   )
 }
