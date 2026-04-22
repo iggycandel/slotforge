@@ -3831,12 +3831,15 @@ document.addEventListener('click',()=>{document.querySelectorAll('.dropdown').fo
     if(_raf) cancelAnimationFrame(_raf);
     _raf = requestAnimationFrame(() => {
       _raf = 0;
-      // Reset to natural state so we can re-measure correctly.
-      ovWrap.setAttribute('hidden','');
-      getCollapsible().forEach(el => { el.style.display = ''; });
-      // Measure after reset.
-      const overflowing = menubar.scrollWidth > menubar.clientWidth + 2;
-      if(!overflowing) return;
+      // Always collapse the desktop-app menu items (File / Edit / View /
+      // Insert / Flow Actions / Docs / Help) into the "⋯" overflow — even
+      // when the menubar has room. Previously we only collapsed on
+      // overflow, which made the menu strip compete visually with the
+      // workspace-switcher tabs (Project · Features · Art · Flow · Logic
+      // · Marketing) and produced an awkward two-row feel with two tabs
+      // named "Flow". The UX critique asked to reserve the top strip for
+      // the primary workspace modes only, and keep the menu commands in
+      // a single dropdown.
       const groups = getCollapsible();
       groups.forEach(el => { el.style.display = 'none'; });
       ovWrap.removeAttribute('hidden');
@@ -3844,10 +3847,10 @@ document.addEventListener('click',()=>{document.querySelectorAll('.dropdown').fo
     });
   }
 
-  // Re-run on resize and on workspace change (topbar/menubar content shifts).
+  // Still re-runs on resize / workspace switch in case the populated
+  // content needs to be rebuilt (e.g. menu items added dynamically).
   try { new ResizeObserver(_check).observe(menubar); } catch(e){}
   window.addEventListener('resize', _check);
-  // Initial pass after DOM settles.
   setTimeout(_check, 50);
 })();
 const openExp=()=>document.getElementById('export-panel').classList.add('show');
