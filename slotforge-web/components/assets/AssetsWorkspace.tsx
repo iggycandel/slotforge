@@ -1813,8 +1813,16 @@ function AssetTile({
         boxShadow:   isSelected ? `0 0 0 1px ${C.gold}40` : isFailed ? `0 0 0 1px ${C.red}30` : 'none',
       }}
     >
-      {/* Image / placeholder */}
-      {asset?.url ? (
+      {/* Three distinct tile states per the UX critique: (1) generating
+          takes precedence visually (shimmer + pulse); (2) failed shows a
+          red-tinted retry card; (3) has-asset shows the image (with a
+          shimmer overlay when re-generating over an existing asset);
+          (4) idle shows a dashed "Not generated" card. */}
+      {isRegenerating ? (
+        <GeneratingTilePlaceholder label={label} />
+      ) : isFailed && !asset?.url ? (
+        <FailedTilePlaceholder label={label} onRetry={e => { e.stopPropagation(); onRegen() }} />
+      ) : asset?.url ? (
         <img
           src={asset.url}
           alt={label}
@@ -1825,27 +1833,8 @@ function AssetTile({
             display:    'block',
           }}
         />
-      ) : isFailed ? (
-        <FailedTilePlaceholder label={label} onRetry={e => { e.stopPropagation(); onRegen() }} />
       ) : (
-        <EmptyTilePlaceholder label={label} isRegenerating={isRegenerating} />
-      )}
-
-      {/* Regenerating overlay */}
-      {isRegenerating && (
-        <div style={{
-          position:   'absolute',
-          inset:      0,
-          background: 'rgba(6,6,10,.75)',
-          display:    'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'column',
-          gap: 6,
-        }}>
-          <Loader2 size={18} style={{ color: C.gold, animation: 'spin 1s linear infinite' }} />
-          <span style={{ fontSize: 10, color: C.gold }}>Generating…</span>
-        </div>
+        <IdleTilePlaceholder label={label} />
       )}
 
       {/* Hover actions overlay */}
@@ -2123,30 +2112,75 @@ function AssetTile({
   )
 }
 
-function EmptyTilePlaceholder({ label, isRegenerating }: { label: string; isRegenerating: boolean }) {
+/** Idle state — no asset yet, not generating, not failed. Dashed-border
+ *  card that communicates "ready for you" without the busy hatching the
+ *  previous version used. Per UX critique: 3 distinct states instead of
+ *  one "empty" bucket with isRegenerating booleans. */
+function IdleTilePlaceholder({ label }: { label: string }) {
   return (
     <div style={{
-      width:          '100%',
-      height:         '100%',
-      display:        'flex',
-      flexDirection:  'column',
-      alignItems:     'center',
-      justifyContent: 'center',
+      position:       'absolute', inset: 6,
+      display:        'flex', flexDirection: 'column',
+      alignItems:     'center', justifyContent: 'center',
       gap:            6,
-      color:          C.txFaint,
-      background:     'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(255,255,255,.013) 6px, rgba(255,255,255,.013) 12px)',
+      border:         '1px dashed rgba(255,255,255,.12)',
+      borderRadius:   8,
+      background:     'rgba(255,255,255,.015)',
     }}>
-      {isRegenerating
-        ? <Loader2 size={18} style={{ color: C.gold, animation: 'spin 1s linear infinite' }} />
-        : <Sparkles size={14} style={{ opacity: .3, color: C.gold }} />
-      }
+      <Sparkles size={14} style={{ opacity: .35, color: C.gold }} />
       <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.04em', textAlign: 'center', padding: '0 4px', color: C.txMuted }}>
         {label}
       </span>
-      {!isRegenerating && (
-        <span style={{ fontSize: 8, color: C.txFaint, letterSpacing: '.04em' }}>Hover to generate</span>
-      )}
+      <span style={{ fontSize: 8, color: C.txFaint, letterSpacing: '.04em' }}>
+        Not generated
+      </span>
     </div>
+  )
+}
+
+/** Generating state — animated shimmer skeleton sweeping left→right,
+ *  plus a subtle pulsing border glow so the tile reads as actively doing
+ *  work (not just loading). The shimmer is a single layered gradient
+ *  keyframed via CSS; keyframes live in a <style> block inside the
+ *  component so the tile is self-contained. */
+function GeneratingTilePlaceholder({ label }: { label: string }) {
+  return (
+    <>
+      <style>{`
+        @keyframes sf-tile-shimmer {
+          0%   { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        @keyframes sf-tile-pulse {
+          0%, 100% { box-shadow: inset 0 0 0 1px rgba(201,168,76,.35); }
+          50%      { box-shadow: inset 0 0 0 1px rgba(201,168,76,.75); }
+        }
+      `}</style>
+      <div style={{
+        width: '100%', height: '100%',
+        position: 'relative', overflow: 'hidden',
+        background: 'rgba(18,18,28,0.9)',
+        animation: 'sf-tile-pulse 1.8s ease-in-out infinite',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        gap: 6,
+      }}>
+        {/* Shimmer sweep */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(110deg, transparent 25%, rgba(201,168,76,.15) 45%, rgba(255,224,140,.25) 55%, transparent 75%)',
+          animation: 'sf-tile-shimmer 1.5s ease-in-out infinite',
+        }}/>
+        {/* Foreground content */}
+        <Loader2 size={18} style={{ color: C.gold, animation: 'spin 1s linear infinite', position: 'relative', zIndex: 1 }} />
+        <span style={{ fontSize: 9, fontWeight: 600, color: C.gold, letterSpacing: '.04em', textAlign: 'center', padding: '0 4px', position: 'relative', zIndex: 1 }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 8, color: C.gold, opacity: 0.65, letterSpacing: '.04em', position: 'relative', zIndex: 1 }}>
+          Generating…
+        </span>
+      </div>
+    </>
   )
 }
 
@@ -2428,7 +2462,10 @@ function InspectorTab({
         )}
       </div>
 
-      {/* Actions */}
+      {/* Actions — primary Generate (filled gold) + ghost Download per
+          UX critique. Previously both buttons had near-identical visual
+          weight, which flattened the action hierarchy. Now Generate
+          reads as the CTA, Download reads as secondary. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button
           onClick={handleRegenClick}
@@ -2439,14 +2476,19 @@ function InspectorTab({
             alignItems:     'center',
             justifyContent: 'center',
             gap:            6,
-            padding:        '9px 0',
-            background:     isRegen ? C.surfHigh : C.goldBg,
-            border:         `1px solid ${isRegen ? C.border : C.gold + '50'}`,
+            padding:        '10px 0',
+            background:     isRegen
+                              ? C.surfHigh
+                              : `linear-gradient(135deg, ${C.goldDark}, ${C.gold})`,
+            border:         isRegen ? `1px solid ${C.border}` : 'none',
             borderRadius:   8,
-            color:          isRegen ? C.txMuted : C.gold,
+            color:          isRegen ? C.txMuted : '#06060a',
             fontSize:       12,
             fontWeight:     700,
+            letterSpacing:  '.02em',
             cursor:         isRegen ? 'not-allowed' : 'pointer',
+            boxShadow:      isRegen ? 'none' : `0 2px 14px rgba(201,168,76,.28)`,
+            transition:     'transform .12s ease-out, box-shadow .15s',
           }}
         >
           {isRegen
@@ -2468,40 +2510,49 @@ function InspectorTab({
                 justifyContent: 'center',
                 gap:            6,
                 padding:        '8px 0',
-                background:     C.surfHigh,
+                background:     'transparent',
                 border:         `1px solid ${C.border}`,
                 borderRadius:   8,
                 color:          C.txMuted,
-                fontSize:       12,
+                fontSize:       11,
                 fontWeight:     600,
                 textDecoration: 'none',
               }}
             >
-              <Download size={13} />
+              <Download size={12} />
               Download PNG
             </a>
           ) : (
             <button
               onClick={() => onUpgradeGate()}
+              title="Upgrade to a paid plan to export assets"
               style={{
                 display:        'flex',
                 alignItems:     'center',
                 justifyContent: 'center',
                 gap:            6,
                 padding:        '8px 0',
-                background:     C.surfHigh,
-                border:         `1px solid ${C.border}`,
+                background:     'transparent',
+                border:         `1px dashed rgba(255,255,255,.15)`,
                 borderRadius:   8,
                 color:          C.txFaint,
-                fontSize:       12,
+                fontSize:       11,
                 fontWeight:     600,
                 cursor:         'pointer',
                 width:          '100%',
-                opacity:        0.7,
               }}
-              title="Upgrade to download assets"
             >
-              🔒 Download PNG
+              {/* Ghost-outlined + lock glyph. Tooltip explains the gate
+                  up-front — no click-to-discover upgrade modal for the
+                  lock state per UX critique. */}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="4" y="11" width="16" height="9" rx="2"/>
+                <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+              </svg>
+              Download PNG
+              <span style={{ fontSize: 9, color: C.txFaint, opacity: .7, marginLeft: 2 }}>
+                — upgrade to unlock
+              </span>
             </button>
           )
         )}
