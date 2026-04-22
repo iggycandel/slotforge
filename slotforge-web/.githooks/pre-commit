@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# pre-commit — keeps docs/prompt-architecture.md "Last sync" line fresh.
+#
+# Fires when any file the doc describes is staged:
+#   • lib/ai/promptBuilder.ts
+#   • lib/ai/styles.ts
+#   • types/assets.ts (sections / built-prompt shape)
+#   • app/api/ai-single/route.ts
+#   • app/api/ai-single/preview/route.ts
+#   • app/api/prompts/preview-all/route.ts
+#   • app/api/generate/route.ts
+#   • lib/generation/pipeline.ts
+#
+# On any of those, runs scripts/update-prompt-doc-sync.sh and re-stages
+# the updated doc so the "Last sync" line always lands in the same commit
+# as the code change it describes.
+#
+# Install once per dev checkout with:
+#   $ ./scripts/install-hooks.sh
+# (The install script just sets `core.hooksPath` to .githooks.)
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+# List of tracked files whose changes should bump the doc's "Last sync".
+# Kept as prefix patterns so subdirectory reshuffles don't quietly skip
+# the hook.
+TRIGGER_PATTERNS=(
+  "slotforge-web/lib/ai/promptBuilder.ts"
+  "slotforge-web/lib/ai/styles.ts"
+  "slotforge-web/types/assets.ts"
+  "slotforge-web/app/api/ai-single/route.ts"
+  "slotforge-web/app/api/ai-single/preview/route.ts"
+  "slotforge-web/app/api/prompts/preview-all/route.ts"
+  "slotforge-web/app/api/generate/route.ts"
+  "slotforge-web/lib/generation/pipeline.ts"
+  # When the doc itself is being edited — e.g. a manual revision — also bump
+  # the sync line so it reflects the new state, not the last code change.
+  "slotforge-web/docs/prompt-architecture.md"
+)
+
+# Staged files in this commit (name-only, new + modified).
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# If none of the trigger patterns appear in the staged set, skip.
+NEEDS_BUMP=0
+for staged in $STAGED; do
+  for pat in "${TRIGGER_PATTERNS[@]}"; do
+    if [[ "$staged" == "$pat" || "$staged" == "$pat"* ]]; then
+      NEEDS_BUMP=1
+      break 2
+    fi
+  done
+done
+
+if [[ $NEEDS_BUMP -eq 0 ]]; then
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT="$REPO_ROOT/slotforge-web/scripts/update-prompt-doc-sync.sh"
+[[ -x "$SCRIPT" ]] || SCRIPT="$REPO_ROOT/scripts/update-prompt-doc-sync.sh"
+
+if [[ ! -x "$SCRIPT" ]]; then
+  echo "[pre-commit] update-prompt-doc-sync.sh not found or not executable — skipping." >&2
+  exit 0
+fi
+
+RUNNING_PRE_COMMIT=1 "$SCRIPT"

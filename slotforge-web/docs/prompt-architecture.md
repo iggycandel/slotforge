@@ -4,7 +4,14 @@ Living doc. Mirrors the code in `lib/ai/promptBuilder.ts`. Edit freely as the
 system changes; the implementation is the source of truth and this file
 should stay in sync.
 
-Last sync: editor commits up to commit with Part A/B of AI-gen overhaul.
+Last sync: `5a2191b` — 2026-04-22
+
+> The line above is auto-updated by `.githooks/pre-commit` whenever any of
+> the files in §6 is committed. Install once per checkout:
+>
+>     $ ./scripts/install-hooks.sh
+>
+> You can also run the update manually: `./scripts/update-prompt-doc-sync.sh`.
 
 ---
 
