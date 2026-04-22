@@ -142,7 +142,11 @@ export const GRAPHIC_STYLES: GraphicStyle[] = [
       'gloss, gallery-quality traditional illustration feel',
     cardGradient: 'linear-gradient(135deg, #2d7a9a 0%, #c9f0ff 100%)',
     accentColor:  '#7fd4f0',
-    emoji:        '🎭',
+    // Emoji is only used in the <select> dropdown fallback where text
+    // is the only option — the style cards use <StyleIcon id="watercolor" />
+    // which draws a proper paint-drop glyph. Replaced the old 🎭 (theatre
+    // masks; critique flagged it as a wrong/snorkel-looking metaphor).
+    emoji:        '💧',
   },
 ]
 

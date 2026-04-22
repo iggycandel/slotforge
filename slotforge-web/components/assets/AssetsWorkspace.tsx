@@ -24,6 +24,7 @@ import { FEATURE_REGISTRY } from '@/lib/features/registry'
 import { GRAPHIC_STYLES } from '@/lib/ai/styles'
 import { SingleGeneratePopup } from '@/components/generate/SingleGeneratePopup'
 import { ReviewPromptsModal, readPromptOverrides, type ReviewSlot } from '@/components/generate/ReviewPromptsModal'
+import { StyleIcon } from '@/components/generate/StyleIcon'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -1588,7 +1589,12 @@ function StylePickerStrip({ selected, onSelect }: { selected: string; onSelect: 
           textAlign:    'center',
         }}
       >
-        <div style={{ fontSize: 16, marginBottom: 3 }}>✦</div>
+        <div style={{
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          height: 22, marginBottom: 3, color: !selected ? C.gold : '#e8c96d',
+        }}>
+          <StyleIcon id="default" size={20} />
+        </div>
         Default
       </button>
 
@@ -1615,7 +1621,19 @@ function StylePickerStrip({ selected, onSelect }: { selected: string; onSelect: 
               transition:   'all .15s',
             }}
           >
-            <div style={{ fontSize: 16, marginBottom: 3 }}>{style.emoji}</div>
+            {/* Custom SVG replaces the per-OS emoji; one consistent icon
+                family across the nine cards, drawn at same line weight so
+                the row reads as one visual set. currentColor inherits from
+                the button's foreground so each card picks up its own
+                accent on the gradient background. */}
+            <div style={{
+              display: 'flex', justifyContent: 'center', alignItems: 'center',
+              height: 22, marginBottom: 3,
+              color: isActive ? C.gold : '#ffffffcc',
+              filter: isActive ? 'none' : 'drop-shadow(0 1px 2px rgba(0,0,0,.35))',
+            }}>
+              <StyleIcon id={style.id} size={20} />
+            </div>
             <div style={{ color: isActive ? C.gold : '#ffffffcc', lineHeight: 1.2 }}>
               {style.name}
             </div>

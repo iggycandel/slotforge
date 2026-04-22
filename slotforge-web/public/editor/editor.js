@@ -3307,7 +3307,7 @@ const GRAPHIC_STYLES_MIRROR = [
   { id: 'dark_gothic',          emoji: '🦇',  name: 'Dark Gothic',             desc: 'Grim, atmospheric, fantasy' },
   { id: 'pixel_art',            emoji: '👾',  name: 'Pixel Art',               desc: 'Retro 8/16-bit aesthetic' },
   { id: 'anime',                emoji: '⛩️', name: 'Anime / Manga',           desc: 'Japanese animation, cel-shaded' },
-  { id: 'watercolor',           emoji: '🎭',  name: 'Watercolor',              desc: 'Painterly, soft, illustrative' },
+  { id: 'watercolor',           emoji: '💧',  name: 'Watercolor',              desc: 'Painterly, soft, illustrative' },
 ];
 
 function _populateStyleOptions(){
