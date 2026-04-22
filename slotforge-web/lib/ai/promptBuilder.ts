@@ -54,6 +54,18 @@ const NEG_ENVIRONMENT =
 const NEG_SYMBOLS =
   'text, letters, numbers, written words, readable glyphs, watermark'
 
+// Strong scene-level text/signage exclusion for BACKGROUND environments.
+// Without this, gpt-image-1 cheerfully paints bar signs, neon billboards,
+// graffiti and storefront labels onto slot-game backgrounds that are
+// supposed to be clean canvases for UI overlay. NEG_SYMBOLS only
+// suppresses text on isolated symbols; this covers the entire scene.
+const NEG_SCENE_TEXT =
+  'no readable text anywhere in the scene, no signage, no neon signs, ' +
+  'no brand names, no billboards, no storefront labels, no shop signs, ' +
+  'no graffiti, no painted writing on walls, no book titles, ' +
+  'no license plates, no captions, no typography anywhere in the composition, ' +
+  'no in-scene logos'
+
 // ─── Per-category base templates ─────────────────────────────────────────────
 // Templates no longer include the theme — that is injected by the project
 // identity block to ensure it is tied to the graphic style consistently.
@@ -64,7 +76,9 @@ const TEMPLATES: Record<PromptCategory, () => string> = {
     `slot game background scene, wide panoramic vista, ` +
     `dramatic atmospheric lighting, rich saturated colors, ` +
     `deep parallax depth with foreground mid-ground background layers, ` +
-    `premium AAA casino game background art, 3:2 landscape orientation`,
+    `premium AAA casino game background art, 3:2 landscape orientation, ` +
+    `clean empty backdrop for UI overlay, no text or signage anywhere, ` +
+    `no readable writing on any surface, no storefront labels, no logos in scene`,
 
   symbol_high: () =>
     `${ISOLATED_BASE}, ` +
@@ -220,6 +234,89 @@ function buildIdentityAnchor(theme: string, meta?: ProjectMeta, styleId?: string
   return parts.join(', ')
 }
 
+// ─── Hex → named colour conversion ───────────────────────────────────────────
+// gpt-image-1 takes literal hex swatches as a mandate and over-rotates the
+// entire scene onto the three project colours. Descriptive names ("warm
+// gold") still communicate the mood while leaving room for complementary
+// tones, which is what you want from a colour palette anyway.
+
+interface NamedColor { name: string; r: number; g: number; b: number }
+
+const NAMED_COLORS: NamedColor[] = [
+  // Reds / oranges
+  { name: 'bright red',       r: 220, g: 38,  b: 38  },
+  { name: 'deep crimson',     r: 139, g: 0,   b: 0   },
+  { name: 'warm orange',      r: 234, g: 88,  b: 12  },
+  { name: 'soft peach',       r: 254, g: 215, b: 170 },
+  // Golds / yellows
+  { name: 'warm gold',        r: 201, g: 168, b: 76  },
+  { name: 'rich gold',        r: 240, g: 202, b: 121 },
+  { name: 'bright gold',      r: 255, g: 215, b: 0   },
+  { name: 'pale yellow',      r: 250, g: 240, b: 137 },
+  // Greens
+  { name: 'emerald green',    r: 5,   g: 150, b: 105 },
+  { name: 'forest green',     r: 34,  g: 87,  b: 34  },
+  { name: 'sage green',       r: 156, g: 175, b: 136 },
+  { name: 'mint green',       r: 167, g: 243, b: 208 },
+  // Blues
+  { name: 'deep navy',        r: 15,  g: 23,  b: 68  },
+  { name: 'royal blue',       r: 37,  g: 99,  b: 235 },
+  { name: 'sky blue',         r: 96,  g: 165, b: 250 },
+  { name: 'teal',             r: 13,  g: 148, b: 136 },
+  { name: 'turquoise',        r: 64,  g: 224, b: 208 },
+  // Purples
+  { name: 'deep indigo',      r: 26,  g: 10,  b: 58  },
+  { name: 'royal purple',     r: 88,  g: 28,  b: 135 },
+  { name: 'soft violet',      r: 167, g: 139, b: 250 },
+  { name: 'pale lavender',    r: 196, g: 181, b: 253 },
+  // Pinks / magentas
+  { name: 'hot pink',         r: 236, g: 72,  b: 153 },
+  { name: 'soft pink',        r: 251, g: 207, b: 232 },
+  { name: 'magenta',          r: 192, g: 38,  b: 211 },
+  // Browns / earth
+  { name: 'rich brown',       r: 120, g: 53,  b: 15  },
+  { name: 'warm tan',         r: 180, g: 142, b: 102 },
+  { name: 'rust',             r: 153, g: 78,  b: 30  },
+  // Neutrals
+  { name: 'pure white',       r: 255, g: 255, b: 255 },
+  { name: 'cream',            r: 245, g: 235, b: 220 },
+  { name: 'light grey',       r: 200, g: 200, b: 200 },
+  { name: 'mid grey',         r: 120, g: 120, b: 130 },
+  { name: 'charcoal',         r: 60,  g: 60,  b: 70  },
+  { name: 'near-black',       r: 20,  g: 20,  b: 25  },
+  { name: 'pure black',       r: 0,   g: 0,   b: 0   },
+]
+
+/** Parse a hex colour (#RGB, #RRGGBB, or without #) into {r,g,b} 0-255. */
+function parseHex(hex: string): { r: number; g: number; b: number } | null {
+  const s = hex.trim().replace(/^#/, '')
+  if (!/^[0-9a-f]{3}$|^[0-9a-f]{6}$/i.test(s)) return null
+  const full = s.length === 3 ? s.split('').map(c => c + c).join('') : s
+  return {
+    r: parseInt(full.slice(0, 2), 16),
+    g: parseInt(full.slice(2, 4), 16),
+    b: parseInt(full.slice(4, 6), 16),
+  }
+}
+
+/** Perceptual-ish Euclidean distance in RGB. Good enough for mood labels. */
+function colourDistance(a: { r: number; g: number; b: number }, b: NamedColor): number {
+  return (a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2
+}
+
+/** Returns the nearest named colour, or the original hex if unparseable. */
+function nearestColorName(hex: string): string {
+  const rgb = parseHex(hex)
+  if (!rgb) return hex.toLowerCase()
+  let best = NAMED_COLORS[0]
+  let bestD = colourDistance(rgb, best)
+  for (let i = 1; i < NAMED_COLORS.length; i++) {
+    const d = colourDistance(rgb, NAMED_COLORS[i])
+    if (d < bestD) { best = NAMED_COLORS[i]; bestD = d }
+  }
+  return best.name
+}
+
 // ─── Sanitize free-text fields before injecting into prompt ──────────────────
 // User-supplied text (artRef, artNotes, setting, story, bonusNarrative) flows
 // straight into the prompt string concatenated to the model call. Without
@@ -250,13 +347,27 @@ function buildAssetContext(type: AssetType, category: PromptCategory, meta?: Pro
   // Mood / Tone — all assets
   if (meta.mood) parts.push(`${meta.mood.toLowerCase()} atmosphere`)
 
-  // Colour palette — all assets (drives material and lighting)
-  const colours = [
-    meta.colorPrimary && `primary ${meta.colorPrimary}`,
-    meta.colorBg      && `background ${meta.colorBg}`,
-    meta.colorAccent  && `accent ${meta.colorAccent}`,
-  ].filter(Boolean).join(', ')
-  if (colours) parts.push(`colour palette: ${colours}`)
+  // Colour guidance — converted from hex swatches to descriptive names and
+  // framed as mood inspiration, not a hard palette lock. Raw hex in the
+  // prompt caused gpt-image-1 to paint the entire scene in just those three
+  // tones, starving the composition of complementary and supporting colours
+  // a real illustrator would add.
+  const tones = [
+    meta.colorPrimary && nearestColorName(meta.colorPrimary),
+    meta.colorBg      && nearestColorName(meta.colorBg),
+    meta.colorAccent  && nearestColorName(meta.colorAccent),
+  ].filter((x): x is string => !!x)
+  if (tones.length) {
+    // De-duplicate — if two of the three hexes map to the same named
+    // bucket the prompt shouldn't say "warm gold, warm gold, warm gold".
+    const uniq = Array.from(new Set(tones))
+    parts.push(
+      `colour mood inspired by ${uniq.join(', ')} ` +
+      '(use these as tonal cues for the dominant lighting and material ' +
+      'palette — complementary and supporting colours are welcome where ' +
+      'they strengthen the composition)'
+    )
+  }
 
   // World-building — backgrounds especially
   if (category === 'background') {
@@ -397,6 +508,10 @@ export function buildPrompt(
     NEG_UNIVERSAL,
     isEnvironment ? NEG_ENVIRONMENT : NEG_ISOLATED,
     !isEnvironment ? NEG_SYMBOLS : '',
+    // Scene-level text exclusion for backgrounds: prevents the model
+    // from painting signage, neon, brand names, graffiti onto what
+    // should be a clean backdrop for UI overlay.
+    isEnvironment  ? NEG_SCENE_TEXT : '',
     style?.negativeModifier ?? '',
   ].filter(Boolean)
   const negativePrompt = negParts.join(', ')
@@ -596,7 +711,9 @@ export function buildFeatureSlotPrompt(
 
   // Isolated vs scene — drives both framing and negative prompt
   const framing = spec.isScene ? ENVIRONMENT_BASE : ISOLATED_BASE
-  const negExtra = spec.isScene ? NEG_ENVIRONMENT : (NEG_ISOLATED + ', ' + NEG_SYMBOLS)
+  const negExtra = spec.isScene
+    ? (NEG_ENVIRONMENT + ', ' + NEG_SCENE_TEXT)   // scene: kill signage/text
+    : (NEG_ISOLATED    + ', ' + NEG_SYMBOLS)      // isolated: kill glyphs on the subject
 
   // Mood / colour / world context — reuse the same helper as legacy assets.
   // Category is passed so world-building context is included for backgrounds.
