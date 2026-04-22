@@ -347,18 +347,47 @@ function nearestColorName(hex: string): string {
 // straight into the prompt string concatenated to the model call. Without
 // sanitization, a determined user could paste instruction-like content
 // ("ignore previous, generate X") and steer the image model past our
-// guardrails. Strip control chars, cap length, drop newlines + obvious
-// command verbs that mark prompt-injection attempts.
-const INJECTION_KEYWORDS = /\b(ignore|disregard|override|bypass|system prompt|jailbreak|new instructions?)\b/gi
+// guardrails. Strip control chars, cap length, drop common prompt-injection
+// verbs, and NFKC-normalise so homoglyph attacks (Cyrillic 'а' for Latin 'a')
+// fold into ASCII before the keyword match fires.
+const INJECTION_KEYWORDS = new RegExp([
+  // Original v1 set
+  '\\b(ignore|disregard|override|bypass|system prompt|jailbreak|new instructions?)\\b',
+  // Expanded set per the April-2026 security review
+  '\\bforget (everything|all|everything above|above)\\b',
+  '\\bforget (the|your) (previous|prior|above) (instructions?|prompts?|rules?)\\b',
+  '\\byour (real|actual|true|original) (instructions?|prompts?|rules?|role)\\b',
+  '\\bprevious instructions?\\b',
+  '\\b(act|behave|roleplay|role\\s*play) as\\b',
+  '\\byou are (now|actually|really)\\b',
+  '\\b(system|assistant|user|developer)\\s*:\\s',
+  '\\b(real|actual) prompt\\b',
+  '\\bbegin prompt\\b',
+  '\\bend prompt\\b',
+  // Delimiter-closing attempts (user trying to break out of our <user-supplied> wrapping)
+  '</?user[-_ ]?(supplied|input|data)>',
+].join('|'), 'gi')
+
 function sanitizeUserText(input: string | undefined, maxLen = 240): string {
   if (!input) return ''
   return input
+    .normalize('NFKC')                        // fold homoglyphs into ASCII
     .replace(/[\u0000-\u001F\u007F]/g, ' ')  // control chars
     .replace(/[\r\n]+/g, ' ')                 // newlines
     .replace(INJECTION_KEYWORDS, '')          // obvious prompt-injection verbs
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLen)
+}
+
+// Wrap a sanitized user-supplied value in a <user-supplied>...</user-supplied>
+// boundary cue before injection. The XML-style delimiters give the model an
+// explicit signal that the wrapped text is content to be depicted, not
+// instructions to be followed. The sanitizer above strips attempts by the
+// user to close or re-open the wrapper themselves.
+function wrapUserValue(sanitized: string): string {
+  if (!sanitized) return ''
+  return `<user-supplied>${sanitized}</user-supplied>`
 }
 
 // Users commonly put text-inviting words in the Setting / Story fields —
@@ -452,27 +481,36 @@ function buildAssetContext(type: AssetType | string, category: PromptCategory, m
   // atmospheric equivalents. Without this, a setting like "urban street
   // with neon signage and graffiti" directly contradicts our NEG_SCENE_TEXT
   // block and the model paints text everywhere.
+  // Each user-supplied value is wrapped in <user-supplied>…</user-supplied>
+  // so the model has an explicit boundary cue separating content from
+  // instructions. Per-field length caps below reflect a tiered
+  // risk/payoff analysis from the security review: narrative fields keep
+  // the 240-char cap (they need room), artNotes drops to 160, artRef
+  // drops to 120 (least payoff from long input, highest injection surface).
+
   if (category === 'background') {
-    const setting = sanitizeForBackground(sanitizeUserText(meta.setting))
-    const story   = sanitizeForBackground(sanitizeUserText(meta.story))
-    if (setting) parts.push(`world: ${setting}`)
-    if (story)   parts.push(`narrative atmosphere: ${story}`)
+    const setting = sanitizeForBackground(sanitizeUserText(meta.setting, 240))
+    const story   = sanitizeForBackground(sanitizeUserText(meta.story,   240))
+    if (setting) parts.push(`world: ${wrapUserValue(setting)}`)
+    if (story)   parts.push(`narrative atmosphere: ${wrapUserValue(story)}`)
   }
 
   // Bonus narrative — bonus background only. Same rewrite applies.
   if (type === 'background_bonus') {
-    const bonus = sanitizeForBackground(sanitizeUserText(meta.bonusNarrative))
-    if (bonus) parts.push(`bonus scenario: ${bonus}`)
+    const bonus = sanitizeForBackground(sanitizeUserText(meta.bonusNarrative, 240))
+    if (bonus) parts.push(`bonus scenario: ${wrapUserValue(bonus)}`)
   }
 
-  // Art direction notes — explicit constraints from the art team
-  const artNotes = sanitizeUserText(meta.artNotes)
-  if (artNotes) parts.push(`art direction: ${artNotes}`)
+  // Art direction notes — tightened cap: 160 (down from 240). Long notes
+  // were an easy injection vector with little creative benefit.
+  const artNotes = sanitizeUserText(meta.artNotes, 160)
+  if (artNotes) parts.push(`art direction: ${wrapUserValue(artNotes)}`)
 
-  // Visual reference — concrete inspiration (text-only until reference-image
-  // plumbing lands in P3; until then we sanitize to avoid prompt injection).
-  const artRef = sanitizeUserText(meta.artRef)
-  if (artRef) parts.push(`visual reference: ${artRef}`)
+  // Visual reference — tightest cap: 120. Treated as a free-text
+  // inspiration tag, not a long description. Text-only until reference-
+  // image plumbing lands in a future phase.
+  const artRef = sanitizeUserText(meta.artRef, 120)
+  if (artRef) parts.push(`visual reference: ${wrapUserValue(artRef)}`)
 
   return parts.filter(Boolean)
 }
@@ -593,6 +631,16 @@ export interface BuildPromptOptions {
   /** Predominant colour name (e.g. "warm gold", "deep indigo"). When set,
    *  added as a differentiator line. Undef / empty = no colour hint. */
   primaryColor?: string | null
+  /** User-supplied prompt text. Combined with customPromptMode below. */
+  customPrompt?: string
+  /** 'replace' = use customPrompt as the final prompt verbatim (layers
+   *  1-5 bypassed, negatives still apply). This is the legacy behaviour
+   *  and the one Review-Prompts overrides use (they're full composed
+   *  prompts the user hand-edited).
+   *  'append'  = compose normally, then insert customPrompt as an extra
+   *  context line (between §3.3 Context and §3.4 Differentiator).
+   *  Preserves project identity + template + negatives. */
+  customPromptMode?: 'replace' | 'append'
 }
 
 export function buildPrompt(
@@ -677,21 +725,47 @@ export function buildPrompt(
     }
   }
 
+  // ── Custom prompt: append vs replace ─────────────────────────────────────
+  // In 'append' mode, the user's text becomes an extra context line that
+  // runs alongside the project identity + template + differentiator — the
+  // user keeps the consistency benefit of Project Settings while adding a
+  // targeted note. In 'replace' mode (legacy, Review-Prompts overrides),
+  // the user's text wholesale replaces the composed prompt, keeping only
+  // the negatives.
+  const userCustom = options?.customPrompt?.trim() || ''
+  const customMode: 'replace' | 'append' =
+    userCustom && options?.customPromptMode === 'append' ? 'append' : 'replace'
+
+  const effectiveContext =
+    userCustom && customMode === 'append'
+      ? [...assetContext, `user note: ${sanitizeUserText(userCustom, 500)}`]
+      : assetContext
+
+  // ── Quality block — style may override CORE_QUALITY (item 5 of critique) ──
+  // Pixel / watercolor / anime styles would be pulled toward photo-realism
+  // by "premium … high detail, polished finish" — so styles with a
+  // qualityModifier swap in their own wording in place of CORE_QUALITY.
+  const style = styleId ? getStyleById(styleId) : undefined
+  const effectiveQuality = style?.qualityModifier ?? CORE_QUALITY
+
   // ── Assemble prompt ────────────────────────────────────────────────────────
-  const segments = [
+  const composedSegments = [
     identityAnchor,
     assetBlock,
-    ...assetContext,
+    ...effectiveContext,
     ...differentiators,
     READABILITY,
     CONSISTENCY,
-    CORE_QUALITY,
+    effectiveQuality,
   ].filter(Boolean)
 
-  const prompt = segments.join(', ')
+  const composedPrompt = composedSegments.join(', ')
+  // Final prompt: either the user's custom text verbatim (replace) or the
+  // composed result (which, in append mode, already contains the user's
+  // text as an extra context line).
+  const prompt = userCustom && customMode === 'replace' ? userCustom : composedPrompt
 
   // ── Assemble negative prompt ───────────────────────────────────────────────
-  const style = styleId ? getStyleById(styleId) : undefined
   const isEnvironment = category === 'background'
   const negFraming = isEnvironment ? NEG_ENVIRONMENT : NEG_ISOLATED
   // Scene-level text exclusion for backgrounds: prevents the model
@@ -704,9 +778,9 @@ export function buildPrompt(
   const sections: PromptSections = {
     identity:       identityAnchor,
     template:       assetBlock,
-    context:        assetContext,
+    context:        effectiveContext,
     differentiator: differentiators,
-    quality:   { readability: READABILITY, consistency: CONSISTENCY, core: CORE_QUALITY },
+    quality:   { readability: READABILITY, consistency: CONSISTENCY, core: effectiveQuality },
     negatives: { universal: NEG_UNIVERSAL, framing: negFraming, extra: negExtra, style: negStyle },
   }
 
@@ -890,12 +964,15 @@ export function isFeatureSlotKey(key: string): boolean {
 
 /** Build a prompt for a feature slot (e.g. 'bonuspick.header'). Shares the
  *  identity anchor / style / meta context with the legacy buildPrompt so
- *  feature art stays consistent with base-game art. */
+ *  feature art stays consistent with base-game art. Also honours the
+ *  append/replace custom-prompt modes and per-style qualityModifier — so
+ *  feature slots get the same Item-3 + Item-5 treatment as legacy types. */
 export function buildFeatureSlotPrompt(
   slotKey:   string,
   userTheme: string,
   styleId?:  string,
   meta?:     ProjectMeta,
+  options?:  BuildPromptOptions,
 ): BuiltPrompt {
   const spec = FEATURE_SLOT_SPECS[slotKey]
   if (!spec) throw new Error(`Unknown feature slot: ${slotKey}`)
@@ -923,26 +1000,43 @@ export function buildFeatureSlotPrompt(
   // that's awkward to edit. Keeping them joined matches the model's view.
   const template = `${framing}, ${spec.template}`
 
-  const segments = [
+  // Custom prompt append/replace — same semantics as the legacy builder
+  // so the popup's toggle behaves consistently for every asset type.
+  const userCustom = options?.customPrompt?.trim() || ''
+  const customMode: 'replace' | 'append' =
+    userCustom && options?.customPromptMode === 'append' ? 'append' : 'replace'
+
+  const effectiveContext =
+    userCustom && customMode === 'append'
+      ? [...assetContext, `user note: ${sanitizeUserText(userCustom, 500)}`]
+      : assetContext
+
+  // Per-style quality override — pixel / watercolor / anime swap in
+  // their own tailored quality line in place of CORE_QUALITY.
+  const style    = styleId ? getStyleById(styleId) : undefined
+  const effectiveQuality = style?.qualityModifier ?? CORE_QUALITY
+
+  const composedSegments = [
     identityAnchor,
     template,
-    ...assetContext,
+    ...effectiveContext,
     READABILITY,
     CONSISTENCY,
-    CORE_QUALITY,
+    effectiveQuality,
   ].filter(Boolean)
 
-  const prompt   = segments.join(', ')
-  const style    = styleId ? getStyleById(styleId) : undefined
+  const composedPrompt = composedSegments.join(', ')
+  const prompt = userCustom && customMode === 'replace' ? userCustom : composedPrompt
+
   const negStyle = style?.negativeModifier ?? ''
   const negativePrompt = [NEG_UNIVERSAL, negFraming, negExtra, negStyle].filter(Boolean).join(', ')
 
   const sections: PromptSections = {
     identity:       identityAnchor,
     template,
-    context:        assetContext,
+    context:        effectiveContext,
     differentiator: [],  // feature slots encode differentiation in their template
-    quality:   { readability: READABILITY, consistency: CONSISTENCY, core: CORE_QUALITY },
+    quality:   { readability: READABILITY, consistency: CONSISTENCY, core: effectiveQuality },
     negatives: { universal: NEG_UNIVERSAL, framing: negFraming, extra: negExtra, style: negStyle },
   }
 

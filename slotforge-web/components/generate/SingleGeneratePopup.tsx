@@ -101,7 +101,13 @@ export function SingleGeneratePopup({
   const [ratio,       setRatio]       = useState<AspectRatio>(defaultRatioForClient(slotKey))
   const [styleId,     setStyleId]     = useState<string>(defaultStyleId ?? '')
   const [quality,     setQuality]     = useState<'low'|'medium'|'high'>('medium')
-  const [customPrompt,setCustomPrompt]= useState<string>('')
+  const [customPrompt,    setCustomPrompt]    = useState<string>('')
+  // Custom-prompt merge mode — replace (wholesale, legacy) vs append
+  // (inserts as context line, keeps project identity / template / negatives).
+  // Default remains 'replace' so Review-Prompts overrides behave as before;
+  // users who type a fresh custom prompt can flip to 'append' to keep the
+  // consistency benefit of Project Settings.
+  const [customPromptMode, setCustomPromptMode] = useState<'replace' | 'append'>('replace')
   const [refImages,   setRefImages]   = useState<string[]>([])
   const [generating,  setGenerating]  = useState(false)
   const [error,       setError]       = useState<string | null>(null)
@@ -150,6 +156,10 @@ export function SingleGeneratePopup({
     // override saved — the server composes from scratch.
     const savedOverride = readPromptOverride(projectId, slotKey) ?? ''
     setCustomPrompt(savedOverride)
+    // Review-Prompts overrides are complete composed prompts the user
+    // hand-edited — use replace. Fresh custom prompts (no saved
+    // override) default to append for best-of-both-worlds.
+    setCustomPromptMode(savedOverride ? 'replace' : 'append')
     setRefImages([])
     setError(null)
     // Symbol defaults reset per slot. Frame on. Colour falls back to the
@@ -194,6 +204,10 @@ export function SingleGeneratePopup({
           // unconditionally; the server filters by asset category.
           symbol_frame: tier.isSymbol ? symbolFrame : undefined,
           symbol_color: tier.isSymbol && symbolColor ? symbolColor : undefined,
+          // Preview matches what Generate will send so the prompt-composition
+          // panel reflects append/replace correctly.
+          custom_prompt:      customPrompt.trim() || undefined,
+          custom_prompt_mode: customPrompt.trim() ? customPromptMode : undefined,
         }),
       })
       const raw  = await res.text()
@@ -210,7 +224,7 @@ export function SingleGeneratePopup({
     } finally {
       setPreviewLoading(false)
     }
-  }, [slotKey, theme, projectId, styleId, projectMeta, tier.isSymbol, symbolFrame, symbolColor])
+  }, [slotKey, theme, projectId, styleId, projectMeta, tier.isSymbol, symbolFrame, symbolColor, customPrompt, customPromptMode])
 
   // Refetch when the panel is opened (lazy — don't pay for a preview call
   // if the user never opens the panel) and when any composition-affecting
@@ -218,7 +232,7 @@ export function SingleGeneratePopup({
   useEffect(() => {
     if (!open || !promptOpen) return
     void fetchPreview()
-  }, [open, promptOpen, styleId, symbolFrame, symbolColor, fetchPreview])
+  }, [open, promptOpen, styleId, symbolFrame, symbolColor, customPrompt, customPromptMode, fetchPreview])
 
   // Close on ESC
   useEffect(() => {
@@ -276,7 +290,8 @@ export function SingleGeneratePopup({
           project_meta:  projectMeta,
           ratio,
           quality,
-          custom_prompt: customPrompt.trim() || undefined,
+          custom_prompt:      customPrompt.trim() || undefined,
+          custom_prompt_mode: customPrompt.trim() ? customPromptMode : undefined,
           // Symbol-only hints forwarded to /api/ai-single → buildPrompt.
           // Server ignores them for non-symbol asset types.
           symbol_frame: tier.isSymbol ? symbolFrame : undefined,
@@ -822,9 +837,6 @@ export function SingleGeneratePopup({
         <Section
           title="Custom prompt"
           subtitle={
-            // When an override was pre-filled from the Review Prompts modal
-            // we flag it explicitly so the user knows where it came from
-            // (and can clear it by deleting the textarea content).
             customPrompt && customPrompt === readPromptOverride(projectId, slotKey)
               ? 'override loaded from Review Prompts · edit or clear to use default'
               : 'Leave blank to use the default composed prompt; or load it above and edit'
@@ -850,6 +862,52 @@ export function SingleGeneratePopup({
               lineHeight: 1.5,
             }}
           />
+
+          {/* Merge-mode segmented control — only visible when there's
+              actually custom text to merge. Default is 'append' (project
+              identity + template + negatives stay active) unless an
+              override was loaded from Review Prompts, in which case
+              'replace' preserves the legacy full-override semantics. */}
+          {customPrompt.trim() && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{
+                display: 'flex', background: T.surfaceHigh,
+                border: `1px solid ${T.border}`, borderRadius: 6,
+                overflow: 'hidden',
+              }}>
+                {([
+                  { id: 'append',  label: 'Add as context',  hint: 'Keeps project identity + template active' },
+                  { id: 'replace', label: 'Replace whole prompt', hint: 'Bypasses layers 1–5, negatives still apply' },
+                ] as const).map(mode => {
+                  const active = customPromptMode === mode.id
+                  return (
+                    <button
+                      key={mode.id}
+                      onClick={() => setCustomPromptMode(mode.id)}
+                      title={mode.hint}
+                      style={{
+                        flex: 1, padding: '7px 10px', background: 'transparent',
+                        border: 'none', cursor: 'pointer',
+                        color: active ? T.gold : T.textMuted,
+                        fontSize: 11, fontFamily: T.font,
+                        fontWeight: active ? 700 : 500,
+                        backgroundColor: active ? 'rgba(201,168,76,.12)' : 'transparent',
+                      }}
+                    >
+                      {mode.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{
+                fontSize: 10, color: T.textFaint, marginTop: 6, lineHeight: 1.5,
+              }}>
+                {customPromptMode === 'append'
+                  ? 'Your text appears as an extra context line in §3.3; project style, template, differentiator, quality and negatives still fire.'
+                  : 'Your text replaces the composed prompt entirely. Only the negative prompt remains active.'}
+              </div>
+            </div>
+          )}
         </Section>
 
         {/* ── Error ──────────────────────────────────────────────────────── */}

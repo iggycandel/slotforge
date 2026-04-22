@@ -46,6 +46,10 @@ const RequestSchema = z.object({
   // whatever the popup is about to send.
   symbol_frame:  z.boolean().optional(),
   symbol_color:  z.string().max(60).optional(),
+  // Custom prompt + mode, mirror of /ai-single so the live Prompt
+  // Composition panel shows the correct layers for append/replace.
+  custom_prompt:      z.string().max(2000).optional(),
+  custom_prompt_mode: z.enum(['replace', 'append']).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -74,7 +78,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, style_id, project_meta, symbol_frame, symbol_color } = parsed.data
+  const { asset_type, theme, project_id, style_id, project_meta, symbol_frame, symbol_color, custom_prompt, custom_prompt_mode } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -82,12 +86,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const isFeature = isFeatureSlotKey(asset_type)
+    const promptOpts = {
+      hasFrame:         symbol_frame,
+      primaryColor:     symbol_color || null,
+      customPrompt:     custom_prompt,
+      customPromptMode: custom_prompt_mode,
+    }
     const built = isFeature
-      ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined)
-      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined, {
-          hasFrame:     symbol_frame,
-          primaryColor: symbol_color || null,
-        })
+      ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined, promptOpts)
+      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined, promptOpts)
 
     return NextResponse.json({
       prompt:         built.prompt,

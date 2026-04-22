@@ -54,8 +54,14 @@ const RequestSchema = z.object({
   project_id:    z.string().uuid(),
   provider:      z.enum(['runway', 'openai', 'auto']).optional().default('auto'),
   style_id:      z.string().optional(),
-  // If provided, overrides the assembled prompt entirely (user-edited prompt from the Prompt Editor)
-  custom_prompt: z.string().max(2000).optional(),
+  // User-supplied prompt text. Mode controls how it merges with the
+  // composed layers:
+  //   replace (default, legacy): replaces layers 1-5 wholesale, negatives
+  //                              still fire. Used by Review-Prompts overrides.
+  //   append: composes normally, inserts custom_prompt as an extra
+  //           context line (§3.3). Preserves project identity + template.
+  custom_prompt:      z.string().max(2000).optional(),
+  custom_prompt_mode: z.enum(['replace', 'append']).optional(),
   // Rich project meta from the Theme panel — fed into prompt building
   project_meta:  z.record(z.unknown()).optional(),
   // Optional aspect ratio override. When omitted, lib/ai/index.ts chooses
@@ -110,7 +116,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta, ratio, quality, symbol_frame, symbol_color } = parsed.data
+  const { asset_type, theme, project_id, provider, style_id, custom_prompt, custom_prompt_mode, project_meta, ratio, quality, symbol_frame, symbol_color } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -122,23 +128,21 @@ export async function POST(req: NextRequest) {
     // key ("bonuspick.bg") → buildFeatureSlotPrompt which reuses the same
     // identity anchor + style + meta helpers so feature art stays consistent.
     const isFeature = isFeatureSlotKey(asset_type)
-    // Symbol hints (frame toggle + predominant colour) are scoped to
-    // legacy symbol asset types — forward as options to buildPrompt.
-    // Feature slots don't use these hints today, so buildFeatureSlotPrompt
-    // doesn't accept them; they're silently ignored when asset_type is a
-    // feature slot key.
-    const built = isFeature
-      ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined)
-      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined, {
-          hasFrame:     symbol_frame,
-          primaryColor: symbol_color || null,
-        })
-    if (custom_prompt) {
-      // Replace the template portion with the user's custom prompt while still
-      // applying the master quality requirements (handled inside buildPrompt).
-      // We override the prompt field directly.
-      built.prompt = custom_prompt
+    // All per-call options (symbol hints + custom prompt) flow into the
+    // builder via BuildPromptOptions now. buildPrompt / buildFeatureSlot-
+    // Prompt handle custom_prompt + mode internally so sections stay
+    // coherent (append mode inserts the user's line into the context
+    // array; replace mode bypasses layers 1-5). The route no longer
+    // post-mutates built.prompt.
+    const promptOpts = {
+      hasFrame:         symbol_frame,
+      primaryColor:     symbol_color || null,
+      customPrompt:     custom_prompt,
+      customPromptMode: custom_prompt_mode,
     }
+    const built = isFeature
+      ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined, promptOpts)
+      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined, promptOpts)
 
     // ── Generate image ────────────────────────────────────────────────────────
     // generateImage / uploadGeneratedAsset both type their asset-key param as

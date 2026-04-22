@@ -96,21 +96,39 @@ templates in `FEATURE_SLOT_SPECS`, same file.
 Per-project meta fields injected as individual lines. Source:
 `projectMeta` (sent from the editor's `buildEditorMeta()`).
 
-| Field              | Projected as                                               | Applied to         |
-|--------------------|------------------------------------------------------------|--------------------|
-| `mood`             | `"<mood> atmosphere"`                                      | every asset        |
-| `colors` (3× hex)  | `"colour mood inspired by <named tones> (use as cues...)"` | every asset        |
-| `setting`          | `"world: <sanitized text>"`                                | backgrounds only   |
-| `story`            | `"narrative atmosphere: <sanitized text>"`                 | backgrounds only   |
-| `bonusNarrative`   | `"bonus scenario: <sanitized text>"`                       | `background_bonus` only |
-| `artNotes`         | `"art direction: <sanitized text>"`                        | every asset        |
-| `artRef`           | `"visual reference: <sanitized text>"`                     | every asset        |
+User-supplied values are **wrapped in `<user-supplied>…</user-supplied>`**
+delimiters before injection so the model has an explicit boundary cue
+separating content from instructions. Per-field length caps reflect a
+tiered risk/payoff analysis:
+
+| Field              | Projected as                                                                 | Cap | Applied to         |
+|--------------------|-------------------------------------------------------------------------------|-----|--------------------|
+| `mood`             | `"<mood> atmosphere"` (no wrapping — short enum-like value)                  | —   | every asset        |
+| `colors` (3× hex)  | `"colour mood inspired by <named tones> (use as cues…)"`                      | —   | every asset        |
+| `setting`          | `"world: <user-supplied>{sanitized}</user-supplied>"`                        | 240 | backgrounds only   |
+| `story`            | `"narrative atmosphere: <user-supplied>{sanitized}</user-supplied>"`         | 240 | backgrounds only   |
+| `bonusNarrative`   | `"bonus scenario: <user-supplied>{sanitized}</user-supplied>"`               | 240 | `background_bonus` only |
+| `artNotes`         | `"art direction: <user-supplied>{sanitized}</user-supplied>"`                | 160 | every asset        |
+| `artRef`           | `"visual reference: <user-supplied>{sanitized}</user-supplied>"`             | 120 | every asset        |
 
 **Two sanitization passes** run on all free-text fields before injection:
 
-1. `sanitizeUserText` — strips control chars, newlines, and injection verbs
-   (`ignore`, `disregard`, `override`, `bypass`, `jailbreak`, `new instructions`).
-   Caps length at 240 chars per field.
+1. `sanitizeUserText` — NFKC-normalises (folds homoglyph attacks like
+   Cyrillic `а` into Latin `a`), strips control chars + newlines, and
+   removes prompt-injection verbs. Expanded blocklist beyond the v1
+   set (`ignore`, `disregard`, `override`, `bypass`, `jailbreak`,
+   `new instructions`) to also catch:
+   - `forget everything/all/above`
+   - `forget the/your previous/prior/above instructions/prompts/rules`
+   - `your real/actual/true/original instructions/prompts/rules/role`
+   - `previous instructions`
+   - `act/behave/roleplay as`
+   - `you are now/actually/really`
+   - `system:` / `assistant:` / `user:` / `developer:` prefixes
+   - `real prompt` / `actual prompt`
+   - `begin prompt` / `end prompt`
+   - Delimiter-closing attempts (`</user-supplied>`, `</user-input>` …)
+     so the user can't break out of the wrapper themselves.
 2. `sanitizeForBackground` — **only for background assets** — rewrites
    text-inviting words into neutral atmospheric equivalents before the
    setting/story/bonusNarrative lines are emitted. 27-entry replacement
@@ -192,6 +210,22 @@ Three constants appended to **every** prompt. Lives at the top of
 | `CONSISTENCY` | "cohesive asset set, same art pipeline, same lighting direction from upper-left, same material response language, same colour temperature, unified visual family" |
 | `CORE_QUALITY`| "premium casino slot game asset, production-ready game art, commercially released quality, high detail, polished finish" |
 
+**Per-style `qualityModifier` override:** styles where "premium, polished,
+high detail" pulls the model AWAY from the intended aesthetic (pixel,
+watercolor, anime) provide a tailored replacement for `CORE_QUALITY`.
+`READABILITY` + `CONSISTENCY` still fire unchanged; only the third
+quality line is swapped:
+
+| Style              | `qualityModifier` — replaces CORE_QUALITY                                          |
+|--------------------|-------------------------------------------------------------------------------------|
+| `pixel_art`        | crisp pixel grid, pure flat colour fills, intentionally low detail, sharp 1-pixel edges, no anti-aliasing, authentic arcade sprite feel, production-ready retro game asset |
+| `watercolor`       | loose painterly brushwork, visible paper grain and wet-edge bleeds, intentionally imperfect boundaries, no digital polish or rendered gloss, gallery-quality traditional illustration feel |
+| `anime`            | clean cel-shaded finish, bold confident line art, flat colour fills with sharp controlled highlights, intentionally non-photorealistic material rendering, production-ready anime asset |
+
+`cartoon_3d`, `realistic_3d`, `fantasy_illustrated`, `art_deco`,
+`dark_gothic` keep the default `CORE_QUALITY` — polished/high-detail
+wording reinforces what those styles actually want.
+
 ### 3.6 Negative prompt
 
 Composed separately and sent alongside the positive prompt. Five sources
@@ -218,7 +252,8 @@ meta). All pass through `/api/ai-single` or its batch counterpart.
 | `style_id`     | Replaces `meta.styleId` for this call. Shown in popup as "Graphic style". |
 | `ratio`        | Output aspect ratio (1:1 / 3:2 / 2:3 / 16:9 / 9:16 / 3:1 / 4:1 / 1:4). Does not alter the prompt text — affects size/size only. |
 | `quality`      | low / medium (default) / high. Affects cost + latency + detail; does not alter prompt text. |
-| `custom_prompt`| **Replaces the whole composed prompt**. Layers 1-5 are bypassed; negative prompt still applies. Used by: (a) Popup's "Custom prompt" textarea. (b) Per-slot overrides saved in Review Prompts modal (loaded from `localStorage.spn.prompts.<projectId>` → pre-filled into the popup → sent as `custom_prompt`). |
+| `custom_prompt`| User-supplied text combined with `custom_prompt_mode` (below). |
+| `custom_prompt_mode` | **`replace`** (default for saved overrides) — replaces the whole composed prompt; negatives still apply. **`append`** (default for fresh custom prompts in the popup) — composed prompt runs normally, user text inserted as `"user note: <user-supplied>{text}</user-supplied>"` in §3.3 Context. Keeps project identity + template + differentiator + quality + negatives active. Popup shows a segmented control when the textarea has content. |
 | `symbol_frame` | Boolean. Adds the frame-on or frame-off differentiator line (§3.4). Symbol categories only. |
 | `symbol_color` | Named colour from `tierColorPalette`. Adds the predominant-colour differentiator line. Symbol categories only. |
 

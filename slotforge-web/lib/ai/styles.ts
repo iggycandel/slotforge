@@ -12,6 +12,12 @@ export interface GraphicStyle {
   promptModifier:   string
   /** Added to the negative prompt to reinforce the style */
   negativeModifier?: string
+  /** Optional override for the universal CORE_QUALITY block. Styles where
+   *  "premium, polished, high detail" pulls the model AWAY from the
+   *  intended aesthetic (pixel, watercolor, anime) can provide a tailored
+   *  quality phrasing that reinforces the style's own conventions instead.
+   *  When unset, CORE_QUALITY fires as normal. */
+  qualityModifier?: string
   /** CSS gradient for the style card background */
   cardGradient:     string
   /** Accent / border colour for active state */
@@ -96,6 +102,10 @@ export const GRAPHIC_STYLES: GraphicStyle[] = [
       'retro 8-bit to 16-bit video game look, crisp pixel edges, ' +
       'no anti-aliasing, dithering shading, classic arcade game art',
     negativeModifier: 'smooth, antialiased, 3D, photorealistic, blurred',
+    qualityModifier:
+      'crisp pixel grid, pure flat colour fills, intentionally low detail, ' +
+      'sharp 1-pixel edges, no anti-aliasing, authentic arcade sprite feel, ' +
+      'production-ready retro game asset',
     cardGradient: 'linear-gradient(135deg, #001030 0%, #00a878 100%)',
     accentColor:  '#00ff9f',
     emoji:        '👾',
@@ -109,6 +119,10 @@ export const GRAPHIC_STYLES: GraphicStyle[] = [
       'Japanese animation aesthetic, vibrant flat colors with sharp highlights, ' +
       'clean digital painting, studio ghibli meets jrpg character art quality',
     negativeModifier: 'photorealistic, western cartoon, pixel art',
+    qualityModifier:
+      'clean cel-shaded finish, bold confident line art, flat colour fills ' +
+      'with sharp controlled highlights, intentionally non-photorealistic ' +
+      'material rendering, production-ready anime asset',
     cardGradient: 'linear-gradient(135deg, #1a0533 0%, #e040fb 100%)',
     accentColor:  '#e040fb',
     emoji:        '⛩️',
@@ -122,6 +136,10 @@ export const GRAPHIC_STYLES: GraphicStyle[] = [
       'painterly texture, paper grain, loose expressive brushwork, ' +
       'botanical illustration quality, delicate color gradients',
     negativeModifier: 'sharp, 3D, digital, crisp, photorealistic',
+    qualityModifier:
+      'loose painterly brushwork, visible paper grain and wet-edge bleeds, ' +
+      'intentionally imperfect boundaries, no digital polish or rendered ' +
+      'gloss, gallery-quality traditional illustration feel',
     cardGradient: 'linear-gradient(135deg, #2d7a9a 0%, #c9f0ff 100%)',
     accentColor:  '#7fd4f0',
     emoji:        '🎭',
