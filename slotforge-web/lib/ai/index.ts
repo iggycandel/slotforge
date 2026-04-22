@@ -88,9 +88,28 @@ function resolveProvider(requested: AIProvider): 'runway' | 'openai' | 'mock' {
 
 // ─── Main generate function ──────────────────────────────────────────────────
 
+/** Quality tier. Translated per-provider:
+ *    gpt-image-1: low | medium | high  (default: medium — ~4× cheaper than high)
+ *    dall-e-3:    standard | hd        (medium→standard, high→hd, low→standard)
+ *  OpenAI gpt-image-1 price guide at 1024×1024 roughly:
+ *    low    ≈ $0.011   (~draft / iterate)
+ *    medium ≈ $0.042   (~ready to review)
+ *    high   ≈ $0.167   (~final delivery) */
+export type GenerateQuality = 'low' | 'medium' | 'high'
+
 export interface GenerateImageOptions {
   /** Explicit aspect ratio override. Falls back to DEFAULT_RATIO_FOR_ASSET. */
-  ratio?: AspectRatio
+  ratio?:   AspectRatio
+  /** Image quality tier. Defaults to 'medium'. */
+  quality?: GenerateQuality
+}
+
+// ─── Quality → per-provider parameter mapping ───────────────────────────────
+function mapQualityForOpenAI(q: GenerateQuality): 'low' | 'medium' | 'high' {
+  return q // gpt-image-1 accepts the same three
+}
+function mapQualityForDallE(q: GenerateQuality): 'standard' | 'hd' {
+  return q === 'high' ? 'hd' : 'standard'
 }
 
 const MAX_RETRIES = 2
@@ -105,8 +124,13 @@ export async function generateImage(
   // Resolve aspect ratio: explicit override > asset-type default.
   // built.assetType is typed AssetType but the pipeline uses it as a string
   // when dispatching feature-slot keys (e.g. 'bonuspick.bg'); cast safely.
-  const ratio = options.ratio ?? defaultRatioFor(built.assetType as string)
-  const dims  = RATIO_TABLE[ratio]
+  const ratio   = options.ratio ?? defaultRatioFor(built.assetType as string)
+  const dims    = RATIO_TABLE[ratio]
+  // Default quality is 'medium' — gpt-image-1 at 'high' costs ~4× more and
+  // takes 30-45s which was regularly hitting Vercel's 60s function cap.
+  const quality = options.quality ?? 'medium'
+  const qGpt    = mapQualityForOpenAI(quality)
+  const qDallE  = mapQualityForDallE(quality)
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -137,7 +161,7 @@ export async function generateImage(
                 prompt:       built.prompt,
                 model:        'gpt-image-1',
                 size:         dims.openai.size,
-                quality:      'high',
+                quality:      qGpt,
                 background:   'opaque',
                 outputFormat: 'png',
               })
@@ -150,7 +174,7 @@ export async function generateImage(
                   prompt:  built.prompt,
                   model:   'dall-e-3',
                   size:    dims.openai.dalle,
-                  quality: 'hd',
+                  quality: qDallE,
                 })
                 return { url: r.url, provider: 'openai' }
               }
@@ -163,7 +187,7 @@ export async function generateImage(
               prompt:      built.prompt,
               model:       'gpt-image-1',
               size:        dims.openai.size,
-              quality:     'high',
+              quality:     qGpt,
               background:  'transparent',
               outputFormat: 'png',
             })
@@ -177,7 +201,7 @@ export async function generateImage(
                 prompt:  built.prompt,
                 model:   'dall-e-3',
                 size:    dims.openai.dalle,
-                quality: 'hd',
+                quality: qDallE,
               })
               return { url: r.url, provider: 'openai' }
             }

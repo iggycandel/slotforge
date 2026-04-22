@@ -97,6 +97,7 @@ export function SingleGeneratePopup({
 }: SingleGeneratePopupProps) {
   const [ratio,       setRatio]       = useState<AspectRatio>(defaultRatioForClient(slotKey))
   const [styleId,     setStyleId]     = useState<string>(defaultStyleId ?? '')
+  const [quality,     setQuality]     = useState<'low'|'medium'|'high'>('medium')
   const [customPrompt,setCustomPrompt]= useState<string>('')
   const [refImages,   setRefImages]   = useState<string[]>([])
   const [generating,  setGenerating]  = useState(false)
@@ -108,6 +109,7 @@ export function SingleGeneratePopup({
     if (!open) return
     setRatio(defaultRatioForClient(slotKey))
     setStyleId(defaultStyleId ?? '')
+    setQuality('medium')
     setCustomPrompt('')
     setRefImages([])
     setError(null)
@@ -156,6 +158,7 @@ export function SingleGeneratePopup({
           style_id:      styleId || undefined,
           project_meta:  projectMeta,
           ratio,
+          quality,
           custom_prompt: customPrompt.trim() || undefined,
           // reference_images: refImages,  // P3 — server ignores today
         }),
@@ -305,6 +308,41 @@ export function SingleGeneratePopup({
               <option key={s.id} value={s.id}>{s.emoji} {s.name} — {s.description}</option>
             ))}
           </select>
+        </Section>
+
+        {/* ── Quality tier ──────────────────────────────────────────────── */}
+        <Section
+          title="Quality"
+          subtitle="Medium is plenty for iteration • High only for final delivery"
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+            {([
+              { q: 'low',    label: 'Low',    hint: 'draft', cost: '~$0.01' },
+              { q: 'medium', label: 'Medium', hint: 'review', cost: '~$0.04' },
+              { q: 'high',   label: 'High',   hint: 'final',  cost: '~$0.17' },
+            ] as const).map(opt => (
+              <button
+                key={opt.q}
+                onClick={() => setQuality(opt.q)}
+                style={{
+                  padding: '8px 6px',
+                  background: quality === opt.q ? 'rgba(201,168,76,.12)' : T.surfaceHigh,
+                  border: `1px solid ${quality === opt.q ? 'rgba(201,168,76,.6)' : T.border}`,
+                  borderRadius: 6,
+                  color: quality === opt.q ? T.gold : T.textMuted,
+                  cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  fontFamily: T.font,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{opt.label}</div>
+                <div style={{ fontSize: 9, color: T.textFaint }}>{opt.hint}</div>
+                <div style={{ fontSize: 9, color: T.textFaint, fontFamily: "'DM Mono',monospace" }}>
+                  {opt.cost}
+                </div>
+              </button>
+            ))}
+          </div>
         </Section>
 
         {/* ── Reference images (P3 stub) ────────────────────────────────── */}

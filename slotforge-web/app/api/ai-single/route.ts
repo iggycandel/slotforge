@@ -66,6 +66,10 @@ const RequestSchema = z.object({
   // Optional aspect ratio override. When omitted, lib/ai/index.ts chooses
   // the natural default for this asset type (symbols 1:1, logo 3:1, etc.)
   ratio:         z.enum(RATIO_VALUES).optional(),
+  // Image quality tier. Defaults to 'medium' when omitted — ~4× cheaper
+  // than 'high' and significantly faster (high was hitting Vercel's 60s
+  // function cap). Promote to 'high' only for final delivery renders.
+  quality:       z.enum(['low','medium','high']).optional(),
 })
 
 // ─── Route handler ───────────────────────────────────────────────────────────
@@ -106,7 +110,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta, ratio } = parsed.data
+  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta, ratio, quality } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -132,7 +136,7 @@ export async function POST(req: NextRequest) {
     // generateImage / uploadGeneratedAsset both type their asset-key param as
     // AssetType, but they operate on the string underneath. Cast is safe for
     // feature slot keys — the storage layer preserves whatever key we pass.
-    const generated = await generateImage(asset_type as AssetType, built, provider, { ratio })
+    const generated = await generateImage(asset_type as AssetType, built, provider, { ratio, quality })
 
     // ── Upload to Supabase Storage + insert DB record ─────────────────────────
     const asset = await uploadGeneratedAsset(
