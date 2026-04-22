@@ -515,6 +515,63 @@ const SPECIAL_TYPE_KEYS = [
   'symbol_special_3','symbol_special_4','symbol_special_5','symbol_special_6',
 ] as const
 
+// ─── Symbol tier helpers ──────────────────────────────────────────────────────
+// Symbols get extra treatment — an optional ornate frame toggle and a
+// predominant color picked from a tier-based palette (cold→warm, lowest-
+// value symbol is coldest). The popup surfaces this as controls; the
+// server resolves defaults and injects the right prompt fragments.
+
+/** Tier 1 is highest-value (warmest), tier N is lowest-value (coldest).
+ *  Palettes below are ordered warm→cold so index 0 always maps to tier 1. */
+const TIER_COLORS_BY_COUNT: Record<number, string[]> = {
+  1: ['bright red'],
+  2: ['bright red', 'deep navy'],
+  3: ['bright red', 'emerald green', 'deep navy'],
+  4: ['bright red', 'royal purple', 'emerald green', 'deep navy'],
+  5: ['bright red', 'royal purple', 'warm orange', 'emerald green', 'deep navy'],
+  6: ['bright red', 'royal purple', 'warm orange', 'emerald green', 'teal', 'deep navy'],
+  7: ['bright red', 'royal purple', 'warm orange', 'bright gold', 'emerald green', 'teal', 'deep navy'],
+  8: ['bright red', 'magenta', 'royal purple', 'warm orange', 'bright gold', 'emerald green', 'teal', 'deep navy'],
+}
+
+export interface SymbolTierInfo {
+  isSymbol: boolean
+  kind?:    'high' | 'low'
+  tier?:    number   // 1-based
+  count?:   number   // total tiers of this kind in the project
+}
+
+/** Parse a symbol slot key (`symbol_high_3`, `symbol_low_5`) into tier info.
+ *  Returns `{ isSymbol: false }` for anything else (specials, UI, bg). */
+export function symbolTierInfo(slotKey: string, meta?: ProjectMeta): SymbolTierInfo {
+  const m = /^symbol_(high|low)_(\d+)$/.exec(slotKey)
+  if (!m) return { isSymbol: false }
+  const kind = m[1] as 'high' | 'low'
+  const tier = parseInt(m[2], 10)
+  const count = kind === 'high'
+    ? Math.min(8, Math.max(1, Number(meta?.symbolHighCount ?? 5)))
+    : Math.min(8, Math.max(1, Number(meta?.symbolLowCount  ?? 5)))
+  return { isSymbol: true, kind, tier, count }
+}
+
+/** Auto color for a symbol slot based on its tier and the project's symbol
+ *  count. Returns null for non-symbol slots or tiers outside the configured
+ *  count (e.g. symbol_high_7 when the project only has 5 tiers). */
+export function defaultColorForSymbol(slotKey: string, meta?: ProjectMeta): string | null {
+  const { isSymbol, tier, count } = symbolTierInfo(slotKey, meta)
+  if (!isSymbol || !tier || !count || tier > count) return null
+  const palette = TIER_COLORS_BY_COUNT[count] ?? TIER_COLORS_BY_COUNT[5]
+  const idx = Math.max(0, Math.min(palette.length - 1, tier - 1))
+  return palette[idx]
+}
+
+/** Available tier colors for the given count — used by the popup to show
+ *  the full palette as swatches so the user can pick any. */
+export function tierColorPalette(count: number): string[] {
+  const safe = Math.min(8, Math.max(1, count || 5))
+  return [...(TIER_COLORS_BY_COUNT[safe] ?? TIER_COLORS_BY_COUNT[5])]
+}
+
 // ─── Main build function ──────────────────────────────────────────────────────
 //
 // V3 prompt structure:
@@ -525,11 +582,25 @@ const SPECIAL_TYPE_KEYS = [
 //   [5] QUALITY BLOCKS   — readability + consistency (applied universally)
 //   [6] CORE QUALITY     — production quality signal
 
+/** Per-call hints the popup / API can pass in to shape the prompt beyond
+ *  the project-meta inputs. Currently only symbol-specific options
+ *  (frame on/off, predominant colour) — extend as needed. */
+export interface BuildPromptOptions {
+  /** true  → inject ornate-frame language
+   *  false → inject explicit "no frame" language
+   *  undef → neutral (template wording only) */
+  hasFrame?:     boolean
+  /** Predominant colour name (e.g. "warm gold", "deep indigo"). When set,
+   *  added as a differentiator line. Undef / empty = no colour hint. */
+  primaryColor?: string | null
+}
+
 export function buildPrompt(
   type:      AssetType,
   userTheme: string,
   styleId?:  string,
   meta?:     ProjectMeta,
+  options?:  BuildPromptOptions,
 ): BuiltPrompt {
   const category = TYPE_TO_CATEGORY[type]
   const theme    = userTheme.trim().toLowerCase() || 'slot game'
@@ -571,6 +642,33 @@ export function buildPrompt(
   if (specialIdx >= 2) {
     const symName = resolveSymbolName(type, meta)
     if (symName) differentiators.push(`bonus symbol depicted as: ${symName}`)
+  }
+
+  // Symbol-only hints — frame on/off + predominant colour. These fragments
+  // sit in the differentiator layer so they show up cleanly in the
+  // Prompt Composition UI as named contributions rather than being
+  // buried in the template.
+  const isSymbolCategory =
+    category === 'symbol_high' || category === 'symbol_low' ||
+    category === 'symbol_wild' || category === 'symbol_scatter'
+  if (isSymbolCategory) {
+    if (options?.hasFrame === true) {
+      differentiators.push(
+        'inside an ornate gem-studded metallic frame, premium slot symbol badge ' +
+        'with decorative border, polished metallic rim, icon sits within the frame'
+      )
+    } else if (options?.hasFrame === false) {
+      differentiators.push(
+        'no decorative frame or border, pure isolated subject, no ornamental ring ' +
+        'or badge shape around the icon, clean cutout against transparency'
+      )
+    }
+    if (options?.primaryColor) {
+      differentiators.push(
+        `predominantly ${options.primaryColor} as the dominant hue, with ` +
+        'complementary supporting tones used sparingly to preserve the tier reading'
+      )
+    }
   }
 
   // ── Assemble prompt ────────────────────────────────────────────────────────

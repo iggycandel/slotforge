@@ -12,6 +12,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, Sparkles, Loader2, Upload, Info, ChevronDown, ChevronRight, Copy, FileText } from 'lucide-react'
 import type { AspectRatio, GeneratedAsset, PromptSections } from '@/types/assets'
 import { GRAPHIC_STYLES }    from '@/lib/ai/styles'
+import { symbolTierInfo, defaultColorForSymbol, tierColorPalette } from '@/lib/ai/promptBuilder'
+import type { ProjectMeta } from '@/types/assets'
 import { readPromptOverride } from './ReviewPromptsModal'
 
 export interface SingleGeneratePopupProps {
@@ -105,6 +107,16 @@ export function SingleGeneratePopup({
   const [error,       setError]       = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // ── Symbol-only controls (Part B) ─────────────────────────────────────────
+  // Whether to include a decorative frame (defaults to ON for symbols),
+  // and which colour to weight toward (defaults to the tier palette entry
+  // for this slot's position in the project's symbol count).
+  const tier = symbolTierInfo(slotKey, projectMeta as ProjectMeta)
+  const defaultColor = defaultColorForSymbol(slotKey, projectMeta as ProjectMeta)
+  const palette = tier.count ? tierColorPalette(tier.count) : []
+  const [symbolFrame, setSymbolFrame] = useState<boolean>(true)
+  const [symbolColor, setSymbolColor] = useState<string>(defaultColor ?? '')
+
   // ── Prompt composition (Part 3) ───────────────────────────────────────────
   // Preview contents, plus UI flags for the collapsible panel + copy toast.
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -130,6 +142,9 @@ export function SingleGeneratePopup({
     setCustomPrompt(savedOverride)
     setRefImages([])
     setError(null)
+    // Symbol defaults reset per slot — frame on, colour auto from tier
+    setSymbolFrame(true)
+    setSymbolColor(defaultColorForSymbol(slotKey, projectMeta as ProjectMeta) ?? '')
     setSections(null)
     setFinalPrompt('')
     setFinalNegative('')
@@ -157,6 +172,10 @@ export function SingleGeneratePopup({
           project_id:   projectId,
           style_id:     styleId || undefined,
           project_meta: projectMeta,
+          // Symbol hints only make a difference for symbol slots — sent
+          // unconditionally; the server filters by asset category.
+          symbol_frame: tier.isSymbol ? symbolFrame : undefined,
+          symbol_color: tier.isSymbol && symbolColor ? symbolColor : undefined,
         }),
       })
       const raw  = await res.text()
@@ -173,15 +192,15 @@ export function SingleGeneratePopup({
     } finally {
       setPreviewLoading(false)
     }
-  }, [slotKey, theme, projectId, styleId, projectMeta])
+  }, [slotKey, theme, projectId, styleId, projectMeta, tier.isSymbol, symbolFrame, symbolColor])
 
   // Refetch when the panel is opened (lazy — don't pay for a preview call
-  // if the user never opens the panel) and when the style changes while it's
-  // already open.
+  // if the user never opens the panel) and when any composition-affecting
+  // control changes while it's already open.
   useEffect(() => {
     if (!open || !promptOpen) return
     void fetchPreview()
-  }, [open, promptOpen, styleId, fetchPreview])
+  }, [open, promptOpen, styleId, symbolFrame, symbolColor, fetchPreview])
 
   // Close on ESC
   useEffect(() => {
@@ -240,6 +259,10 @@ export function SingleGeneratePopup({
           ratio,
           quality,
           custom_prompt: customPrompt.trim() || undefined,
+          // Symbol-only hints forwarded to /api/ai-single → buildPrompt.
+          // Server ignores them for non-symbol asset types.
+          symbol_frame: tier.isSymbol ? symbolFrame : undefined,
+          symbol_color: tier.isSymbol && symbolColor ? symbolColor : undefined,
           // reference_images: refImages,  // P3 — server ignores today
         }),
       })
@@ -439,6 +462,133 @@ export function SingleGeneratePopup({
             ))}
           </div>
         </Section>
+
+        {/* ── Symbol controls (Part B) ──────────────────────────────────── */}
+        {tier.isSymbol && (
+          <Section
+            title="Symbol"
+            subtitle={
+              tier.kind && tier.tier && tier.count
+                ? `${tier.kind === 'high' ? 'High' : 'Low'} symbol tier ${tier.tier} of ${tier.count} · defaults shown`
+                : undefined
+            }
+          >
+            {/* Frame toggle */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 10px',
+              background: T.surfaceHigh,
+              border: `1px solid ${T.border}`,
+              borderRadius: 6,
+              marginBottom: 8,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: T.textPrimary, fontWeight: 600 }}>
+                  Ornate frame
+                </div>
+                <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>
+                  Symbol sits inside a decorative badge border
+                </div>
+              </div>
+              <button
+                onClick={() => setSymbolFrame(v => !v)}
+                style={{
+                  width: 36, height: 20, borderRadius: 10, position: 'relative',
+                  background: symbolFrame ? 'rgba(201,168,76,.5)' : T.surface,
+                  border: `1px solid ${symbolFrame ? 'rgba(201,168,76,.6)' : T.border}`,
+                  cursor: 'pointer', flexShrink: 0,
+                  transition: 'background .15s',
+                }}
+                aria-label="Toggle ornate frame"
+              >
+                <div style={{
+                  position: 'absolute',
+                  top: 1, left: symbolFrame ? 16 : 1,
+                  width: 16, height: 16, borderRadius: '50%',
+                  background: symbolFrame ? T.gold : T.textFaint,
+                  transition: 'left .15s, background .15s',
+                }}/>
+              </button>
+            </div>
+
+            {/* Predominant colour picker — swatches for the project's tier palette */}
+            {palette.length > 0 && (
+              <>
+                <div style={{
+                  fontSize: 10, color: T.textMuted, letterSpacing: '.06em',
+                  textTransform: 'uppercase', marginBottom: 6,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                }}>
+                  <span>Predominant colour</span>
+                  {symbolColor && symbolColor !== defaultColor && (
+                    <button
+                      onClick={() => setSymbolColor(defaultColor ?? '')}
+                      style={{
+                        background: 'transparent', border: 'none',
+                        color: T.textMuted, cursor: 'pointer',
+                        fontSize: 9, padding: 0, textTransform: 'none', letterSpacing: 0,
+                      }}
+                      title="Reset to tier default"
+                    >
+                      reset to default
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {palette.map(c => {
+                    const swatch = COLOR_SWATCH_MAP[c] ?? '#888'
+                    const active = symbolColor === c
+                    const isDefault = c === defaultColor
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => setSymbolColor(c)}
+                        title={`${c}${isDefault ? ' (default for this tier)' : ''}`}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '5px 8px 5px 5px', borderRadius: 18,
+                          background: active ? 'rgba(201,168,76,.12)' : T.surfaceHigh,
+                          border: `1px solid ${active ? 'rgba(201,168,76,.5)' : T.border}`,
+                          cursor: 'pointer', fontFamily: T.font,
+                        }}
+                      >
+                        <span style={{
+                          width: 16, height: 16, borderRadius: '50%',
+                          background: swatch, flexShrink: 0,
+                          boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.2)',
+                        }}/>
+                        <span style={{
+                          fontSize: 10, color: active ? T.gold : T.textMuted,
+                          fontWeight: 600,
+                        }}>{c}</span>
+                        {isDefault && (
+                          <span style={{ fontSize: 8, color: T.textFaint, marginRight: 2 }}>
+                            ⭑
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                  {/* "None" option for users who want to leave colour unspecified */}
+                  <button
+                    onClick={() => setSymbolColor('')}
+                    title="No predominant colour (let style + theme decide)"
+                    style={{
+                      padding: '5px 10px', borderRadius: 18,
+                      background: !symbolColor ? 'rgba(201,168,76,.12)' : T.surfaceHigh,
+                      border: `1px solid ${!symbolColor ? 'rgba(201,168,76,.5)' : T.border}`,
+                      cursor: 'pointer', fontFamily: T.font,
+                      fontSize: 10, color: !symbolColor ? T.gold : T.textMuted,
+                      fontWeight: 600,
+                    }}
+                  >
+                    none
+                  </button>
+                </div>
+              </>
+            )}
+          </Section>
+        )}
 
         {/* ── Reference images (P3 stub) ────────────────────────────────── */}
         <Section
@@ -737,6 +887,21 @@ export function SingleGeneratePopup({
 // One card per layer in the composed prompt: Identity, Template, Context,
 // Differentiator, Quality blocks, Negatives. Read-only body + a small copy
 // button. Used inside the collapsible "Prompt composition" panel.
+// Visible swatch hex for each named colour the server's TIER_COLORS_BY_COUNT
+// table emits. Keep the keys in sync with promptBuilder.ts. The values are
+// UI-only (affect only the swatch pill on-screen); the server prompt uses
+// the colour NAME verbatim.
+const COLOR_SWATCH_MAP: Record<string, string> = {
+  'bright red':     '#dc2626',
+  'magenta':        '#c026d3',
+  'royal purple':   '#581c87',
+  'warm orange':    '#ea580c',
+  'bright gold':    '#ffd700',
+  'emerald green':  '#059669',
+  'teal':           '#0d9488',
+  'deep navy':      '#0f1744',
+}
+
 function PromptLayer({
   label, hint, body, onCopy, copied,
 }: { label: string; hint: string; body: string; onCopy: () => void; copied: boolean }) {

@@ -65,6 +65,11 @@ const RequestSchema = z.object({
   // than 'high' and significantly faster (high was hitting Vercel's 60s
   // function cap). Promote to 'high' only for final delivery renders.
   quality:       z.enum(['low','medium','high']).optional(),
+  // Symbol-only hints — see BuildPromptOptions. Server ignores them for
+  // non-symbol asset types so passing them unconditionally from the
+  // popup is safe.
+  symbol_frame:  z.boolean().optional(),
+  symbol_color:  z.string().max(60).optional(),
 })
 
 // ─── Route handler ───────────────────────────────────────────────────────────
@@ -105,7 +110,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta, ratio, quality } = parsed.data
+  const { asset_type, theme, project_id, provider, style_id, custom_prompt, project_meta, ratio, quality, symbol_frame, symbol_color } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -117,9 +122,17 @@ export async function POST(req: NextRequest) {
     // key ("bonuspick.bg") → buildFeatureSlotPrompt which reuses the same
     // identity anchor + style + meta helpers so feature art stays consistent.
     const isFeature = isFeatureSlotKey(asset_type)
+    // Symbol hints (frame toggle + predominant colour) are scoped to
+    // legacy symbol asset types — forward as options to buildPrompt.
+    // Feature slots don't use these hints today, so buildFeatureSlotPrompt
+    // doesn't accept them; they're silently ignored when asset_type is a
+    // feature slot key.
     const built = isFeature
       ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined)
-      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined)
+      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined, {
+          hasFrame:     symbol_frame,
+          primaryColor: symbol_color || null,
+        })
     if (custom_prompt) {
       // Replace the template portion with the user's custom prompt while still
       // applying the master quality requirements (handled inside buildPrompt).

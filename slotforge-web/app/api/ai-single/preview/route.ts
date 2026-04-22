@@ -42,6 +42,10 @@ const RequestSchema = z.object({
   project_id:    z.string().uuid(),
   style_id:      z.string().optional(),
   project_meta:  z.record(z.unknown()).optional(),
+  // Symbol-only hints — mirror of /ai-single so the preview reflects
+  // whatever the popup is about to send.
+  symbol_frame:  z.boolean().optional(),
+  symbol_color:  z.string().max(60).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, style_id, project_meta } = parsed.data
+  const { asset_type, theme, project_id, style_id, project_meta, symbol_frame, symbol_color } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -80,7 +84,10 @@ export async function POST(req: NextRequest) {
     const isFeature = isFeatureSlotKey(asset_type)
     const built = isFeature
       ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined)
-      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined)
+      : buildPrompt(asset_type as AssetType, theme, style_id, project_meta as ProjectMeta | undefined, {
+          hasFrame:     symbol_frame,
+          primaryColor: symbol_color || null,
+        })
 
     return NextResponse.json({
       prompt:         built.prompt,
