@@ -14,7 +14,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v95'
+const EDITOR_VERSION = 'v96'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -52,17 +52,61 @@ function SaveBadge({ state }: { state: SaveState }) {
     error:  { color: '#f87171', label: 'Error' },
   }
   const { color, label } = map[state.status]
+  const showCheck = state.status === 'saved' || state.status === 'idle'
   return (
-    <span style={{ fontSize: 11, color, display: 'flex', alignItems: 'center', gap: 5 }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block',
-                     boxShadow: state.status === 'saved' ? `0 0 6px ${color}` : 'none' }} />
-      {label}
-      {state.lastSaved && state.status === 'saved' && (
-        <span style={{ color: C.txMuted, marginLeft: 2 }}>
-          {state.lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </span>
-      )}
-    </span>
+    <>
+      {/* Keyframes scoped to this component so the checkmark stroke-draws
+          + fades-in when the user successfully saves. No-op otherwise. */}
+      <style>{`
+        @keyframes sf-save-check-draw {
+          from { stroke-dashoffset: 20; }
+          to   { stroke-dashoffset: 0; }
+        }
+        @keyframes sf-save-dot-pulse {
+          0%   { transform: scale(0.4); opacity: 0; }
+          40%  { transform: scale(1.3); opacity: 1; }
+          100% { transform: scale(1);   opacity: 1; }
+        }
+      `}</style>
+      <span style={{ fontSize: 11, color, display: 'flex', alignItems: 'center', gap: 5 }}>
+        {/* Checkmark for saved / idle states; pulsing dot otherwise */}
+        {showCheck ? (
+          <svg
+            key={state.status + (state.lastSaved?.getTime() ?? 0)}
+            width="11" height="11" viewBox="0 0 14 14" fill="none"
+            stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            aria-hidden="true"
+            style={{
+              filter: state.status === 'saved' ? `drop-shadow(0 0 4px ${color})` : 'none',
+              transition: 'filter .3s ease-out',
+            }}
+          >
+            <path
+              d="M2.5 7.5 L6 11 L12 3.5"
+              strokeDasharray="20"
+              strokeDashoffset={state.status === 'saved' ? 0 : 0}
+              style={{
+                animation: state.status === 'saved'
+                  ? 'sf-save-check-draw .3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+                  : 'none',
+              }}
+            />
+          </svg>
+        ) : (
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', background: color,
+            display: 'inline-block',
+            animation: state.status === 'saving' ? 'sf-save-dot-pulse .6s ease-out infinite alternate' : 'none',
+          }} />
+        )}
+        {label}
+        {state.lastSaved && state.status === 'saved' && (
+          <span style={{ color: C.txMuted, marginLeft: 2 }}>
+            {state.lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+      </span>
+    </>
   )
 }
 

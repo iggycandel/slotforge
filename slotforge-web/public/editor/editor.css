@@ -87,8 +87,12 @@ body{font-family:var(--font-ui);background:var(--bg-base);color:var(--text-main)
 .tool-btn.active{background:var(--accent-gold-dim);color:var(--accent-gold);border:1px solid var(--accent-gold);box-shadow:var(--shadow-glow)}
 .tool-btn.active-pan{background:#4ac8f018;color:#4ac8f0;border:1px solid #4ac8f044}
 .tool-sep{width:18px;height:1px;background:#2a2a3a;margin:3px 0;flex-shrink:0}
-.tool-tip{position:absolute;left:42px;top:50%;transform:translateY(-50%);background:rgba(18,19,26,0.95);backdrop-filter:blur(8px);border:1px solid var(--border-glass);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--text-main);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity var(--trans-fast);z-index:9999}
-.tool-btn:hover .tool-tip{position:absolute;left:42px;top:50%;transform:translateY(-50%);background:rgba(18,19,26,0.95);backdrop-filter:blur(8px);border:1px solid var(--border-glass);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--text-main);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity var(--trans-fast);z-index:9999}
+/* Custom tooltip on the left toolbar. Base state hides with opacity:0;
+   .tool-btn:hover brings it in. Previous version of this rule was a
+   copy-paste of the base state (still had opacity:0), so the tooltips
+   never appeared — new users had to guess every icon. Critique item 5. */
+.tool-tip{position:absolute;left:42px;top:50%;transform:translateY(-50%);background:rgba(18,19,26,0.95);backdrop-filter:blur(8px);border:1px solid var(--border-glass);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--text-main);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity var(--trans-fast) ease-out,transform var(--trans-fast) ease-out;transition-delay:.12s;z-index:9999}
+.tool-btn:hover .tool-tip{opacity:1;transform:translateY(-50%) translateX(4px)}
 .ap-btn{background:#14141e;border:1px solid #2a2a3a;color:#9090b0;border-radius:6px;cursor:pointer;padding:5px;display:flex;align-items:center;justify-content:center;transition:all .12s}
 .ap-btn:hover{background:#2e2e42;color:#e0deda;border-color:#c9a84c44}
 .tool-btn.snap-on{background:#c9a84c18;color:#c9a84c;border:1px solid #c9a84c44}

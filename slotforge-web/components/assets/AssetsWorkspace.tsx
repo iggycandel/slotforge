@@ -787,10 +787,50 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         .sf-tab:hover { background: rgba(255,255,255,.04) !important; }
         .sf-nav-item:hover { background: rgba(255,255,255,.04) !important; }
         .sf-nav-item.active { background: rgba(201,168,76,.1) !important; }
-        .sf-style-card:hover { border-color: rgba(255,255,255,.2) !important; }
+        /* Style card hover: gentle lift + shadow pop so the cards feel
+           tactile instead of snap-swap borders. Skip when already active. */
+        .sf-style-card {
+          transition: transform .15s cubic-bezier(0.16, 1, 0.3, 1),
+                      box-shadow .15s cubic-bezier(0.16, 1, 0.3, 1),
+                      border-color .15s;
+          will-change: transform;
+        }
+        .sf-style-card:hover:not(.active) {
+          transform: translateY(-2px) scale(1.04);
+          box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.2);
+          border-color: rgba(255,255,255,.25) !important;
+          z-index: 1;
+        }
         .sf-style-card.active { border-color: #c9a84c !important; }
+
+        /* Asset tile image: bounce-pop in when the URL changes (i.e. a
+           fresh asset landed after generation). The <img key={url}>
+           remount replays the keyframes naturally. */
+        @keyframes sf-tile-pop-in {
+          0%   { transform: scale(0.5); opacity: 0; }
+          60%  { transform: scale(1.08); opacity: 1; }
+          100% { transform: scale(1);    opacity: 1; }
+        }
+        .sf-tile img { animation: sf-tile-pop-in .4s cubic-bezier(0.16, 1.3, 0.3, 1); }
+
+        /* Inspector panel: slide-in from the right + fade when the user
+           selects a different asset. Driven by a keyed wrapper below. */
+        @keyframes sf-inspector-slide {
+          from { opacity: 0; transform: translateX(8px); }
+          to   { opacity: 1; transform: translateX(0);   }
+        }
+
         .sf-input:focus { border-color: #c9a84c !important; outline: none; }
         textarea:focus { outline: none; border-color: #c9a84c !important; }
+
+        /* Respect reduced-motion preference — disables the new motion
+           layer without disabling functional transitions. */
+        @media (prefers-reduced-motion: reduce) {
+          .sf-style-card, .sf-tile img {
+            transition: none !important;
+            animation: none !important;
+          }
+        }
       `}</style>
 
       {/* ── Standalone toolbar — shown only when NOT embedded in the editor ── */}
@@ -1824,6 +1864,10 @@ function AssetTile({
         <FailedTilePlaceholder label={label} onRetry={e => { e.stopPropagation(); onRegen() }} />
       ) : asset?.url ? (
         <img
+          // key on URL so the bounce-pop keyframe replays whenever a
+          // fresh asset lands — makes the completion moment delightful
+          // rather than snapping in.
+          key={asset.url}
           src={asset.url}
           alt={label}
           style={{
@@ -2312,20 +2356,27 @@ function RightInspectorPanel({
       {/* Tab content */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
-        {/* Inspector Tab */}
+        {/* Inspector Tab — keyed on selectedKey so the slide-in keyframe
+            replays whenever the user picks a different asset, per the
+            UX critique's motion recommendation. */}
         {rightTab === 'inspector' && (
-          <InspectorTab
-            selectedKey={selectedKey ?? null}
-            selectedIsFeature={selectedIsFeature}
-            selectedAsset={selectedAsset}
-            regenTarget={regenTarget}
-            theme={theme}
-            onRegenBase={onRegenBase}
-            onGenerateFeature={onGenerateFeature}
-            shortLabels={shortLabels}
-            exportsEnabled={exportsEnabled}
-            onUpgradeGate={onUpgradeGate}
-          />
+          <div
+            key={selectedKey ?? '__empty'}
+            style={{ animation: 'sf-inspector-slide .2s cubic-bezier(0.16, 1, 0.3, 1)' }}
+          >
+            <InspectorTab
+              selectedKey={selectedKey ?? null}
+              selectedIsFeature={selectedIsFeature}
+              selectedAsset={selectedAsset}
+              regenTarget={regenTarget}
+              theme={theme}
+              onRegenBase={onRegenBase}
+              onGenerateFeature={onGenerateFeature}
+              shortLabels={shortLabels}
+              exportsEnabled={exportsEnabled}
+              onUpgradeGate={onUpgradeGate}
+            />
+          </div>
         )}
 
         {/* Prompt Editor Tab */}
