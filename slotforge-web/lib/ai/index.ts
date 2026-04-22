@@ -53,18 +53,18 @@ function defaultRatioFor(assetKey: string): AspectRatio {
 
 interface RatioSpec {
   runway: { width: number; height: number }
-  openai: { size: '1024x1024' | '1536x1024' | '1024x1536'; dalle: '1024x1024' | '1792x1024' | '1024x1792' }
+  openai: { size: '1024x1024' | '1536x1024' | '1024x1536' }
 }
 
 const RATIO_TABLE: Record<AspectRatio, RatioSpec> = {
-  '1:1':   { runway: { width: 1024, height: 1024 }, openai: { size: '1024x1024', dalle: '1024x1024' } },
-  '3:2':   { runway: { width: 1536, height: 1024 }, openai: { size: '1536x1024', dalle: '1792x1024' } },
-  '2:3':   { runway: { width: 1024, height: 1536 }, openai: { size: '1024x1536', dalle: '1024x1792' } },
-  '16:9':  { runway: { width: 1792, height: 1024 }, openai: { size: '1536x1024', dalle: '1792x1024' } },
-  '9:16':  { runway: { width: 1024, height: 1792 }, openai: { size: '1024x1536', dalle: '1024x1792' } },
-  '3:1':   { runway: { width: 1792, height:  896 }, openai: { size: '1536x1024', dalle: '1792x1024' } },
-  '4:1':   { runway: { width: 1792, height:  768 }, openai: { size: '1536x1024', dalle: '1792x1024' } },
-  '1:4':   { runway: { width:  768, height: 1792 }, openai: { size: '1024x1536', dalle: '1024x1792' } },
+  '1:1':   { runway: { width: 1024, height: 1024 }, openai: { size: '1024x1024' } },
+  '3:2':   { runway: { width: 1536, height: 1024 }, openai: { size: '1536x1024' } },
+  '2:3':   { runway: { width: 1024, height: 1536 }, openai: { size: '1024x1536' } },
+  '16:9':  { runway: { width: 1792, height: 1024 }, openai: { size: '1536x1024' } },
+  '9:16':  { runway: { width: 1024, height: 1792 }, openai: { size: '1024x1536' } },
+  '3:1':   { runway: { width: 1792, height:  896 }, openai: { size: '1536x1024' } },
+  '4:1':   { runway: { width: 1792, height:  768 }, openai: { size: '1536x1024' } },
+  '1:4':   { runway: { width:  768, height: 1792 }, openai: { size: '1024x1536' } },
 }
 
 // ─── Provider resolution ─────────────────────────────────────────────────────
@@ -88,13 +88,10 @@ function resolveProvider(requested: AIProvider): 'runway' | 'openai' | 'mock' {
 
 // ─── Main generate function ──────────────────────────────────────────────────
 
-/** Quality tier. Translated per-provider:
- *    gpt-image-1: low | medium | high  (default: medium — ~4× cheaper than high)
- *    dall-e-3:    standard | hd        (medium→standard, high→hd, low→standard)
- *  OpenAI gpt-image-1 price guide at 1024×1024 roughly:
- *    low    ≈ $0.011   (~draft / iterate)
- *    medium ≈ $0.042   (~ready to review)
- *    high   ≈ $0.167   (~final delivery) */
+/** Quality tier for gpt-image-1:
+ *    low    ≈ $0.011 per 1024×1024  (~draft / iterate)
+ *    medium ≈ $0.042 per 1024×1024  (~ready to review, default)
+ *    high   ≈ $0.167 per 1024×1024  (~final delivery) */
 export type GenerateQuality = 'low' | 'medium' | 'high'
 
 export interface GenerateImageOptions {
@@ -102,14 +99,6 @@ export interface GenerateImageOptions {
   ratio?:   AspectRatio
   /** Image quality tier. Defaults to 'medium'. */
   quality?: GenerateQuality
-}
-
-// ─── Quality → per-provider parameter mapping ───────────────────────────────
-function mapQualityForOpenAI(q: GenerateQuality): 'low' | 'medium' | 'high' {
-  return q // gpt-image-1 accepts the same three
-}
-function mapQualityForDallE(q: GenerateQuality): 'standard' | 'hd' {
-  return q === 'high' ? 'hd' : 'standard'
 }
 
 const MAX_RETRIES = 2
@@ -129,8 +118,7 @@ export async function generateImage(
   // Default quality is 'medium' — gpt-image-1 at 'high' costs ~4× more and
   // takes 30-45s which was regularly hitting Vercel's 60s function cap.
   const quality = options.quality ?? 'medium'
-  const qGpt    = mapQualityForOpenAI(quality)
-  const qDallE  = mapQualityForDallE(quality)
+  const qGpt    = quality  // gpt-image-1 accepts low/medium/high directly
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -152,61 +140,23 @@ export async function generateImage(
         }
 
         case 'openai': {
+          // gpt-image-1 is the ONLY supported OpenAI model. Earlier versions
+          // fell back to dall-e-3 if gpt-image-1 returned 404/permission
+          // errors, but dall-e-3 doesn't support transparent PNG output —
+          // silently swapping in that model produced symbols with opaque
+          // backgrounds the user had to manually mask out. Better to fail
+          // loudly so the user knows their OpenAI project needs gpt-image-1
+          // enabled than to ship broken assets.
           const isBackground = (type as string).startsWith('background')
-          // Backgrounds: gpt-image-1 landscape at highest quality (opaque — full scene)
-          // Falls back to dall-e-3 hd if the account lacks gpt-image-1 access
-          if (isBackground) {
-            try {
-              const r = await generateWithOpenAI({
-                prompt:       built.prompt,
-                model:        'gpt-image-1',
-                size:         dims.openai.size,
-                quality:      qGpt,
-                background:   'opaque',
-                outputFormat: 'png',
-              })
-              return { url: r.url, provider: 'openai' }
-            } catch (gptErr) {
-              const msg = gptErr instanceof Error ? gptErr.message : String(gptErr)
-              if (msg.includes('model') || msg.includes('404') || msg.includes('not found') || msg.includes('permission')) {
-                console.warn(`[ai] gpt-image-1 unavailable for background, falling back to dall-e-3: ${msg}`)
-                const r = await generateWithOpenAI({
-                  prompt:  built.prompt,
-                  model:   'dall-e-3',
-                  size:    dims.openai.dalle,
-                  quality: qDallE,
-                })
-                return { url: r.url, provider: 'openai' }
-              }
-              throw gptErr
-            }
-          }
-          // Symbols, UI elements, logo, character — try gpt-image-1 for native transparency
-          try {
-            const r = await generateWithOpenAI({
-              prompt:      built.prompt,
-              model:       'gpt-image-1',
-              size:        dims.openai.size,
-              quality:     qGpt,
-              background:  'transparent',
-              outputFormat: 'png',
-            })
-            return { url: r.url, provider: 'openai' }
-          } catch (gptErr) {
-            // gpt-image-1 not available on this account — fall back to dall-e-3
-            const msg = gptErr instanceof Error ? gptErr.message : String(gptErr)
-            if (msg.includes('model') || msg.includes('404') || msg.includes('not found') || msg.includes('permission')) {
-              console.warn(`[ai] gpt-image-1 unavailable for ${type}, falling back to dall-e-3: ${msg}`)
-              const r = await generateWithOpenAI({
-                prompt:  built.prompt,
-                model:   'dall-e-3',
-                size:    dims.openai.dalle,
-                quality: qDallE,
-              })
-              return { url: r.url, provider: 'openai' }
-            }
-            throw gptErr
-          }
+          const r = await generateWithOpenAI({
+            prompt:       built.prompt,
+            model:        'gpt-image-1',
+            size:         dims.openai.size,
+            quality:      qGpt,
+            background:   isBackground ? 'opaque' : 'transparent',
+            outputFormat: 'png',
+          })
+          return { url: r.url, provider: 'openai' }
         }
 
         case 'mock': {
