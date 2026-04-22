@@ -3293,6 +3293,62 @@ document.addEventListener('click',()=>document.getElementById('ep').style.displa
 document.querySelectorAll('#logo-pg .pc').forEach(c=>{c.addEventListener('click',()=>{document.querySelectorAll('#logo-pg .pc').forEach(x=>x.classList.remove('sel'));c.classList.add('sel');markDirty();});});
 document.querySelectorAll('.psh').forEach(h=>{h.addEventListener('click',()=>{const b=document.getElementById('s-'+h.dataset.s);if(b){b.classList.toggle('hid');h.classList.toggle('col');}});});
 
+// ─── Graphic style catalogue (mirrors lib/ai/styles.ts GRAPHIC_STYLES) ─────
+// editor.js can't import TS, so this list mirrors the server definitions so
+// the Project Settings "Art Style" dropdown exposes the same styleId values
+// the prompt builder (buildPrompt / buildFeatureSlotPrompt) uses. Option
+// value = styleId verbatim. Keep in sync with lib/ai/styles.ts.
+const GRAPHIC_STYLES_MIRROR = [
+  { id: '',                     emoji: '—',   name: '(none — use theme only)', desc: '' },
+  { id: 'cartoon_3d',           emoji: '🎨',  name: 'Cartoon 3D',              desc: 'Bold, vibrant, Pixar-style' },
+  { id: 'realistic_3d',         emoji: '💎',  name: 'Realistic 3D',            desc: 'Photorealistic, cinematic' },
+  { id: 'fantasy_illustrated',  emoji: '🖌️', name: 'Fantasy Illustrated',     desc: 'Hand-painted, semi-realistic' },
+  { id: 'art_deco',             emoji: '🏛️', name: 'Art Deco',                desc: 'Geometric, luxury gold, 1920s' },
+  { id: 'dark_gothic',          emoji: '🦇',  name: 'Dark Gothic',             desc: 'Grim, atmospheric, fantasy' },
+  { id: 'pixel_art',            emoji: '👾',  name: 'Pixel Art',               desc: 'Retro 8/16-bit aesthetic' },
+  { id: 'anime',                emoji: '⛩️', name: 'Anime / Manga',           desc: 'Japanese animation, cel-shaded' },
+  { id: 'watercolor',           emoji: '🎭',  name: 'Watercolor',              desc: 'Painterly, soft, illustrative' },
+];
+
+function _populateStyleOptions(){
+  const sel = document.getElementById('game-art-style');
+  if (!sel) return;
+  // Only populate if empty — on subsequent re-entries the select already
+  // has the right options and doing it again would reset the value.
+  if (sel.options.length > 1 && sel.options[1].value) return;
+  sel.innerHTML = GRAPHIC_STYLES_MIRROR.map(s => {
+    const label = s.id === ''
+      ? `${s.emoji} ${s.name}`
+      : `${s.emoji} ${s.name} — ${s.desc}`;
+    return `<option value="${s.id}">${label}</option>`;
+  }).join('');
+}
+
+// Map a legacy free-text artStyle value ("Realistic", "Cartoon / Illustrated",
+// "Pixel Art", etc.) to the nearest styleId from GRAPHIC_STYLES_MIRROR. Used
+// both on project load (pre-migration payloads) and in the GDD parser (the
+// model returns free-text labels). Empty string when no confident match —
+// the select just shows "(none)" in that case.
+function legacyStyleToId(text){
+  if (!text) return '';
+  // Exact styleId already — short-circuit.
+  if (GRAPHIC_STYLES_MIRROR.some(s => s.id && s.id === text)) return text;
+  const s = String(text).toLowerCase().trim();
+  if (!s) return '';
+  if (/\b(cartoon|pixar|disney)\b/.test(s))                                 return 'cartoon_3d';
+  if (/\b(realistic|photoreal|photo-real|photograph|3d\s+render|cinematic|unreal|pbr)\b/.test(s)) return 'realistic_3d';
+  if (/\b(fantasy|hand.?drawn|hand.?painted|illustration|illustrated|concept\s+art|painterly)\b/.test(s)) return 'fantasy_illustrated';
+  if (/\b(art\s*deco|1920|gatsby|deco)\b/.test(s))                          return 'art_deco';
+  if (/\b(gothic|dark\s+fantasy|grim|horror|diablo)\b/.test(s))             return 'dark_gothic';
+  if (/\b(pixel|8.?bit|16.?bit|retro\s+(arcade|game))\b/.test(s))           return 'pixel_art';
+  if (/\b(anime|manga|ghibli|jrpg)\b/.test(s))                              return 'anime';
+  if (/\b(watercolor|watercolour|gouache)\b/.test(s))                       return 'watercolor';
+  // Legacy dropdown labels that don't have a 1-to-1 mapping — pick a close fit.
+  if (/\b(2d\s+stylized|stylized)\b/.test(s))                               return 'cartoon_3d';
+  if (/\b(flat|minimal|comic)\b/.test(s))                                   return 'cartoon_3d';
+  return '';
+}
+
 // ─── v1 Feature slot catalogue (mirrors lib/features/registry.ts) ──────────
 // editor.js can't import TS — this list lets the Features workspace show an
 // "Assets needed" summary per feature without a round trip. Keep in sync with
@@ -3609,7 +3665,9 @@ function applyGDDFields(f){
   setVal('game-story',          f.story);
   setVal('game-mood',           f.mood);
   setVal('game-bonus-narrative',f.bonusNarrative);
-  setVal('game-art-style',      f.artStyle);
+  // GPT returns free-text art-style labels ("Realistic", "Pixar 3D", etc.);
+  // the select now expects a styleId value. Fuzzy-match before setting.
+  if (f.artStyle) setVal('game-art-style', legacyStyleToId(f.artStyle));
   setVal('game-art-ref',        f.artRef);
   setVal('game-art-notes',      f.artNotes);
 
@@ -4233,7 +4291,11 @@ function _restoreFilePayload(d){
     setVal('game-story',            d.meta.story);
     setVal('game-mood',             d.meta.mood);
     setVal('game-bonus-narrative',  d.meta.bonusNarrative);
-    setVal('game-art-style',        d.meta.artStyle);
+    // Old payloads stored free text ("Realistic", "Cartoon / Illustrated")
+    // in meta.artStyle; new payloads store a styleId in meta.styleId. Map
+    // legacy values to their nearest styleId so the select (now populated
+    // from GRAPHIC_STYLES_MIRROR) lands on the right option.
+    setVal('game-art-style',        legacyStyleToId(d.meta.styleId || d.meta.artStyle));
     setVal('game-art-ref',          d.meta.artRef);
     setVal('game-art-notes',        d.meta.artNotes);
   }
@@ -8332,6 +8394,10 @@ function gfdExportJSON(){
 // Boot
 function init(){
   buildFeatures();initRV();
+  // Populate Art Style select from GRAPHIC_STYLES_MIRROR so the value is a
+  // styleId the prompt builder can resolve. Runs before first payload load
+  // so the legacy-mapper (on load) lands onto already-populated options.
+  _populateStyleOptions();
   // Feature config panels are hidden by default (shown only when feature toggled on)
   initSettingsTabs();
   P.symbols = buildDefaultSymbols(4,6,2);
@@ -10433,6 +10499,12 @@ function collectMeta(){
     story:           g('game-story'),
     mood:            g('game-mood'),
     bonusNarrative:  g('game-bonus-narrative'),
+    // styleId is the canonical field the prompt builder resolves to a full
+    // style modifier. The select (populated from GRAPHIC_STYLES_MIRROR)
+    // holds the styleId as its value. `artStyle` is kept in the meta for
+    // backwards compatibility with old React consumers and serialised
+    // payloads — mirrors styleId so both fields carry the same token.
+    styleId:         g('game-art-style'),
     artStyle:        g('game-art-style'),
     artRef:          g('game-art-ref'),
     artNotes:        g('game-art-notes'),

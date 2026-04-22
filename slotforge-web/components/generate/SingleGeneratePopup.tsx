@@ -367,7 +367,16 @@ export function SingleGeneratePopup({
         </Section>
 
         {/* ── Graphic style ──────────────────────────────────────────────── */}
-        <Section title="Graphic style">
+        <Section
+          title="Graphic style"
+          subtitle={
+            defaultStyleId && styleId === defaultStyleId
+              ? 'inherited from Project Settings · change to override for this asset'
+              : defaultStyleId && styleId && styleId !== defaultStyleId
+                ? 'overrides the project default'
+                : undefined
+          }
+        >
           <select
             value={styleId}
             onChange={e => setStyleId(e.target.value)}

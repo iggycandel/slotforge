@@ -812,8 +812,10 @@
             <div class="psb" id="art-body">
               <div class="pfr">
                 <div class="pf"><div class="lbl">Art Style</div>
+                  <!-- Options populated by editor.js from GRAPHIC_STYLES mirror so the value maps
+                       1-to-1 onto styleId used by the prompt builder. See _populateStyleOptions(). -->
                   <select class="fsel" id="game-art-style">
-                    <option>2D Stylized</option><option>3D Rendered</option><option>Cartoon / Illustrated</option><option>Realistic</option><option>Pixel Art</option><option>Flat / Minimal</option><option>Hand-drawn</option><option>Comic Book</option>
+                    <option value="">— select an art style —</option>
                   </select>
                 </div>
                 <div class="pf"><div class="lbl">Visual Inspiration</div>

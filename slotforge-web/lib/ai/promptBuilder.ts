@@ -217,20 +217,37 @@ function buildIdentityAnchor(
   styleId?: string,
   opts: { omitGameName?: boolean } = {},
 ): string {
-  const style    = styleId ? getStyleById(styleId) : undefined
+  // Style resolution order:
+  //   1. styleId param (popup / request override)
+  //   2. meta.styleId (project-level default — new canonical field)
+  //   3. meta.artStyle, IF it happens to be a GRAPHIC_STYLES id (newer
+  //      payloads mirror styleId into artStyle for backwards compat)
+  //   4. meta.artStyle as free text, emitted as "<label> art style"
+  //      (legacy payloads captured here)
+  const effectiveStyleId = styleId || meta?.styleId || ''
+  let style = effectiveStyleId ? getStyleById(effectiveStyleId) : undefined
+  const rawArtStyle = meta?.artStyle || ''
+  if (!style && rawArtStyle) {
+    // Is artStyle already a valid GRAPHIC_STYLES id?
+    const maybe = getStyleById(rawArtStyle)
+    if (maybe) style = maybe
+  }
+
   // Backgrounds skip the game name — gpt-image-1 otherwise treats a name
   // like "Jim Boom Boom" as a brand to paint across every sign in the
   // scene. The game name belongs on the logo asset, not the backdrop.
   const gameName = opts.omitGameName ? '' : (meta?.gameName || '')
-  const artStyle = meta?.artStyle || ''
 
   const parts: string[] = []
 
   // 1. Graphic style is the dominant visual language — goes absolutely first
   if (style) {
     parts.push(style.promptModifier)
-  } else if (artStyle) {
-    parts.push(`${artStyle} art style`)
+  } else if (rawArtStyle) {
+    // True legacy path — free-text label in artStyle. Emit verbatim so
+    // something reaches the model; the Part 2 migration in editor.js
+    // will map these to styleIds on next project save.
+    parts.push(`${rawArtStyle} art style`)
   }
 
   // 2. Game + theme world context

@@ -16,8 +16,14 @@ export interface ProjectMeta {
   mood?:           string
   /** Bonus Round Narrative */
   bonusNarrative?: string
-  /** Art Style selection (e.g. "Realistic", "Cartoon / Illustrated") */
+  /** Art Style selection. New projects set a styleId token here
+   *  ("realistic_3d") that resolves via GRAPHIC_STYLES. Legacy projects
+   *  set a free-text label ("Realistic") which promptBuilder maps through
+   *  legacyStyleToId on the server. */
   artStyle?:       string
+  /** Canonical style token (GRAPHIC_STYLES id). Preferred over artStyle
+   *  when both are present. */
+  styleId?:        string
   /** Visual Inspiration / Art Reference */
   artRef?:         string
   /** Art Direction Notes */
