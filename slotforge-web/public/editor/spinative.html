@@ -42,7 +42,7 @@
       <div class="dd-item" id="m-new"><span class="di">✦</span>New Project<span class="dk">⌘N</span></div>
       <div class="dd-item" id="m-show-welcome"><span class="di">⌂</span>Show Welcome Screen</div>
       <div class="dd-sep"></div>
-      <div class="dd-item" id="m-open"><span class="di">📂</span>Open .slotforge File&hellip;<span class="dk">⌘O</span></div>
+      <div class="dd-item" id="m-open"><span class="di">📂</span>Open .spinative File&hellip;<span class="dk">⌘O</span></div>
       <div class="dd-sep"></div>
       <div class="dd-item" id="m-save-menu"><span class="di">💾</span>Save Project<span class="dk">⌘S</span></div>
       <div class="dd-item" id="m-saveas"><span class="di">💾</span>Save As&hellip;<span class="dk">⇧⌘S</span></div>
@@ -1568,7 +1568,12 @@
   <div class="si">Layer: <span id="sb-lyr">&mdash;</span></div>
   <div class="si" id="sb-reel">5&times;3</div>
   <div class="si" id="sb-vp">Portrait 9:16</div>
-  <div class="si" style="margin-left:auto;display:flex;gap:10px;align-items:center"><span>Balance: <input id="sb-balance-inp" value="1000.00" style="width:60px;background:transparent;border:none;border-bottom:1px solid #333;color:#aaa;font-family:DM Mono,monospace;font-size:8px;outline:none" onchange="document.getElementById('bb-balance').textContent='€ '+parseFloat(this.value).toFixed(2)"></span><span>Bet: <input id="sb-bet-inp" value="0.20" style="width:40px;background:transparent;border:none;border-bottom:1px solid #333;color:#c9a84c;font-family:DM Mono,monospace;font-size:8px;outline:none" onchange="document.getElementById('bb-bet').textContent='€ '+parseFloat(this.value).toFixed(2)"></span><span style="color:#444">Spinative</span></div>
+  <!-- Status bar trailing cluster: Balance + Bet only. The redundant
+       "Spinative" wordmark was removed per the April-2026 UX critique — the
+       user is already inside Spinative and the top-left logo covers
+       branding; repeating it in the data-dense status bar was visual noise
+       competing with Screen / Layer / resolution / Balance / Bet. -->
+  <div class="si" style="margin-left:auto;display:flex;gap:10px;align-items:center"><span>Balance: <input id="sb-balance-inp" value="1000.00" style="width:60px;background:transparent;border:none;border-bottom:1px solid #333;color:#aaa;font-family:DM Mono,monospace;font-size:8px;outline:none" onchange="document.getElementById('bb-balance').textContent='€ '+parseFloat(this.value).toFixed(2)"></span><span>Bet: <input id="sb-bet-inp" value="0.20" style="width:40px;background:transparent;border:none;border-bottom:1px solid #333;color:#c9a84c;font-family:DM Mono,monospace;font-size:8px;outline:none" onchange="document.getElementById('bb-bet').textContent='€ '+parseFloat(this.value).toFixed(2)"></span></div>
 </div>
 
 
@@ -1596,7 +1601,7 @@
     <div class="kbd-row"><span>Lock / Unlock layer</span><span class="kbd-key">⌘ L</span></div>
     <div class="kbd-row"><span>Context panel (edit asset)</span><span class="kbd-key">Right-click</span></div>
     <div class="kbd-section">Project</div>
-    <div class="kbd-row"><span>Open .slotforge file</span><span class="kbd-key">⌘ O</span></div>
+    <div class="kbd-row"><span>Open .spinative file</span><span class="kbd-key">⌘ O</span></div>
     <div class="kbd-row"><span>Save</span><span class="kbd-key">⌘ S</span></div>
     <div class="kbd-row"><span>Save As…</span><span class="kbd-key">⇧ ⌘ S</span></div>
     <div class="kbd-row"><span>Undo</span><span class="kbd-key">⌘ Z</span></div>
@@ -1751,7 +1756,7 @@
           <div class="cloud-setup">
             <div class="cloud-setup-icon">🔵</div>
             <div class="cloud-setup-title">Connect Google Drive</div>
-            <div class="cloud-setup-desc">Save and open .slotforge projects directly from your Google Drive. You'll need a Google Cloud OAuth Client ID and API Key — setup takes about 5 minutes.</div>
+            <div class="cloud-setup-desc">Save and open .spinative projects directly from your Google Drive. You'll need a Google Cloud OAuth Client ID and API Key — setup takes about 5 minutes.</div>
           </div>
           <div class="cloud-field">
             <label>OAuth 2.0 Client ID</label>
@@ -1779,7 +1784,7 @@
             <div class="cloud-loading">Loading…</div>
           </div>
           <div class="cloud-actions">
-            <input class="cloud-fname-inp" id="gdrive-filename" placeholder="filename.slotforge">
+            <input class="cloud-fname-inp" id="gdrive-filename" placeholder="filename.spinative">
             <button class="cloud-open-btn" onclick="openFromGdrive()">Open</button>
             <button class="cloud-save-btn" onclick="saveToGdrive()">💾 Save</button>
           </div>
@@ -1822,7 +1827,7 @@
             <div class="cloud-loading">Loading…</div>
           </div>
           <div class="cloud-actions">
-            <input class="cloud-fname-inp" id="od-filename" placeholder="filename.slotforge">
+            <input class="cloud-fname-inp" id="od-filename" placeholder="filename.spinative">
             <button class="cloud-open-btn" onclick="openFromOneDrive()">Open</button>
             <button class="cloud-save-btn" onclick="saveToOneDrive()">💾 Save</button>
           </div>

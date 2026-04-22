@@ -14,7 +14,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v93'
+const EDITOR_VERSION = 'v94'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -412,24 +412,43 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         {/* Save status */}
         <SaveBadge state={saveState} />
 
-        {/* Version label input */}
-        <input
-          type="text"
-          placeholder="Version label…"
-          value={versionLabel}
-          onChange={e => setVersionLabel(e.target.value)}
-          style={{
-            padding:      '4px 10px',
-            borderRadius: 6,
-            fontSize:     11,
-            background:   C.bg,
-            border:       `1px solid rgba(255,255,255,.1)`,
-            color:        C.tx,
-            outline:      'none',
-            width:        160,
-            fontFamily:   C.font,
-          }}
-        />
+        {/* Version label input — renamed from "Version label…" per UX
+            critique (looked like a search field because of its position).
+            Small tag icon prefix clarifies it's for tagging a named
+            version before Save, not searching. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '0 10px',
+          borderRadius: 6,
+          background:   C.bg,
+          border:       `1px solid rgba(255,255,255,.1)`,
+          width: 180,
+        }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2"
+               strokeLinecap="round" strokeLinejoin="round"
+               style={{ color: C.txMuted, flexShrink: 0 }} aria-hidden="true">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+            <line x1="7" y1="7" x2="7.01" y2="7"/>
+          </svg>
+          <input
+            type="text"
+            placeholder="Add version note…"
+            title="Add a note that will be attached to the next saved snapshot"
+            value={versionLabel}
+            onChange={e => setVersionLabel(e.target.value)}
+            style={{
+              padding:      '4px 0',
+              fontSize:     11,
+              background:   'transparent',
+              border:       'none',
+              color:        C.tx,
+              outline:      'none',
+              width:        '100%',
+              fontFamily:   C.font,
+            }}
+          />
+        </div>
 
         {/* Save button */}
         <button
