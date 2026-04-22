@@ -109,13 +109,23 @@ export function SingleGeneratePopup({
 
   // ── Symbol-only controls (Part B) ─────────────────────────────────────────
   // Whether to include a decorative frame (defaults to ON for symbols),
-  // and which colour to weight toward (defaults to the tier palette entry
-  // for this slot's position in the project's symbol count).
+  // and which colour to weight toward. Default color selection now
+  // respects the project's colour palette: if the user has set any
+  // primary/bg/accent colour in Project Settings, tier-colour defaults
+  // to 'none' (so it doesn't fight the palette as a competing dominant
+  // hue). With no palette set, the tier default stands as before.
   const tier = symbolTierInfo(slotKey, projectMeta as ProjectMeta)
   const defaultColor = defaultColorForSymbol(slotKey, projectMeta as ProjectMeta)
   const palette = tier.count ? tierColorPalette(tier.count) : []
+  const hasProjectPalette = !!(
+    (projectMeta as ProjectMeta)?.colorPrimary ||
+    (projectMeta as ProjectMeta)?.colorBg      ||
+    (projectMeta as ProjectMeta)?.colorAccent
+  )
+  // Initial tier colour: 'none' when palette present, tier default otherwise.
+  const initialTierColor = hasProjectPalette ? '' : (defaultColor ?? '')
   const [symbolFrame, setSymbolFrame] = useState<boolean>(true)
-  const [symbolColor, setSymbolColor] = useState<string>(defaultColor ?? '')
+  const [symbolColor, setSymbolColor] = useState<string>(initialTierColor)
 
   // ── Prompt composition (Part 3) ───────────────────────────────────────────
   // Preview contents, plus UI flags for the collapsible panel + copy toast.
@@ -142,9 +152,17 @@ export function SingleGeneratePopup({
     setCustomPrompt(savedOverride)
     setRefImages([])
     setError(null)
-    // Symbol defaults reset per slot — frame on, colour auto from tier
+    // Symbol defaults reset per slot. Frame on. Colour falls back to the
+    // tier default only when the project palette is empty; otherwise we
+    // start from 'none' so the project palette drives the mood
+    // uncontested and tier accents stay opt-in.
     setSymbolFrame(true)
-    setSymbolColor(defaultColorForSymbol(slotKey, projectMeta as ProjectMeta) ?? '')
+    const hasPalette = !!(
+      (projectMeta as ProjectMeta)?.colorPrimary ||
+      (projectMeta as ProjectMeta)?.colorBg      ||
+      (projectMeta as ProjectMeta)?.colorAccent
+    )
+    setSymbolColor(hasPalette ? '' : (defaultColorForSymbol(slotKey, projectMeta as ProjectMeta) ?? ''))
     setSections(null)
     setFinalPrompt('')
     setFinalNegative('')
@@ -511,7 +529,10 @@ export function SingleGeneratePopup({
               </button>
             </div>
 
-            {/* Predominant colour picker — swatches for the project's tier palette */}
+            {/* Tier-accent colour picker — swatches for the project's tier palette.
+                Reworded from "Predominant colour" since the tier colour is now
+                injected as an accent highlight that layers over the project
+                palette, not a dominant hue that replaces it. */}
             {palette.length > 0 && (
               <>
                 <div style={{
@@ -519,7 +540,7 @@ export function SingleGeneratePopup({
                   textTransform: 'uppercase', marginBottom: 6,
                   display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
                 }}>
-                  <span>Predominant colour</span>
+                  <span>Tier accent colour</span>
                   {symbolColor && symbolColor !== defaultColor && (
                     <button
                       onClick={() => setSymbolColor(defaultColor ?? '')}
@@ -584,6 +605,21 @@ export function SingleGeneratePopup({
                   >
                     none
                   </button>
+                </div>
+                {/* Footnote clarifying the role hierarchy so users who set a
+                    project palette understand why 'none' was pre-selected. */}
+                <div style={{
+                  fontSize: 10, color: T.textFaint, lineHeight: 1.5,
+                  marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 6,
+                }}>
+                  <Info size={10} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span>
+                    Tier accent is a secondary highlight layered over the
+                    project's colour palette — not a dominant hue.
+                    {hasProjectPalette
+                      ? ' Pre-set to "none" because a project palette is already active; pick a swatch if you want tier-specific distinguishing colour.'
+                      : ' Default falls back to the tier\u00A0⭑ since no project palette is set.'}
+                  </span>
                 </div>
               </>
             )}

@@ -432,6 +432,19 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       : `Starting generation for theme: "${theme || '(from project settings)'}"`
     )
 
+    // Per-slot prompt overrides saved by the user in the Review Prompts
+    // modal. Previously only the Single popup path honoured these — the
+    // bulk path silently discarded them, destroying user trust. Now we
+    // forward them to /api/generate which feeds them into pipeline.ts.
+    const savedOverrides = readPromptOverrides(projectId)
+    const activeOverrides = Object.fromEntries(
+      Object.entries(savedOverrides).filter(([k, v]) => targetTypes.includes(k as AssetType) && v && v.trim())
+    )
+    const overrideKeys = Object.keys(activeOverrides)
+    if (overrideKeys.length) {
+      addLog(`Using ${overrideKeys.length} per-slot override${overrideKeys.length === 1 ? '' : 's'}: ${overrideKeys.join(', ')}`)
+    }
+
     try {
       const res = await fetch('/api/generate', {
         method:  'POST',
@@ -443,6 +456,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           style_id:     styleId || undefined,
           project_meta: projectMeta ?? undefined,
           asset_types:  fillGaps ? targetTypes : undefined,
+          custom_prompts: overrideKeys.length ? activeOverrides : undefined,
         }),
         signal: ctrl.signal,
       })

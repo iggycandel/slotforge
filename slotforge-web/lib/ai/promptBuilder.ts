@@ -664,9 +664,15 @@ export function buildPrompt(
       )
     }
     if (options?.primaryColor) {
+      // Phrased as an ACCENT, not the dominant hue, so it doesn't fight
+      // the project's colour palette (which is already injected as a
+      // mood cue in §3.3 Context). Tier colour is a secondary marker
+      // that distinguishes siblings within a tiered set; the project
+      // palette remains in charge of the overall composition.
       differentiators.push(
-        `predominantly ${options.primaryColor} as the dominant hue, with ` +
-        'complementary supporting tones used sparingly to preserve the tier reading'
+        `tier-distinguishing accent in ${options.primaryColor}, applied as a ` +
+        `secondary highlight on this tier only; the project's colour mood ` +
+        `remains the dominant palette`
       )
     }
   }

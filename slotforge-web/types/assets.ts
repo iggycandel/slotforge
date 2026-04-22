@@ -183,6 +183,11 @@ export interface GenerateRequest {
   /** Optional per-asset ratio override. Bulk calls apply this to every
    *  asset unless the asset type has its own default. */
   ratio?:       AspectRatio
+  /** Per-slot prompt overrides (keyed on asset_type / feature slot key).
+   *  When a type has an entry here, the pipeline substitutes the value
+   *  for the composed prompt before calling the provider. Empty / missing
+   *  entries fall through to normal composition. */
+  custom_prompts?: Record<string, string>
 }
 
 export interface GenerateResponse {

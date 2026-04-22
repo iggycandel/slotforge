@@ -35,6 +35,12 @@ const RequestSchema = z.object({
   asset_types:  z.array(z.string()).optional(),
   /** Optional batch-wide aspect ratio override. */
   ratio:        z.enum(RATIO_VALUES).optional(),
+  /** Per-slot prompt overrides from the Review Prompts modal
+   *  (localStorage on the client). Keys are asset slot keys (legacy
+   *  AssetType or feature slot), values are the full composed prompt
+   *  the user hand-edited. When a type has an entry here, the pipeline
+   *  substitutes it into built.prompt before calling the provider. */
+  custom_prompts: z.record(z.string().max(2000)).optional(),
 })
 
 // ─── SSE helper ─────────────────────────────────────────────────────────────
@@ -82,7 +88,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { theme, project_id, provider, style_id, project_meta, asset_types, ratio } = parsed.data
+  const { theme, project_id, provider, style_id, project_meta, asset_types, ratio, custom_prompts } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -117,7 +123,7 @@ export async function POST(req: NextRequest) {
         emit('start', { total: TOTAL, theme, fillGaps: !!asset_types?.length })
 
         const pipelineResult = await generateSlotAssets(
-          { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined, asset_types: activeTypes, ratio },
+          { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined, asset_types: activeTypes, ratio, custom_prompts },
           {
             onProgress: (completed, total, lastType) => {
               emit('progress', { completed, total, lastType })

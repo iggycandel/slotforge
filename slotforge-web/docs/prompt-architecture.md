@@ -153,7 +153,21 @@ inside `buildPrompt` directly; differs sharply per category:
 When popup submits with `symbol_frame` / `symbol_color`:
 - Frame ON: `"inside an ornate gem-studded metallic frame, premium slot symbol badge with decorative border, polished metallic rim, icon sits within the frame"`
 - Frame OFF: `"no decorative frame or border, pure isolated subject, no ornamental ring or badge shape around the icon, clean cutout against transparency"`
-- Colour: `"predominantly <colour> as the dominant hue, with complementary supporting tones used sparingly to preserve the tier reading"`
+- Colour (TIER ACCENT — not dominant): `"tier-distinguishing accent in <colour>, applied as a secondary highlight on this tier only; the project's colour mood remains the dominant palette"`
+
+**Priority rule between project palette (§3.3) and tier accent:**
+
+The project palette in §3.3 Context is the dominant signal — injected as a
+mood cue with softer "inspired by" wording. Tier colour in §3.4 is phrased
+as a secondary accent that only highlights the current tier. The two no
+longer compete for dominance.
+
+The popup reflects this in two ways:
+1. When the project has any colour set (`colorPrimary` / `colorBg` /
+   `colorAccent`), the Tier-accent picker defaults to `'none'` so the
+   palette stays uncontested. A footnote in the popup explains why.
+2. When the project palette is empty, the tier default ⭑ is pre-selected
+   as before (the palette isn't there to take precedence).
 
 These only apply to high/low/wild/scatter categories; feature slots ignore them.
 
@@ -293,8 +307,12 @@ cartoon, flat, illustrated, stylized
 
 ## 7. Known gaps and future changes
 
-- **Bulk `/api/generate` doesn't honour per-slot Review Prompts overrides** yet.
-  Saved overrides only take effect via the Single popup path today.
+- ~~**Bulk `/api/generate` doesn't honour per-slot Review Prompts overrides**~~
+  **Fixed.** `AssetsWorkspace` reads `readPromptOverrides()` and forwards them
+  as `custom_prompts` on every bulk call; `pipeline.ts` substitutes the
+  override into `built.prompt` before calling the provider. The batch log
+  confirms the override count: `"Using 3 per-slot overrides: symbol_high_1,
+  symbol_low_2, logo"`.
 - **Feature slots (`bonuspick.*`, etc.) don't accept `symbol_frame` / `symbol_color`** hints.
   Add wiring if needed.
 - **Reference image attachment** is a UI-only stub in the popup. Provider-side

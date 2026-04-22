@@ -77,6 +77,11 @@ export async function generateSlotAssets(
     const results = await Promise.allSettled(
       batch.map(async type => {
         const built = buildPrompt(type, theme, req.style_id, meta)
+        // Per-slot override from the Review Prompts modal — substitute
+        // before calling the provider so bulk runs honour the user's
+        // hand-edited prompts (previously only the Single popup path did).
+        const override = req.custom_prompts?.[type]
+        if (override && override.trim()) built.prompt = override
         // Apply the optional batch-wide ratio override. Per-asset defaults
         // still kick in for any asset whose caller didn't pass a ratio —
         // see DEFAULT_RATIO_FOR_ASSET in lib/ai/index.ts.
