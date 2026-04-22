@@ -8,9 +8,9 @@
 // images. References are stored locally for now (sent as data URLs in the
 // request); reference-image conditioning on the provider side ships in P3.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useRef, useState } from 'react'
-import { X, Sparkles, Loader2, Upload, ImageIcon, Info } from 'lucide-react'
-import type { AspectRatio, GeneratedAsset } from '@/types/assets'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { X, Sparkles, Loader2, Upload, Info, ChevronDown, ChevronRight, Copy, FileText } from 'lucide-react'
+import type { AspectRatio, GeneratedAsset, PromptSections } from '@/types/assets'
 import { GRAPHIC_STYLES }    from '@/lib/ai/styles'
 
 export interface SingleGeneratePopupProps {
@@ -104,6 +104,17 @@ export function SingleGeneratePopup({
   const [error,       setError]       = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // ── Prompt composition (Part 3) ───────────────────────────────────────────
+  // Preview contents, plus UI flags for the collapsible panel + copy toast.
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError,   setPreviewError]   = useState<string | null>(null)
+  const [sections,       setSections]       = useState<PromptSections | null>(null)
+  const [finalPrompt,    setFinalPrompt]    = useState<string>('')
+  const [finalNegative,  setFinalNegative]  = useState<string>('')
+  const [promptOpen,     setPromptOpen]     = useState<boolean>(false)
+  const [advancedOpen,   setAdvancedOpen]   = useState<boolean>(false)
+  const [copiedLabel,    setCopiedLabel]    = useState<string | null>(null)
+
   // Reset form whenever a new slot opens the dialog
   useEffect(() => {
     if (!open) return
@@ -113,7 +124,58 @@ export function SingleGeneratePopup({
     setCustomPrompt('')
     setRefImages([])
     setError(null)
+    setSections(null)
+    setFinalPrompt('')
+    setFinalNegative('')
+    setPreviewError(null)
+    setPromptOpen(false)
+    setAdvancedOpen(false)
+    setCopiedLabel(null)
   }, [open, slotKey, defaultStyleId])
+
+  // Fetch the composed prompt preview. Called on-demand when the user
+  // opens the "Prompt composition" panel, and again when they change
+  // style (since style is the dominant signal in the identity anchor).
+  // Not called on ratio or quality changes — those don't affect prompt
+  // text, only the image generation parameters.
+  const fetchPreview = useCallback(async () => {
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const res = await fetch('/api/ai-single/preview', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          asset_type:   slotKey,
+          theme,
+          project_id:   projectId,
+          style_id:     styleId || undefined,
+          project_meta: projectMeta,
+        }),
+      })
+      const raw  = await res.text()
+      type PreviewResponse = { prompt?: string; negativePrompt?: string; sections?: PromptSections | null; error?: string }
+      const data: PreviewResponse = (() => { try { return raw ? JSON.parse(raw) as PreviewResponse : {} } catch { return {} } })()
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || `Preview failed (${res.status})`)
+      }
+      setSections(data.sections ?? null)
+      setFinalPrompt(data.prompt ?? '')
+      setFinalNegative(data.negativePrompt ?? '')
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Preview failed')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }, [slotKey, theme, projectId, styleId, projectMeta])
+
+  // Refetch when the panel is opened (lazy — don't pay for a preview call
+  // if the user never opens the panel) and when the style changes while it's
+  // already open.
+  useEffect(() => {
+    if (!open || !promptOpen) return
+    void fetchPreview()
+  }, [open, promptOpen, styleId, fetchPreview])
 
   // Close on ESC
   useEffect(() => {
@@ -124,6 +186,18 @@ export function SingleGeneratePopup({
   }, [open, generating, onClose])
 
   if (!open) return null
+
+  function handleCopy(key: string, text: string) {
+    if (!text) return
+    try {
+      navigator.clipboard?.writeText(text)
+      setCopiedLabel(key)
+      setTimeout(() => setCopiedLabel(prev => (prev === key ? null : prev)), 1500)
+    } catch {
+      // Clipboard API can fail in non-secure contexts; silent fallback —
+      // the user can still read the text on-screen.
+    }
+  }
 
   async function handleRefUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).slice(0, 3 - refImages.length)
@@ -408,16 +482,151 @@ export function SingleGeneratePopup({
           </div>
         </Section>
 
+        {/* ── Prompt composition (Part 3: transparency) ─────────────────── */}
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border}` }}>
+          <button
+            onClick={() => setPromptOpen(v => !v)}
+            style={{
+              width: '100%',
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: 0, background: 'transparent', border: 'none',
+              color: T.textMuted, cursor: 'pointer',
+              fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase',
+              fontFamily: T.font,
+            }}
+          >
+            {promptOpen
+              ? <ChevronDown  size={12} />
+              : <ChevronRight size={12} />}
+            <span>Prompt composition</span>
+            <span style={{ color: T.textFaint, fontSize: 9, textTransform: 'none', letterSpacing: 0 }}>
+              see what the model will receive
+            </span>
+          </button>
+
+          {promptOpen && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {previewLoading && !sections && (
+                <div style={{ fontSize: 11, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> Composing…
+                </div>
+              )}
+              {previewError && (
+                <div style={{ fontSize: 11, color: T.red }}>{previewError}</div>
+              )}
+
+              {sections && (
+                <>
+                  {/* Identity — style + theme */}
+                  <PromptLayer
+                    label="Identity"
+                    hint="style · theme"
+                    body={sections.identity || '(none — project has no style or theme set)'}
+                    onCopy={() => handleCopy('identity', sections.identity)}
+                    copied={copiedLabel === 'identity'}
+                  />
+
+                  {/* Template — category base */}
+                  <PromptLayer
+                    label="Template"
+                    hint="category base"
+                    body={sections.template}
+                    onCopy={() => handleCopy('template', sections.template)}
+                    copied={copiedLabel === 'template'}
+                  />
+
+                  {/* Context — meta-derived lines */}
+                  <PromptLayer
+                    label="Context"
+                    hint={`${sections.context.length} line${sections.context.length === 1 ? '' : 's'} from project meta`}
+                    body={sections.context.length ? sections.context.join('\n') : '(no context — Project Settings are empty)'}
+                    onCopy={() => handleCopy('context', sections.context.join(', '))}
+                    copied={copiedLabel === 'context'}
+                  />
+
+                  {/* Differentiator — tier/suit/name */}
+                  {sections.differentiator.length > 0 && (
+                    <PromptLayer
+                      label="Differentiator"
+                      hint="what makes this slot unique in its set"
+                      body={sections.differentiator.join('\n')}
+                      onCopy={() => handleCopy('differentiator', sections.differentiator.join(', '))}
+                      copied={copiedLabel === 'differentiator'}
+                    />
+                  )}
+
+                  {/* Advanced — quality blocks + negatives (collapsed) */}
+                  <button
+                    onClick={() => setAdvancedOpen(v => !v)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: 0, background: 'transparent', border: 'none',
+                      color: T.textFaint, cursor: 'pointer',
+                      fontSize: 9, letterSpacing: '.08em', textTransform: 'uppercase',
+                      fontFamily: T.font,
+                    }}
+                  >
+                    {advancedOpen
+                      ? <ChevronDown  size={10} />
+                      : <ChevronRight size={10} />}
+                    Advanced (quality + negatives)
+                  </button>
+                  {advancedOpen && (
+                    <>
+                      <PromptLayer
+                        label="Quality blocks"
+                        hint="applied to every prompt"
+                        body={[sections.quality.readability, sections.quality.consistency, sections.quality.core].join('\n')}
+                        onCopy={() => handleCopy('quality', [sections.quality.readability, sections.quality.consistency, sections.quality.core].join(', '))}
+                        copied={copiedLabel === 'quality'}
+                      />
+                      <PromptLayer
+                        label="Negative prompt"
+                        hint="what the model should NOT render"
+                        body={finalNegative}
+                        onCopy={() => handleCopy('negative', finalNegative)}
+                        copied={copiedLabel === 'negative'}
+                      />
+                    </>
+                  )}
+
+                  {/* Use-as-custom-prompt button */}
+                  <button
+                    onClick={() => setCustomPrompt(finalPrompt)}
+                    disabled={!finalPrompt || customPrompt === finalPrompt}
+                    style={{
+                      marginTop: 4,
+                      padding: '6px 10px',
+                      background: customPrompt === finalPrompt ? 'rgba(52,211,153,.08)' : 'rgba(201,168,76,.08)',
+                      border: `1px solid ${customPrompt === finalPrompt ? 'rgba(52,211,153,.3)' : 'rgba(201,168,76,.25)'}`,
+                      borderRadius: 6,
+                      color: customPrompt === finalPrompt ? T.green : T.gold,
+                      cursor: !finalPrompt || customPrompt === finalPrompt ? 'default' : 'pointer',
+                      fontSize: 11, fontFamily: T.font, fontWeight: 600,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <FileText size={11} />
+                    {customPrompt === finalPrompt
+                      ? 'Loaded — edit below'
+                      : 'Copy composed prompt into the editor below'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* ── Custom prompt override ────────────────────────────────────── */}
         <Section
           title="Custom prompt"
-          subtitle="Leave blank to use the default composed prompt"
+          subtitle="Leave blank to use the default composed prompt; or load it above and edit"
         >
           <textarea
             value={customPrompt}
             onChange={e => setCustomPrompt(e.target.value)}
             placeholder="Override the auto-composed prompt…"
-            rows={3}
+            rows={customPrompt ? 6 : 3}
             maxLength={2000}
             style={{
               width: '100%',
@@ -502,6 +711,66 @@ export function SingleGeneratePopup({
 }
 
 // ─── Section wrapper ─────────────────────────────────────────────────────────
+// ─── Prompt composition layer card (Part 3) ───────────────────────────────
+// One card per layer in the composed prompt: Identity, Template, Context,
+// Differentiator, Quality blocks, Negatives. Read-only body + a small copy
+// button. Used inside the collapsible "Prompt composition" panel.
+function PromptLayer({
+  label, hint, body, onCopy, copied,
+}: { label: string; hint: string; body: string; onCopy: () => void; copied: boolean }) {
+  return (
+    <div style={{
+      background:   T.surfaceHigh,
+      border:       `1px solid ${T.border}`,
+      borderRadius: 6,
+      padding:      '8px 10px',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 8, marginBottom: 4,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 600, color: T.gold,
+            letterSpacing: '.08em', textTransform: 'uppercase',
+          }}>
+            {label}
+          </span>
+          <span style={{
+            fontSize: 9, color: T.textFaint,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {hint}
+          </span>
+        </div>
+        <button
+          onClick={onCopy}
+          title="Copy"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 3,
+            padding: '3px 6px', borderRadius: 4,
+            background: copied ? 'rgba(52,211,153,.12)' : 'transparent',
+            border:     `1px solid ${copied ? 'rgba(52,211,153,.3)' : T.border}`,
+            color:      copied ? T.green : T.textMuted,
+            cursor:     'pointer', fontSize: 9, fontFamily: T.font,
+            flexShrink: 0,
+          }}
+        >
+          <Copy size={9} />
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <div style={{
+        fontSize: 11, color: T.textPrimary, lineHeight: 1.5,
+        fontFamily: "'DM Mono',monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        opacity: 0.9,
+      }}>
+        {body}
+      </div>
+    </div>
+  )
+}
+
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border}` }}>

@@ -228,9 +228,34 @@ export type PromptCategory =
   | 'spin_button'
   | 'jackpot_label'
 
+/** Structured breakdown of a composed prompt, returned alongside the
+ *  concatenated string. Enables the Single popup to display the hierarchy
+ *  the model is receiving and lets the user see what each layer contributes
+ *  before overriding via custom_prompt. */
+export interface PromptSections {
+  identity:        string   // style + theme (game name omitted for bg)
+  template:        string   // category base (slot symbol / background / etc)
+  context:         string[] // one entry per meta-derived line (mood, palette, world, …)
+  differentiator:  string[] // tier / suit / "depicted as:" lines
+  quality: {
+    readability:   string
+    consistency:   string
+    core:          string
+  }
+  negatives: {
+    universal:     string   // NEG_UNIVERSAL
+    framing:       string   // NEG_ISOLATED or NEG_ENVIRONMENT
+    extra:         string   // NEG_SYMBOLS (isolated) or NEG_SCENE_TEXT (env)
+    style:         string   // style.negativeModifier, if any
+  }
+}
+
 export interface BuiltPrompt {
   category: PromptCategory
   assetType: AssetType
   prompt:   string
   negativePrompt: string
+  /** Structured view of the same prompt, used by the popup's
+   *  "Prompt composition" section and the /preview endpoint. */
+  sections?: PromptSections
 }

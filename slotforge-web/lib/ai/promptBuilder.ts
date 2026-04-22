@@ -11,7 +11,7 @@
 //   • Negative prompts tuned per category to prevent style drift
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AssetType, BuiltPrompt, PromptCategory, ProjectMeta } from '@/types/assets'
+import type { AssetType, BuiltPrompt, PromptCategory, PromptSections, ProjectMeta } from '@/types/assets'
 import { getStyleById } from '@/lib/ai/styles'
 
 // ─── Global Quality Blocks ───────────────────────────────────────────────────
@@ -395,10 +395,12 @@ function sanitizeForBackground(text: string): string {
 }
 
 // ─── Build per-asset meta context ────────────────────────────────────────────
-// Injected AFTER the template — adds world/mood/colour specifics for this asset.
+// Injected AFTER the template — adds world/mood/colour specifics for this
+// asset. Returns one string per line so callers can either join (legacy
+// prompt) or present each fragment individually (Prompt composition UI).
 
-function buildAssetContext(type: AssetType, category: PromptCategory, meta?: ProjectMeta): string {
-  if (!meta) return ''
+function buildAssetContext(type: AssetType | string, category: PromptCategory, meta?: ProjectMeta): string[] {
+  if (!meta) return []
 
   const parts: string[] = []
 
@@ -455,7 +457,7 @@ function buildAssetContext(type: AssetType, category: PromptCategory, meta?: Pro
   const artRef = sanitizeUserText(meta.artRef)
   if (artRef) parts.push(`visual reference: ${artRef}`)
 
-  return parts.filter(Boolean).join(', ')
+  return parts.filter(Boolean)
 }
 
 // ─── Resolve symbol name for a given type ────────────────────────────────────
@@ -522,7 +524,7 @@ export function buildPrompt(
   })
 
   // ── [2] Asset template ─────────────────────────────────────────────────────
-  let assetBlock = TEMPLATES[category]()
+  const assetBlock = TEMPLATES[category]()
 
   // ── [3] Asset context (world/mood/colour/art direction) ────────────────────
   const assetContext = buildAssetContext(type, category, meta)
@@ -558,7 +560,7 @@ export function buildPrompt(
   const segments = [
     identityAnchor,
     assetBlock,
-    assetContext,
+    ...assetContext,
     ...differentiators,
     READABILITY,
     CONSISTENCY,
@@ -570,19 +572,24 @@ export function buildPrompt(
   // ── Assemble negative prompt ───────────────────────────────────────────────
   const style = styleId ? getStyleById(styleId) : undefined
   const isEnvironment = category === 'background'
-  const negParts = [
-    NEG_UNIVERSAL,
-    isEnvironment ? NEG_ENVIRONMENT : NEG_ISOLATED,
-    !isEnvironment ? NEG_SYMBOLS : '',
-    // Scene-level text exclusion for backgrounds: prevents the model
-    // from painting signage, neon, brand names, graffiti onto what
-    // should be a clean backdrop for UI overlay.
-    isEnvironment  ? NEG_SCENE_TEXT : '',
-    style?.negativeModifier ?? '',
-  ].filter(Boolean)
-  const negativePrompt = negParts.join(', ')
+  const negFraming = isEnvironment ? NEG_ENVIRONMENT : NEG_ISOLATED
+  // Scene-level text exclusion for backgrounds: prevents the model
+  // from painting signage, neon, brand names, graffiti onto what
+  // should be a clean backdrop for UI overlay.
+  const negExtra   = isEnvironment ? NEG_SCENE_TEXT : NEG_SYMBOLS
+  const negStyle   = style?.negativeModifier ?? ''
+  const negativePrompt = [NEG_UNIVERSAL, negFraming, negExtra, negStyle].filter(Boolean).join(', ')
 
-  return { category, assetType: type, prompt, negativePrompt }
+  const sections: PromptSections = {
+    identity:       identityAnchor,
+    template:       assetBlock,
+    context:        assetContext,
+    differentiator: differentiators,
+    quality:   { readability: READABILITY, consistency: CONSISTENCY, core: CORE_QUALITY },
+    negatives: { universal: NEG_UNIVERSAL, framing: negFraming, extra: negExtra, style: negStyle },
+  }
+
+  return { category, assetType: type, prompt, negativePrompt, sections }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -780,34 +787,43 @@ export function buildFeatureSlotPrompt(
   })
 
   // Isolated vs scene — drives both framing and negative prompt
-  const framing = spec.isScene ? ENVIRONMENT_BASE : ISOLATED_BASE
-  const negExtra = spec.isScene
-    ? (NEG_ENVIRONMENT + ', ' + NEG_SCENE_TEXT)   // scene: kill signage/text
-    : (NEG_ISOLATED    + ', ' + NEG_SYMBOLS)      // isolated: kill glyphs on the subject
+  const framing    = spec.isScene ? ENVIRONMENT_BASE : ISOLATED_BASE
+  const negFraming = spec.isScene ? NEG_ENVIRONMENT  : NEG_ISOLATED
+  const negExtra   = spec.isScene ? NEG_SCENE_TEXT   : NEG_SYMBOLS
 
   // Mood / colour / world context — reuse the same helper as legacy assets.
   // Category is passed so world-building context is included for backgrounds.
-  const category    = spec.category ?? 'reel_frame'
-  const assetContext = buildAssetContext(slotKey as AssetType, category, meta)
+  const category     = spec.category ?? 'reel_frame'
+  const assetContext = buildAssetContext(slotKey, category, meta)
+
+  // Template = framing + slot-specific spec. Presented as one cohesive line
+  // in the Prompt composition UI; split here we would either hide the
+  // framing constraint (ISOLATED/ENVIRONMENT) or have a two-line template
+  // that's awkward to edit. Keeping them joined matches the model's view.
+  const template = `${framing}, ${spec.template}`
 
   const segments = [
     identityAnchor,
-    framing,
-    spec.template,
-    assetContext,
+    template,
+    ...assetContext,
     READABILITY,
     CONSISTENCY,
     CORE_QUALITY,
   ].filter(Boolean)
 
-  const prompt = segments.join(', ')
-  const style  = styleId ? getStyleById(styleId) : undefined
-  const negParts = [
-    NEG_UNIVERSAL,
-    negExtra,
-    style?.negativeModifier ?? '',
-  ].filter(Boolean)
-  const negativePrompt = negParts.join(', ')
+  const prompt   = segments.join(', ')
+  const style    = styleId ? getStyleById(styleId) : undefined
+  const negStyle = style?.negativeModifier ?? ''
+  const negativePrompt = [NEG_UNIVERSAL, negFraming, negExtra, negStyle].filter(Boolean).join(', ')
 
-  return { category, assetType: slotKey as AssetType, prompt, negativePrompt }
+  const sections: PromptSections = {
+    identity:       identityAnchor,
+    template,
+    context:        assetContext,
+    differentiator: [],  // feature slots encode differentiation in their template
+    quality:   { readability: READABILITY, consistency: CONSISTENCY, core: CORE_QUALITY },
+    negatives: { universal: NEG_UNIVERSAL, framing: negFraming, extra: negExtra, style: negStyle },
+  }
+
+  return { category, assetType: slotKey as AssetType, prompt, negativePrompt, sections }
 }
