@@ -3575,8 +3575,20 @@ document.getElementById('parse-gdd-btn')?.addEventListener('click', async functi
 });
 
 // Apply a GDDFields object returned by /api/parse-gdd to the editor's form fields.
+// The previous version set P.features[key] = true but never re-ran buildFeatures
+// or rebuildTabs, so the new feature screens + feature toggles + config panels
+// were all stuck in their pre-parse state in the UI. Similarly it called
+// refresh() (rebuilds canvas) but not rebuildTabs (rebuilds the top tab bar) so
+// new feature tabs never appeared. The end result looked like "nothing was
+// parsed" to the user even though the API payload was applied to P. This fix
+// explicitly re-runs every downstream propagation hook after mutating P.
 function applyGDDFields(f){
   if(!f) return;
+  // Surface the raw payload to the devtools console so we can diagnose
+  // partial applies (GPT missed a field) vs wiring gaps (field present
+  // but no UI change) without another round-trip.
+  try { console.log('[gdd.parse] applying fields:', f); } catch(_){}
+
   const setVal = (id, val) => {
     if(val == null || val === '') return;
     const el = document.getElementById(id);
@@ -3606,6 +3618,9 @@ function applyGDDFields(f){
     P.reelset = f.reelset;
     const rSel = document.getElementById('reel-sel');
     if(rSel){ rSel.value = f.reelset; rSel.dispatchEvent(new Event('change', {bubbles:true})); }
+    // The change handler above rebuilds the canvas; also redraw the reel
+    // viz widget in the Project panel in case the dispatch didn't propagate.
+    try { if (typeof renderReelViz === 'function') renderReelViz(); } catch(_){}
   }
   if(f.rtp){
     const rtpInps = document.getElementById('ptab-reels')?.querySelectorAll('input[type=number]');
@@ -3634,14 +3649,15 @@ function applyGDDFields(f){
   });
 
   // ── Features ──
+  // Mutate P.features first; propagation (buildFeatures / rebuildTabs) fires
+  // at the end of this function so every enabled feature's toggle, config
+  // panel, and top-level tab all render correctly in a single pass.
+  let featureChanged = false;
   if(Array.isArray(f.features)){
     f.features.forEach(key => {
       if(key in P.features){
+        if(!P.features[key]) featureChanged = true;
         P.features[key] = true;
-        const ftEl = document.getElementById('ft-'+key);
-        if(ftEl) ftEl.classList.add('on');
-        // Special: show Hold & Spin tab if enabled
-        if(key==='holdnspin') document.getElementById('hns-tab')?.style && (document.getElementById('hns-tab').style.display='flex');
       }
     });
   }
@@ -3671,9 +3687,16 @@ function applyGDDFields(f){
     f.symbolSpecialNames.forEach((name, i)=>{ if(specials[i]){ specials[i].name = name; specials[i].id = name; } });
   }
 
-  renderSymbolTable();
-  renderLayers();
-  refresh();
+  // ── Propagation pass ─────────────────────────────────────────────────
+  // Re-render every surface that depends on mutated state. Mirrors what a
+  // single feature-toggle click would trigger, but bundled so one parse
+  // lands cleanly in one tick.
+  try { if (featureChanged && typeof buildFeatures === 'function')      buildFeatures();     } catch(e){ console.error('[gdd.parse] buildFeatures failed:', e); }
+  try { if (typeof rebuildTabs === 'function')                          rebuildTabs();       } catch(e){ console.error('[gdd.parse] rebuildTabs failed:', e); }
+  try { if (P.features.expanding_wild && typeof initEWActiveScreens === 'function') initEWActiveScreens(); } catch(e){ console.error('[gdd.parse] initEWActiveScreens failed:', e); }
+  try { renderSymbolTable(); } catch(e){ console.error('[gdd.parse] renderSymbolTable failed:', e); }
+  try { renderLayers();      } catch(e){ console.error('[gdd.parse] renderLayers failed:', e); }
+  try { refresh();           } catch(e){ console.error('[gdd.parse] refresh failed:', e); }
   markDirty();
   showToast('✓ Settings applied from GDD');
 }
