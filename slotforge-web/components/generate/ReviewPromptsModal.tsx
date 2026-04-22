@@ -155,6 +155,21 @@ export function ReviewPromptsModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [open, editingKey, onClose])
 
+  // Hooks MUST be called in the same order on every render. Keep useMemo
+  // above the early `if (!open) return null` below, otherwise closed→open
+  // transitions change the hook count and trigger React #310.
+  const grouped = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    const map = new Map<string, ReviewSlot[]>()
+    for (const s of slots) {
+      if (needle && !s.label.toLowerCase().includes(needle) && !s.key.toLowerCase().includes(needle)) continue
+      const list = map.get(s.group) ?? []
+      list.push(s)
+      map.set(s.group, list)
+    }
+    return Array.from(map.entries())
+  }, [slots, filter])
+
   if (!open) return null
 
   function startEdit(key: string, composed: string) {
@@ -188,19 +203,6 @@ export function ReviewPromptsModal({
     writePromptOverrides(projectId, next)
     onOverridesChanged?.(next)
   }
-
-  // Grouping for rendering
-  const grouped = useMemo(() => {
-    const needle = filter.trim().toLowerCase()
-    const map = new Map<string, ReviewSlot[]>()
-    for (const s of slots) {
-      if (needle && !s.label.toLowerCase().includes(needle) && !s.key.toLowerCase().includes(needle)) continue
-      const list = map.get(s.group) ?? []
-      list.push(s)
-      map.set(s.group, list)
-    }
-    return Array.from(map.entries())
-  }, [slots, filter])
 
   const overrideCount = Object.values(overrides).filter(v => v && v.trim()).length
 
