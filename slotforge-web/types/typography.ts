@@ -134,7 +134,15 @@ export interface TypographySpec {
 
 /** Full export bundle — what the Download JSON button emits. Wraps the
  *  raw TypographySpec with meta + a resolved fonts block so front-end
- *  devs don't need the pairings library to self-host the fonts. */
+ *  devs don't need the pairings library to self-host the fonts.
+ *
+ *  Bundles ship BOTH a web-first variant (CSS drop-shadow + em letter-
+ *  spacing + glow layers) and a Pixi v8 variant (polar-coord dropShadow
+ *  + pixel letter-spacing + GlowFilter-shaped filters array) so a
+ *  consumer picks whichever matches their runtime without a second
+ *  generation.  The Pixi side is filled in by lib/typography/toPixi.ts
+ *  — we leave it as unknown here to avoid a circular import with the
+ *  Pixi types module. */
 export interface TypographyBundle {
   meta: {
     generatedAt:      string   // ISO 8601
@@ -152,4 +160,8 @@ export interface TypographyBundle {
     supportedLocales: TypographyLocale[]
     styles:           Record<PopupStyleKey, PopupStyle>
   }
+  /** Optional Pixi v8 variant. Always present on fresh downloads from
+   *  the workspace; older bundles (generated before Pixi support landed)
+   *  may omit it. Typed loose to decouple from lib/typography/toPixi.ts. */
+  pixi?: unknown
 }

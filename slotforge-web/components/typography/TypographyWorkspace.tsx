@@ -48,7 +48,16 @@ import { POPUP_STYLE_KEYS }                         from '@/types/typography'
 import { FONT_LIBRARY, findPairing }                from '@/lib/typography/pairings'
 import { SAMPLE_STRINGS, LOCALE_LABELS,
          SUPPORTED_LOCALES, applyCase }             from '@/lib/typography/sampleStrings'
+import { specToPixiBundle, popupStyleToPixi,
+         type PixiPopupStyle }                       from '@/lib/typography/toPixi'
 import type { GeneratedAsset, AssetType }           from '@/types/assets'
+
+/** Preview-tab formats. 'web' is the raw TypographySpec (what the
+ *  server emits); 'pixi' runs specToPixiBundle() so the JSON the user
+ *  sees in each card matches what their Pixi v8 runtime would consume.
+ *  The `.json` and `.html` exports always include BOTH variants — the
+ *  tab only picks which format shows in the card grid. */
+type FormatTab = 'web' | 'pixi'
 
 // ─── Design tokens (match AssetsWorkspace) ──────────────────────────────────
 const C = {
@@ -151,6 +160,11 @@ export function TypographyWorkspace({
   // ── Preview UI state ──────────────────────────────────────────────────────
   const [currentLang, setCurrentLang] = useState<TypographyLocale>('en')
   const [copiedLabel, setCopiedLabel] = useState<string | null>(null)
+  // Which JSON variant renders in the per-style cards. Defaults to
+  // 'web' because the live sample preview uses CSS regardless, and
+  // 'web' reads one-to-one with what the eye sees. Users targeting
+  // PixiJS flip to 'pixi' when copy-pasting into their codebase.
+  const [formatTab, setFormatTab] = useState<FormatTab>('web')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -313,6 +327,11 @@ export function TypographyWorkspace({
   }, [pairing])
 
   // ── Copy / download helpers ──────────────────────────────────────────────
+  // The bundle contains BOTH web + pixi variants, unconditionally. This
+  // way a shared `.json` or `.html` covers every consumer — CSS, Pixi 8,
+  // whatever comes next — without the user having to regenerate to flip
+  // format. The format tab above only controls what shows in the
+  // preview cards (and which copy-copies from 'Copy JSON').
   function buildBundle(): TypographyBundle | null {
     if (!spec || !pairing) return null
     return {
@@ -334,6 +353,7 @@ export function TypographyWorkspace({
         supportedLocales: spec.supportedLocales,
         styles:           spec.styles,
       },
+      pixi: specToPixiBundle(spec, pairing),
     }
   }
 
@@ -649,6 +669,8 @@ export function TypographyWorkspace({
             genMeta={genMeta}
             currentLang={currentLang}
             setCurrentLang={setCurrentLang}
+            formatTab={formatTab}
+            setFormatTab={setFormatTab}
             copiedLabel={copiedLabel}
             onCopyJson={copyJson}
             onDownloadJson={downloadJson}
@@ -748,6 +770,7 @@ function UploadZone({ onFiles, onClick }: { onFiles: (f: FileList | File[]) => v
 
 function ResultBlock({
   spec, pairing, genMeta, currentLang, setCurrentLang,
+  formatTab, setFormatTab,
   copiedLabel, onCopyJson, onDownloadJson, onDownloadHtml,
 }: {
   spec: TypographySpec
@@ -755,6 +778,8 @@ function ResultBlock({
   genMeta: GenerateResponse['meta'] | null
   currentLang: TypographyLocale
   setCurrentLang: (l: TypographyLocale) => void
+  formatTab: FormatTab
+  setFormatTab: (f: FormatTab) => void
   copiedLabel: string | null
   onCopyJson: () => void
   onDownloadJson: () => void
@@ -822,30 +847,30 @@ function ResultBlock({
         )}
       </div>
 
-      {/* ── Language switcher ─────────────────────────────────────────── */}
+      {/* ── Preview controls: language + output format ─────────────────
+          Two segmented pickers side-by-side. Language drives the sample
+          copy rendered in the stage. Format drives the JSON shown next
+          to each stage — 'web' is the raw TypographySpec (CSS-shaped),
+          'pixi' runs the spec through specToPixiBundle() so the JSON
+          is Pixi v8-ready. Exports always include BOTH. */}
       <SectionLabel>Preview</SectionLabel>
       <div style={{
-        display: 'flex', gap: 3, padding: 3,
-        background: C.surfHigh, border: `1px solid ${C.border}`,
-        borderRadius: 8, marginBottom: 20, width: 'fit-content',
+        display: 'flex', gap: 8, alignItems: 'center',
+        marginBottom: 20, flexWrap: 'wrap',
       }}>
-        {spec.supportedLocales.map(l => {
-          const active = l === currentLang
-          return (
-            <button
-              key={l}
-              onClick={() => setCurrentLang(l)}
-              style={{
-                padding: '6px 12px', background: active ? C.surface : 'transparent',
-                border: 'none', borderRadius: 5,
-                color: active ? C.tx : C.txMuted,
-                fontSize: 11, fontWeight: 500, fontFamily: C.font, cursor: 'pointer',
-              }}
-            >
-              {LOCALE_LABELS[l]}
-            </button>
-          )
-        })}
+        <SegmentedPicker<TypographyLocale>
+          value={currentLang}
+          onChange={setCurrentLang}
+          options={spec.supportedLocales.map(l => ({ value: l, label: LOCALE_LABELS[l] }))}
+        />
+        <SegmentedPicker<FormatTab>
+          value={formatTab}
+          onChange={setFormatTab}
+          options={[
+            { value: 'web',  label: 'Web · CSS' },
+            { value: 'pixi', label: 'PixiJS v8' },
+          ]}
+        />
       </div>
 
       {/* ── Style cards ───────────────────────────────────────────────── */}
@@ -857,9 +882,49 @@ function ResultBlock({
             style={spec.styles[key]}
             pairing={pairing}
             currentLang={currentLang}
+            format={formatTab}
           />
         ))}
       </div>
+    </div>
+  )
+}
+
+/** Generic segmented pill picker — one active tab at a time, used for
+ *  both the language switcher and the format toggle. Keeping them
+ *  visually identical reinforces "these are two axes of the same
+ *  preview" rather than competing controls. */
+function SegmentedPicker<T extends string>({
+  value, onChange, options,
+}: {
+  value:   T
+  onChange: (v: T) => void
+  options: Array<{ value: T; label: string }>
+}) {
+  return (
+    <div style={{
+      display: 'flex', gap: 3, padding: 3,
+      background: C.surfHigh, border: `1px solid ${C.border}`,
+      borderRadius: 8, width: 'fit-content',
+    }}>
+      {options.map(opt => {
+        const active = opt.value === value
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: '6px 12px', background: active ? C.surface : 'transparent',
+              border: 'none', borderRadius: 5,
+              color: active ? C.tx : C.txMuted,
+              fontSize: 11, fontWeight: active ? 600 : 500,
+              fontFamily: C.font, cursor: 'pointer',
+            }}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -918,14 +983,28 @@ const FONT_BY_KEY: Record<PopupStyleKey, 'display' | 'ui'> = {
 }
 
 function StyleCard({
-  styleKey, style, pairing, currentLang,
+  styleKey, style, pairing, currentLang, format,
 }: {
   styleKey: PopupStyleKey
   style:    PopupStyle
   pairing:  FontPairing
   currentLang: TypographyLocale
+  format:   FormatTab
 }) {
   const font = pairing[FONT_BY_KEY[styleKey]]
+
+  // The sample stage is ALWAYS rendered from the web spec — the visual
+  // preview is DOM/CSS and doesn't change when the user flips to Pixi.
+  // Only the JSON block on the left swaps between the two variants.
+  // For the Pixi variant we serialise a compact `{ [styleKey]: ... }`
+  // wrapper so the card header key matches what the Pixi spec uses.
+  const pixiStyle = useMemo<PixiPopupStyle | null>(
+    () => format === 'pixi' ? popupStyleToPixi(styleKey, style, pairing) : null,
+    [format, styleKey, style, pairing]
+  )
+  const jsonBody = format === 'pixi' && pixiStyle
+    ? { [styleKey]: pixiStyle }
+    : { [styleKey]: style }
 
   return (
     <div style={{
@@ -935,8 +1014,21 @@ function StyleCard({
         display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
         gap: 16, flexWrap: 'wrap', marginBottom: 14,
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: C.tx, fontFamily: "'DM Mono',monospace" }}>
-          {styleKey}
+        <div style={{
+          display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0,
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: C.tx, fontFamily: "'DM Mono',monospace" }}>
+            {styleKey}
+          </span>
+          <span style={{
+            fontSize: 9, fontWeight: 600, letterSpacing: '.08em',
+            textTransform: 'uppercase', color: format === 'pixi' ? C.green : C.gold,
+            background: format === 'pixi' ? 'rgba(52,211,153,.12)' : C.goldDim,
+            border: `1px solid ${format === 'pixi' ? 'rgba(52,211,153,.3)' : C.goldLine}`,
+            borderRadius: 3, padding: '1px 5px', fontFamily: "'DM Mono',monospace",
+          }}>
+            {format === 'pixi' ? 'pixi v8' : 'web'}
+          </span>
         </div>
         <div style={{ fontSize: 11, color: C.txMuted }}>
           {font.family} · {style.size}px
@@ -946,7 +1038,7 @@ function StyleCard({
       <div style={{
         display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 14,
       }}>
-        <JsonBlock json={{ [styleKey]: style }} />
+        <JsonBlock json={jsonBody} />
         <SampleStage styleKey={styleKey} style={style} font={font} currentLang={currentLang} />
       </div>
     </div>
@@ -1166,6 +1258,14 @@ function buildStandaloneHtml(spec: TypographySpec, pairing: FontPairing): string
     const stageBg = `radial-gradient(ellipse at 50% 120%, ${hexToRgba(accent, 0.22)} 0%, transparent 55%),` +
                     `linear-gradient(180deg, ${darken(accent, 0.88)} 0%, ${darken(accent, 0.78)} 100%)`
 
+    // Both JSON variants — Web (raw spec) + Pixi (TextStyle + GlowFilter
+    // shape). We ship both in every card; the format toggle only flips
+    // which one is visible. Means one shared .html doc satisfies both
+    // CSS and Pixi v8 consumers.
+    const pixiStyle = popupStyleToPixi(key, st, pairing)
+    const jsonWeb   = escape(JSON.stringify({ [key]: st },        null, 2))
+    const jsonPixi  = escape(JSON.stringify({ [key]: pixiStyle }, null, 2))
+
     return `
     <div class="style-card">
       <div class="style-card-head">
@@ -1173,7 +1273,10 @@ function buildStandaloneHtml(spec: TypographySpec, pairing: FontPairing): string
         <div class="style-card-sub">${escape(font.family)} · ${st.size}px</div>
       </div>
       <div class="style-row">
-        <pre class="json">${escape(JSON.stringify({ [key]: st }, null, 2))}</pre>
+        <div>
+          <pre class="json json-web"  data-format="web">${jsonWeb}</pre>
+          <pre class="json json-pixi" data-format="pixi" style="display:none">${jsonPixi}</pre>
+        </div>
         <div class="sample-stage" style="background:${stageBg}">${samples}</div>
       </div>
     </div>`
@@ -1182,6 +1285,12 @@ function buildStandaloneHtml(spec: TypographySpec, pairing: FontPairing): string
   const styleCardsHtml = POPUP_STYLE_KEYS.map(renderStyleCard).join('')
   const langButtons = spec.supportedLocales.map((l, i) =>
     `<button class="lang-pill ${i === 0 ? 'active' : ''}" data-lang="${l}">${escape(LOCALE_LABELS[l])}</button>`
+  ).join('')
+  const formatButtons = [
+    { v: 'web',  l: 'Web · CSS' },
+    { v: 'pixi', l: 'PixiJS v8' },
+  ].map((f, i) =>
+    `<button class="fmt-pill ${i === 0 ? 'active' : ''}" data-format="${f.v}">${escape(f.l)}</button>`
   ).join('')
 
   return `<!DOCTYPE html>
@@ -1202,9 +1311,10 @@ h1{font-family:inherit;font-weight:700;font-size:16px;line-height:1.15;letter-sp
 .pairing-fams{font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace}
 .pairing-desc{font-size:12px;color:var(--text-mid);margin-bottom:14px}
 .rationale{font-size:13px;color:var(--text);line-height:1.6;padding-top:12px;border-top:1px solid var(--line);max-width:640px}
-.lang-bar{display:flex;gap:3px;padding:3px;background:var(--bg-raised);border:1px solid var(--line);border-radius:8px;margin-bottom:20px;width:fit-content}
-.lang-pill{background:transparent;border:none;color:var(--text-dim);font-family:inherit;font-size:11px;font-weight:500;padding:6px 12px;border-radius:5px;cursor:pointer}
-.lang-pill.active{background:#1a1a24;color:var(--text)}
+.lang-bar,.fmt-bar{display:flex;gap:3px;padding:3px;background:var(--bg-raised);border:1px solid var(--line);border-radius:8px;width:fit-content}
+.preview-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
+.lang-pill,.fmt-pill{background:transparent;border:none;color:var(--text-dim);font-family:inherit;font-size:11px;font-weight:500;padding:6px 12px;border-radius:5px;cursor:pointer}
+.lang-pill.active,.fmt-pill.active{background:#1a1a24;color:var(--text);font-weight:600}
 .style-card{padding:20px 0;border-top:1px solid var(--line)}
 .style-card:last-of-type{border-bottom:1px solid var(--line)}
 .style-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
@@ -1233,7 +1343,10 @@ pre.json{background:var(--bg-input);border:1px solid var(--line);border-radius:6
   </div>
 
   <div class="section-label">Preview</div>
-  <div class="lang-bar">${langButtons}</div>
+  <div class="preview-controls">
+    <div class="lang-bar">${langButtons}</div>
+    <div class="fmt-bar">${formatButtons}</div>
+  </div>
   ${styleCardsHtml}
 
   <div class="full-json-block">
@@ -1242,6 +1355,8 @@ pre.json{background:var(--bg-input);border:1px solid var(--line);border-radius:6
   </div>
 </div>
 <script>
+  // Language switcher — flips which locale's sample text is visible
+  // inside every .sample-stage (each stage has one .sample per locale).
   document.querySelectorAll('.lang-pill').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.lang-pill').forEach(b => b.classList.remove('active'));
@@ -1249,6 +1364,22 @@ pre.json{background:var(--bg-input);border:1px solid var(--line);border-radius:6
       const lang = btn.dataset.lang;
       document.querySelectorAll('.sample').forEach(el => {
         el.style.display = el.dataset.lang === lang ? 'block' : 'none';
+      });
+    });
+  });
+  // Format switcher — toggles whether the .json-web or .json-pixi block
+  // is visible next to each sample stage. Both ship in every card so
+  // the page works offline and the JSON can be copied without a round-trip.
+  document.querySelectorAll('.fmt-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.fmt-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const f = btn.dataset.format;
+      document.querySelectorAll('.json-web').forEach(el => {
+        el.style.display = f === 'web' ? '' : 'none';
+      });
+      document.querySelectorAll('.json-pixi').forEach(el => {
+        el.style.display = f === 'pixi' ? '' : 'none';
       });
     });
   });
