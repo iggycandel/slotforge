@@ -14,7 +14,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v100'
+const EDITOR_VERSION = 'v101'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -571,6 +571,13 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             inlineMode
             projectMeta={editorMeta ?? undefined}
             exportsEnabled={exportsEnabled}
+            // Sync Art-view generations / uploads / reverts into the iframe
+            // so EL_ASSETS stays current and the save round-trips the URL
+            // back into payload.assets. Previously only the right-sidebar
+            // (Canvas workspace) wired this up; the full-page Art view
+            // silently dropped the sync, which is why character + logo
+            // disappeared on project reload.
+            onAddToCanvas={(assetType, url) => handleAddToCanvas(assetType as AssetType, url)}
             onBackToCanvas={() => {
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)

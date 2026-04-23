@@ -240,13 +240,21 @@ interface Props {
   projectMeta?:  Record<string, unknown>
   /** Whether the current plan allows exporting/downloading assets (default: false for safety) */
   exportsEnabled?: boolean
+  /** Push a generated / reverted / uploaded asset URL into the editor iframe
+   *  (SF_INJECT_IMAGE_LAYER). Without this, generations in the full-page Art
+   *  view would only touch the DB + React state — EL_ASSETS in the iframe
+   *  would never learn about the new URL, so the next autosave wouldn't
+   *  capture it and on re-open the layer would be empty. Previously only
+   *  the right-sidebar AssetsPanel was wired up; AssetsWorkspace silently
+   *  dropped the sync, causing character/logo to disappear on round-trip. */
+  onAddToCanvas?: (assetType: string, url: string) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta, exportsEnabled = false }: Props) {
+export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta, exportsEnabled = false, onAddToCanvas }: Props) {
   // Route params (for billing page link)
   const params = useParams<{ orgSlug: string }>()
   const routeSlug = orgSlug ?? params?.orgSlug ?? ''
@@ -387,13 +395,31 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       .then(d => {
         const list: GeneratedAsset[] = Array.isArray(d.assets) ? d.assets : []
         if (list.length > 0) {
-          setAssets(buildAssetMap(list))
+          const assetMap = buildAssetMap(list)
+          const featureMap = buildFeatureAssetMap(list)
+          setAssets(assetMap)
           setAssetHistory(buildAssetHistory(list))
-          setFeatureAssets(buildFeatureAssetMap(list))
+          setFeatureAssets(featureMap)
+          // Hydrate the editor iframe's EL_ASSETS from the DB on mount.
+          // Older saves might have lost char/logo URLs from payload.assets
+          // because the Art view never pushed them to the iframe before
+          // v101. Pushing the latest version of every base asset (+ every
+          // feature slot) here rebuilds the iframe canvas from
+          // ground-truth Supabase data without requiring the user to
+          // manually re-generate. onAddToCanvas is a no-op when omitted,
+          // so standalone mode stays unchanged.
+          if (onAddToCanvas) {
+            for (const [type, asset] of Object.entries(assetMap)) {
+              if (asset?.url) onAddToCanvas(type, asset.url)
+            }
+            for (const [key, asset] of Object.entries(featureMap)) {
+              if (asset?.url) onAddToCanvas(key, asset.url)
+            }
+          }
         }
       })
       .catch(() => {/* non-fatal */})
-  }, [projectId, inlineMode])
+  }, [projectId, inlineMode, onAddToCanvas])
 
   const saveContext = useCallback((t: string, s: string, p: 'openai' | 'mock') => {
     fetch('/api/project-context', {
@@ -588,18 +614,27 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       setAssetHistory(prev => ({ ...prev, [assetType]: [newAsset, ...(prev[assetType] ?? [])] }))
       setSelected(assetType)
       setRightTab('inspector')
+      // Sync the new URL into the editor iframe (see onAddToCanvas
+      // comment on Props — without this the iframe's EL_ASSETS stays
+      // stale and the upload disappears on project reload).
+      if (newAsset.url) onAddToCanvas?.(assetType, newAsset.url)
       addLog(`✓ Uploaded ${assetType}`)
     } catch (err) {
       addLog(`Upload error: ${err instanceof Error ? err.message : 'Failed'}`)
     }
-  }, [projectId, theme, addLog])
+  }, [projectId, theme, addLog, onAddToCanvas])
 
   // ─── Version revert ─────────────────────────────────────────────────────────
   /** Swap the active version for a type to a historical one (client-side only). */
   const handleRevert = useCallback((assetType: AssetType, historicalAsset: GeneratedAsset) => {
     setAssets(prev => ({ ...prev, [assetType]: historicalAsset }))
+    // Also push the restored URL into the iframe so EL_ASSETS + save
+    // reflect the rollback. Without this, reverting is purely cosmetic
+    // in the Art view and the on-canvas layer stays on whatever
+    // version was injected last.
+    if (historicalAsset.url) onAddToCanvas?.(assetType, historicalAsset.url)
     addLog(`↩ Reverted ${assetType} to version from ${timeAgo(historicalAsset.created_at)}`)
-  }, [addLog])
+  }, [addLog, onAddToCanvas])
 
   // ─── Feature slot upload (namespaced keys like "bonuspick.bg") ──────────────
   // Same endpoint as handleUpload but routes the result into featureAssets so
@@ -1124,6 +1159,11 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             setFailedTypes(prev => { const s = new Set(prev); s.delete(at); return s })
             setRightTab('inspector')
           }
+          // Push the new URL into the editor iframe so EL_ASSETS stays in
+          // sync. Without this, character / logo generations done here
+          // never reach the iframe's state and disappear on project
+          // reload. Same sync AssetsPanel (right sidebar) already does.
+          if (asset?.url) onAddToCanvas?.(key, asset.url)
           addLog(`✓ Generated ${key}`)
         }}
       />

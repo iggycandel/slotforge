@@ -12485,6 +12485,54 @@ window._sfBridge = (function(){
       var elKey = ASSET_KEY_MAP[msg.assetType] || msg.assetType;
       try {
         EL_ASSETS[elKey] = msg.url;
+
+        // ── Aspect-fit the layer bbox to the incoming image ──────────────
+        // Without this, layers with a non-square natural aspect (character
+        // 2:3, logo 3:1, banners 4:1 …) inherited whatever default bbox
+        // PSD declared and the image sat letterboxed — or, worse, the
+        // rendered tile read as "distorted" because the bbox shape
+        // didn't match the art. Mirror the logic in applyAssetToLayer
+        // (upload path) for parity: probe natural w/h once the image
+        // decodes, then for each viewport preserve the CURRENT width and
+        // compute a matching height. Skip for backgrounds (they always
+        // fill the viewport) and for symbol slots (they're square).
+        var isBg     = elKey === 'bg' || elKey.indexOf('bg_') === 0;
+        var isSymbol = elKey.indexOf('sym_') === 0;
+        var skipFit  = isBg || isSymbol;
+
+        var _applyFit = function(){
+          if (skipFit) return;
+          var tmp = new Image();
+          tmp.onload = function(){
+            if (!tmp.naturalWidth || !tmp.naturalHeight) return;
+            var vps = ['portrait','landscape'];
+            for (var i=0;i<vps.length;i++) {
+              var vp  = vps[i];
+              var curW = (EL_VP[vp] && EL_VP[vp][elKey] && EL_VP[vp][elKey].w) ||
+                         (typeof EL_COMPUTED!=='undefined' && EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].w) ||
+                         (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].w);
+              if (!curW) continue;
+              var newH = Math.round(curW * tmp.naturalHeight / tmp.naturalWidth);
+              if (!EL_VP[vp])        EL_VP[vp]        = {};
+              if (!EL_VP[vp][elKey]) EL_VP[vp][elKey] = {};
+              EL_VP[vp][elKey].h = newH;
+              if (EL_VP[vp][elKey].x === undefined)
+                EL_VP[vp][elKey].x = (EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].x) ||
+                                     (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].x) || 0;
+              if (EL_VP[vp][elKey].y === undefined)
+                EL_VP[vp][elKey].y = (EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].y) ||
+                                     (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].y) || 0;
+              if (EL_VP[vp][elKey].w === undefined) EL_VP[vp][elKey].w = curW;
+            }
+            try { if (typeof buildCanvas === 'function') buildCanvas(); } catch(e){}
+            try { _rebuildFeatureOverlay(); } catch(e){}
+            try { if (typeof renderLayers  === 'function') renderLayers();  } catch(e){}
+            try { if (typeof markDirty     === 'function') markDirty();     } catch(e){}
+          };
+          tmp.onerror = function(){ /* silent — first buildCanvas pass stays as the fallback render */ };
+          tmp.src = msg.url;
+        };
+
         if(typeof buildCanvas === 'function') buildCanvas();
         // buildCanvas() wipes #gf innerHTML — rebuild the feature overlay
         // so slots stay visible after upload/replace. _rebuildFeatureOverlay
@@ -12497,6 +12545,11 @@ window._sfBridge = (function(){
           try { buildFeatures(); } catch(e) { /* non-fatal */ }
         }
         if(typeof markDirty     === 'function') markDirty();
+
+        // Kick off the aspect-fit probe AFTER the initial render so the
+        // user gets instant feedback (image shows at default bbox) and
+        // the correct-aspect rebuild fades in once the image decodes.
+        _applyFit();
       } catch(e) { console.warn('[SF] SF_INJECT_IMAGE_LAYER failed:', e); }
     }
 
