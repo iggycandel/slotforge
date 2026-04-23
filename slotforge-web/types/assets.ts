@@ -235,6 +235,7 @@ export type PromptCategory =
   | 'symbol_wild'
   | 'symbol_scatter'
   | 'logo'
+  | 'character'
   | 'reel_frame'
   | 'spin_button'
   | 'jackpot_label'

@@ -76,6 +76,10 @@ const RequestSchema = z.object({
   // popup is safe.
   symbol_frame:  z.boolean().optional(),
   symbol_color:  z.string().max(60).optional(),
+  /** Text label to render on a wild / scatter / special symbol. Only
+   *  honoured for those categories — high/low symbols are always
+   *  text-free. Capped at 20 chars to fit the casino-symbol lettering. */
+  symbol_label:  z.string().max(20).optional(),
 })
 
 // ─── Route handler ───────────────────────────────────────────────────────────
@@ -116,7 +120,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, provider, style_id, custom_prompt, custom_prompt_mode, project_meta, ratio, quality, symbol_frame, symbol_color } = parsed.data
+  const { asset_type, theme, project_id, provider, style_id, custom_prompt, custom_prompt_mode, project_meta, ratio, quality, symbol_frame, symbol_color, symbol_label } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -137,6 +141,7 @@ export async function POST(req: NextRequest) {
     const promptOpts = {
       hasFrame:         symbol_frame,
       primaryColor:     symbol_color || null,
+      symbolLabel:      symbol_label || undefined,
       customPrompt:     custom_prompt,
       customPromptMode: custom_prompt_mode,
     }

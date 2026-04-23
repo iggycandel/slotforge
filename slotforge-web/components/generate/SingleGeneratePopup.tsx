@@ -132,6 +132,16 @@ export function SingleGeneratePopup({
   const initialTierColor = hasProjectPalette ? '' : (defaultColor ?? '')
   const [symbolFrame, setSymbolFrame] = useState<boolean>(true)
   const [symbolColor, setSymbolColor] = useState<string>(initialTierColor)
+  // Label-capable symbol check: wild, scatter, and specials get an
+  // optional user-supplied label (e.g. "WILD", "BONUS"). High / low
+  // symbols are always text-free — their identity comes from the
+  // depicted motif, not lettering. See promptBuilder.ts symbolLabel
+  // injection which is gated on category === symbol_wild|scatter.
+  const isLabelSymbol =
+    slotKey === 'symbol_wild' ||
+    slotKey === 'symbol_scatter' ||
+    /^symbol_special_\d+$/.test(slotKey)
+  const [symbolLabel, setSymbolLabel] = useState<string>('')
 
   // ── Prompt composition (Part 3) ───────────────────────────────────────────
   // Preview contents, plus UI flags for the collapsible panel + copy toast.
@@ -173,6 +183,13 @@ export function SingleGeneratePopup({
       (projectMeta as ProjectMeta)?.colorAccent
     )
     setSymbolColor(hasPalette ? '' : (defaultColorForSymbol(slotKey, projectMeta as ProjectMeta) ?? ''))
+    // Default label per slot: sensible auto-fill for wild/scatter, blank
+    // for specials (user must opt-in explicitly).
+    setSymbolLabel(
+      slotKey === 'symbol_wild'    ? 'WILD'    :
+      slotKey === 'symbol_scatter' ? 'SCATTER' :
+      ''
+    )
     setSections(null)
     setFinalPrompt('')
     setFinalNegative('')
@@ -204,6 +221,11 @@ export function SingleGeneratePopup({
           // unconditionally; the server filters by asset category.
           symbol_frame: tier.isSymbol ? symbolFrame : undefined,
           symbol_color: tier.isSymbol && symbolColor ? symbolColor : undefined,
+          // Label is only honoured for wild/scatter/specials — server-side
+          // the category check in promptBuilder filters for us, but we
+          // still gate on isLabelSymbol here so high/low can never leak
+          // a label through.
+          symbol_label: isLabelSymbol && symbolLabel.trim() ? symbolLabel.trim() : undefined,
           // Preview matches what Generate will send so the prompt-composition
           // panel reflects append/replace correctly.
           custom_prompt:      customPrompt.trim() || undefined,
@@ -224,7 +246,7 @@ export function SingleGeneratePopup({
     } finally {
       setPreviewLoading(false)
     }
-  }, [slotKey, theme, projectId, styleId, projectMeta, tier.isSymbol, symbolFrame, symbolColor, customPrompt, customPromptMode])
+  }, [slotKey, theme, projectId, styleId, projectMeta, tier.isSymbol, symbolFrame, symbolColor, isLabelSymbol, symbolLabel, customPrompt, customPromptMode])
 
   // Refetch when the panel is opened (lazy — don't pay for a preview call
   // if the user never opens the panel) and when any composition-affecting
@@ -296,6 +318,10 @@ export function SingleGeneratePopup({
           // Server ignores them for non-symbol asset types.
           symbol_frame: tier.isSymbol ? symbolFrame : undefined,
           symbol_color: tier.isSymbol && symbolColor ? symbolColor : undefined,
+          // Label rendering on wild / scatter / specials only. Server
+          // double-checks the category, but we gate here too so a stray
+          // label state can't leak onto a high/low symbol.
+          symbol_label: isLabelSymbol && symbolLabel.trim() ? symbolLabel.trim() : undefined,
           // reference_images: refImages,  // P3 — server ignores today
         }),
       })
@@ -638,6 +664,55 @@ export function SingleGeneratePopup({
                 </div>
               </>
             )}
+          </Section>
+        )}
+
+        {/* ── Symbol label (wild / scatter / specials only) ─────────────── */}
+        {isLabelSymbol && (
+          <Section
+            title="Symbol label"
+            subtitle={
+              slotKey === 'symbol_wild'    ? 'text painted onto the wild icon — leave blank to skip' :
+              slotKey === 'symbol_scatter' ? 'text painted onto the scatter icon — leave blank to skip' :
+              'text painted onto the symbol — e.g. BONUS, MINI, MAJOR; leave blank to skip'
+            }
+          >
+            <input
+              type="text"
+              value={symbolLabel}
+              onChange={e => setSymbolLabel(e.target.value.slice(0, 20))}
+              maxLength={20}
+              placeholder={
+                slotKey === 'symbol_wild'    ? 'WILD'    :
+                slotKey === 'symbol_scatter' ? 'SCATTER' :
+                'BONUS'
+              }
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                background: T.surfaceHigh,
+                border: `1px solid ${T.border}`,
+                borderRadius: 6,
+                color: T.textPrimary,
+                fontSize: 13,
+                fontFamily: "'DM Mono',monospace",
+                letterSpacing: '.05em',
+                textTransform: 'uppercase',
+                outline: 'none',
+              }}
+            />
+            <div style={{
+              fontSize: 10, color: T.textFaint, lineHeight: 1.5,
+              marginTop: 6, display: 'flex', alignItems: 'flex-start', gap: 6,
+            }}>
+              <Info size={10} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                Only wild, scatter and special symbols may carry rendered
+                text — high / low symbols are always text-free and rely on
+                their motif alone. Max&nbsp;20 characters; blank means no
+                label (clean icon).
+              </span>
+            </div>
           </Section>
         )}
 

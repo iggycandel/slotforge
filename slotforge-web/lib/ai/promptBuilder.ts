@@ -51,8 +51,21 @@ const NEG_ENVIRONMENT =
   'close-up isolated object, item on blank background, slot reel overlay, ' +
   'UI buttons, reward text banners, HUD elements, characters in tight foreground'
 
+// Strict anti-text negatives for isolated symbols / UI. Expanded to
+// catch the phrases gpt-image-1 commonly latches onto despite the
+// prior short list (labels, captions, typography, monograms…). The
+// only time we RELAX this is when the user explicitly opts in to a
+// label via the popup's Symbol-label field on wild/scatter/special —
+// in that case we skip the negatives that conflict with the positive
+// label clause. See NEG_SYMBOLS_WITH_LABEL below.
 const NEG_SYMBOLS =
-  'text, letters, numbers, written words, readable glyphs, watermark'
+  'text, letters, alphabetic characters, numbers, numerals, ' +
+  'written words, readable glyphs, typography, captions, labels, ' +
+  'writing, watermark, monograms'
+
+const NEG_SYMBOLS_WITH_LABEL =
+  'unwanted extra text outside the approved label, captions, ' +
+  'watermark, signature, repeated text, multiple labels'
 
 // Strong scene-level text/signage exclusion for BACKGROUND environments.
 // Without this, gpt-image-1 cheerfully paints bar signs, neon billboards,
@@ -97,14 +110,16 @@ const TEMPLATES: Record<PromptCategory, () => string> = {
     `${ISOLATED_BASE}, ` +
     `slot game Wild symbol, powerful centerpiece icon, ` +
     `strong glowing energy accents, dominant hero silhouette, ` +
-    `plaque area in center reserved for WILD text (do not generate text), ` +
+    `clean smooth centrepiece with no letters, no numbers, no writing — ` +
+    `a label is composited at runtime by the game engine, ` +
     `maximum visual impact, square composition`,
 
   symbol_scatter: () =>
     `${ISOLATED_BASE}, ` +
     `slot game Scatter/Bonus symbol, mystical reward object, ` +
     `radiant emanating light, magical particle effects, ` +
-    `plaque area reserved for SCATTER text (do not generate text), ` +
+    `clean smooth centrepiece with no letters, no numbers, no writing — ` +
+    `a label is composited at runtime by the game engine, ` +
     `high visual excitement, square composition`,
 
   logo: () =>
@@ -113,6 +128,21 @@ const TEMPLATES: Record<PromptCategory, () => string> = {
     `metallic gold 3D lettering, dramatic rim lighting, ` +
     `premium casino brand identity, no subtitles, wide banner format, ` +
     `floating text with no background, embossed dimensional text effect`,
+
+  /** Character — a separate category from logo. Previously `character`
+   *  mapped to the logo template, which asked for "bold stylized game
+   *  wordmark, metallic gold 3D lettering, wide banner format" — wrong
+   *  for a character asset. The output came back as the game title
+   *  rendered in gold type instead of a person/creature. Per user UX
+   *  critique: the character should always be a full-body portrait,
+   *  head-to-toe composition, no text anywhere. */
+  character: () =>
+    `${ISOLATED_BASE}, ` +
+    `full-body character portrait, head-to-toe composition with visible ` +
+    `feet and head in frame, three-quarter or front-facing standing pose, ` +
+    `expressive personality, clean cutout on transparent background, ` +
+    `absolutely no text, no title, no wordmark, no brand name, no captions, ` +
+    `portrait orientation, character fully contained within the frame`,
 
   reel_frame: () =>
     `${ISOLATED_BASE}, ` +
@@ -163,7 +193,9 @@ const TYPE_TO_CATEGORY: Record<AssetType, PromptCategory> = {
   symbol_special_5:  'symbol_scatter',
   symbol_special_6:  'symbol_scatter',
   logo:              'logo',
-  character:         'logo',
+  // Character gets its own category + template so it doesn't inherit
+  // the logo wordmark/title treatment. See TEMPLATES.character above.
+  character:         'character',
   reel_frame:        'reel_frame',
   spin_button:       'spin_button',
   jackpot_label:     'jackpot_label',
@@ -631,6 +663,12 @@ export interface BuildPromptOptions {
   /** Predominant colour name (e.g. "warm gold", "deep indigo"). When set,
    *  added as a differentiator line. Undef / empty = no colour hint. */
   primaryColor?: string | null
+  /** User-supplied text label for a wild / scatter / special symbol.
+   *  When set, the prompt explicitly asks for the label to be rendered
+   *  in bold stylised casino lettering on the symbol (the only case
+   *  where text on a symbol is allowed). When unset, strong no-text
+   *  negatives reinforce the template's clean-centrepiece guidance. */
+  symbolLabel?:  string
   /** User-supplied prompt text. Combined with customPromptMode below. */
   customPrompt?: string
   /** 'replace' = use customPrompt as the final prompt verbatim (layers
@@ -712,16 +750,33 @@ export function buildPrompt(
       )
     }
     if (options?.primaryColor) {
-      // Phrased as an ACCENT, not the dominant hue, so it doesn't fight
-      // the project's colour palette (which is already injected as a
-      // mood cue in §3.3 Context). Tier colour is a secondary marker
-      // that distinguishes siblings within a tiered set; the project
-      // palette remains in charge of the overall composition.
+      // Tier-colour is a USER CHOICE by the time it lands here — the
+      // popup defaults to 'none' when the project palette is set, so
+      // non-empty primaryColor means the user explicitly opted in.
+      // Use strong wording so the choice is visible in output; the
+      // project palette still provides supporting accents via §3.3.
       differentiators.push(
-        `tier-distinguishing accent in ${options.primaryColor}, applied as a ` +
-        `secondary highlight on this tier only; the project's colour mood ` +
-        `remains the dominant palette`
+        `strongly featured ${options.primaryColor} as the dominant colour ` +
+        `for this symbol's main body and signature elements; ` +
+        `the project's colour mood provides complementary supporting accents`
       )
+    }
+    // Symbol label — only meaningful on wild / scatter / special (high/low
+    // tiers should never carry a printed label). Injected here in the
+    // differentiator layer so it shows up clearly in the Prompt
+    // Composition panel as a named contribution.
+    if (options?.symbolLabel && options.symbolLabel.trim()) {
+      const label = options.symbolLabel.trim().slice(0, 20)
+      if (category === 'symbol_wild' || category === 'symbol_scatter') {
+        differentiators.push(
+          `with the single word "${label}" rendered prominently in bold ` +
+          `stylised casino-symbol lettering, centred on the icon; this ` +
+          `is the ONLY text permitted on the symbol`
+        )
+      }
+      // For high/low categories we IGNORE symbolLabel — they should
+      // never carry text, and letting the popup surface ask for one
+      // would lock users into a bad pattern.
     }
   }
 
@@ -771,7 +826,17 @@ export function buildPrompt(
   // Scene-level text exclusion for backgrounds: prevents the model
   // from painting signage, neon, brand names, graffiti onto what
   // should be a clean backdrop for UI overlay.
-  const negExtra   = isEnvironment ? NEG_SCENE_TEXT : NEG_SYMBOLS
+  //
+  // For isolated symbols/UI we default to NEG_SYMBOLS (strict no-text).
+  // When the user has opted in to a label via symbolLabel on a wild /
+  // scatter / special symbol, swap to NEG_SYMBOLS_WITH_LABEL so the
+  // negatives don't fight the positive label clause (they'd otherwise
+  // be asking for + forbidding text in the same prompt).
+  const hasLabel = !!(options?.symbolLabel && options.symbolLabel.trim() &&
+                      (category === 'symbol_wild' || category === 'symbol_scatter'))
+  const negExtra = isEnvironment
+    ? NEG_SCENE_TEXT
+    : (hasLabel ? NEG_SYMBOLS_WITH_LABEL : NEG_SYMBOLS)
   const negStyle   = style?.negativeModifier ?? ''
   const negativePrompt = [NEG_UNIVERSAL, negFraming, negExtra, negStyle].filter(Boolean).join(', ')
 

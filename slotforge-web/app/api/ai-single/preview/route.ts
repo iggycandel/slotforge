@@ -46,6 +46,7 @@ const RequestSchema = z.object({
   // whatever the popup is about to send.
   symbol_frame:  z.boolean().optional(),
   symbol_color:  z.string().max(60).optional(),
+  symbol_label:  z.string().max(20).optional(),
   // Custom prompt + mode, mirror of /ai-single so the live Prompt
   // Composition panel shows the correct layers for append/replace.
   custom_prompt:      z.string().max(2000).optional(),
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, style_id, project_meta, symbol_frame, symbol_color, custom_prompt, custom_prompt_mode } = parsed.data
+  const { asset_type, theme, project_id, style_id, project_meta, symbol_frame, symbol_color, symbol_label, custom_prompt, custom_prompt_mode } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
     const promptOpts = {
       hasFrame:         symbol_frame,
       primaryColor:     symbol_color || null,
+      symbolLabel:      symbol_label || undefined,
       customPrompt:     custom_prompt,
       customPromptMode: custom_prompt_mode,
     }
