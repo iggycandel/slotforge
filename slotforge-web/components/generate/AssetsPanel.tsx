@@ -824,27 +824,51 @@ function FeatureSlotRow({
   )
 }
 
-// Canvas slot options for the "Place in…" dropdown
+// Canvas slot options for the "Place in…" dropdown.
+//
+// The `assetType` field is what the iframe's SF_INJECT_IMAGE_LAYER handler
+// receives. Standard AssetType values (`background_base`, `symbol_wild`,
+// …) go through the handler's ASSET_KEY_MAP. Strings that aren't in that
+// map — the four jackpot-tier PSD keys — fall through unchanged and hit
+// EL_ASSETS directly, so the user can route one `jackpot_label` asset to
+// Grand / Major / Minor / Mini without needing a dedicated AssetType for
+// each tier.  Cast to AssetType because we stay within the runtime
+// string contract the handler actually honours.
 const CANVAS_SLOT_OPTIONS: { label: string; assetType: AssetType }[] = [
-  { label: 'BG Base',    assetType: 'background_base' },
-  { label: 'BG Bonus',   assetType: 'background_bonus' },
-  { label: 'High 1',     assetType: 'symbol_high_1' },
-  { label: 'High 2',     assetType: 'symbol_high_2' },
-  { label: 'High 3',     assetType: 'symbol_high_3' },
-  { label: 'High 4',     assetType: 'symbol_high_4' },
-  { label: 'High 5',     assetType: 'symbol_high_5' },
-  { label: 'Low 1',      assetType: 'symbol_low_1' },
-  { label: 'Low 2',      assetType: 'symbol_low_2' },
-  { label: 'Low 3',      assetType: 'symbol_low_3' },
-  { label: 'Low 4',      assetType: 'symbol_low_4' },
-  { label: 'Low 5',      assetType: 'symbol_low_5' },
-  { label: 'Wild',       assetType: 'symbol_wild' },
-  { label: 'Scatter',    assetType: 'symbol_scatter' },
-  { label: 'Logo',       assetType: 'logo' },
-  { label: 'Character',  assetType: 'character' },
-  { label: 'Reel Frame', assetType: 'reel_frame' },
-  { label: 'Spin Btn',   assetType: 'spin_button' },
-  { label: 'Jackpot',    assetType: 'jackpot_label' },
+  { label: 'BG Base',           assetType: 'background_base' },
+  { label: 'BG Bonus',          assetType: 'background_bonus' },
+  { label: 'High 1',            assetType: 'symbol_high_1' },
+  { label: 'High 2',            assetType: 'symbol_high_2' },
+  { label: 'High 3',            assetType: 'symbol_high_3' },
+  { label: 'High 4',            assetType: 'symbol_high_4' },
+  { label: 'High 5',            assetType: 'symbol_high_5' },
+  { label: 'High 6',            assetType: 'symbol_high_6' },
+  { label: 'High 7',            assetType: 'symbol_high_7' },
+  { label: 'High 8',            assetType: 'symbol_high_8' },
+  { label: 'Low 1',             assetType: 'symbol_low_1' },
+  { label: 'Low 2',             assetType: 'symbol_low_2' },
+  { label: 'Low 3',             assetType: 'symbol_low_3' },
+  { label: 'Low 4',             assetType: 'symbol_low_4' },
+  { label: 'Low 5',             assetType: 'symbol_low_5' },
+  { label: 'Low 6',             assetType: 'symbol_low_6' },
+  { label: 'Low 7',             assetType: 'symbol_low_7' },
+  { label: 'Low 8',             assetType: 'symbol_low_8' },
+  { label: 'Wild',              assetType: 'symbol_wild' },
+  { label: 'Scatter',           assetType: 'symbol_scatter' },
+  { label: 'Special 3',         assetType: 'symbol_special_3' },
+  { label: 'Special 4',         assetType: 'symbol_special_4' },
+  { label: 'Special 5',         assetType: 'symbol_special_5' },
+  { label: 'Special 6',         assetType: 'symbol_special_6' },
+  { label: 'Logo',              assetType: 'logo' },
+  { label: 'Character',         assetType: 'character' },
+  { label: 'Reel Frame',        assetType: 'reel_frame' },
+  { label: 'Spin Button',       assetType: 'spin_button' },
+  { label: 'Jackpot — Grand',   assetType: 'jackpot_label' },
+  // The three lines below route straight to PSD keys via the fallthrough
+  // branch in the iframe's SF_INJECT handler (see comment there).
+  { label: 'Jackpot — Major',   assetType: 'jpMajor' as AssetType },
+  { label: 'Jackpot — Minor',   assetType: 'jpMinor' as AssetType },
+  { label: 'Jackpot — Mini',    assetType: 'jpMini'  as AssetType },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────

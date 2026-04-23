@@ -2227,6 +2227,14 @@ document.getElementById('canvas-wrap').addEventListener('contextmenu', e=>{
 // it onto the canvas iframe, the browser fires dragover / drop inside the iframe.
 // We intercept here, resolve the target slot, and apply the image immediately.
 (function(){
+  // ASSET_TYPE → EL_ASSETS key (= PSD key). Must match the keys the
+  // canvas renderer reads in buildCanvas/renderLayers. The three lines
+  // at the bottom (reel_frame / spin_button / jackpot_label) used to
+  // map to the underscored asset-type string verbatim; the renderer
+  // reads the camelCase PSD key instead, so the inject silently did
+  // nothing. jackpot_label defaults to the Grand tier — users who want
+  // to place into Major / Minor / Mini pick those tier-specific entries
+  // from the "Place in…" dropdown (which passes the PSD key directly).
   var SF_ASSET_KEY_MAP = {
     background_base:  'bg',
     background_bonus: 'bg_bonus',
@@ -2244,9 +2252,9 @@ document.getElementById('canvas-wrap').addEventListener('contextmenu', e=>{
     symbol_special_6: 'sym_Special6',
     logo:             'logo',
     character:        'char',
-    reel_frame:       'reel_frame',
-    spin_button:      'spin_button',
-    jackpot_label:    'jackpot_label',
+    reel_frame:       'reelFrame',
+    spin_button:      'spinBtn',
+    jackpot_label:    'jpGrand',
   };
 
   var canvasWrap = document.getElementById('canvas-wrap');
@@ -12499,7 +12507,14 @@ window._sfBridge = (function(){
       styleEl.textContent += '\n' + msg.css;
     }
 
-    // Inject a generated/external image URL into a canvas layer asset slot
+    // Inject a generated/external image URL into a canvas layer asset slot.
+    // Mirror of SF_ASSET_KEY_MAP in the drag-drop handler — keep the two
+    // maps in sync. reel_frame / spin_button / jackpot_label used to map
+    // to their underscored asset-type strings, but the renderer looks up
+    // the PSD camelCase keys (reelFrame / spinBtn / jpGrand), so those
+    // injects silently failed. jackpot_label defaults to the Grand tier;
+    // Major / Minor / Mini are reachable via the "Place in…" dropdown
+    // which passes the PSD key directly (fallthrough below).
     if(msg.type === 'SF_INJECT_IMAGE_LAYER' && msg.assetType && msg.url){
       var ASSET_KEY_MAP = {
         background_base:  'bg',   background_bonus: 'bg_bonus',
@@ -12512,9 +12527,13 @@ window._sfBridge = (function(){
         symbol_wild:      'sym_Wild',    symbol_scatter:   'sym_Scatter',
         symbol_special_3: 'sym_Special3', symbol_special_4: 'sym_Special4',
         symbol_special_5: 'sym_Special5', symbol_special_6: 'sym_Special6',
-        logo: 'logo', character: 'char', reel_frame: 'reel_frame',
-        spin_button: 'spin_button', jackpot_label: 'jackpot_label',
+        logo: 'logo', character: 'char', reel_frame: 'reelFrame',
+        spin_button: 'spinBtn', jackpot_label: 'jpGrand',
       };
+      // Fall-through: if msg.assetType isn't in the map, treat it as a
+      // raw PSD key. That's how the "Place in…" dropdown routes an asset
+      // to jpMajor / jpMinor / jpMini, bannerBet, etc — without needing
+      // a dedicated AssetType for every layer in PSD.
       var elKey = ASSET_KEY_MAP[msg.assetType] || msg.assetType;
       try {
         EL_ASSETS[elKey] = msg.url;
