@@ -37,8 +37,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Sparkles, Loader2, Upload, X, Copy, Download, FileText, Info,
-  ChevronLeft, Check, AlertCircle,
+  Sparkles, Loader2, X, Copy, Download, FileText, Info,
+  Check, AlertCircle,
 } from 'lucide-react'
 import type {
   FontPairing, TypographySpec, TypographyLocale, PopupStyle,
@@ -90,8 +90,6 @@ interface Props {
    *  iframe so the spec lands in payload.typographySpec. Optional so
    *  the workspace stays testable in isolation. */
   onSpecChange?:   (spec: TypographySpec | null) => void
-  /** Back button handler — same UX as AssetsWorkspace. */
-  onBackToCanvas?: () => void
 }
 
 // ─── Input image state ──────────────────────────────────────────────────────
@@ -130,7 +128,7 @@ interface GenerateResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function TypographyWorkspace({
-  projectId, projectName, projectMeta, initialSpec, onSpecChange, onBackToCanvas,
+  projectId, projectName, projectMeta, initialSpec, onSpecChange,
 }: Props) {
   // ── Inputs ────────────────────────────────────────────────────────────────
   const [images, setImages] = useState<InputImage[]>([])
@@ -384,66 +382,64 @@ export function TypographyWorkspace({
 
   return (
     <div style={{
-      flex:      1, overflow: 'auto',
+      flex:      1,
+      display:   'flex',
+      flexDirection: 'column',
+      overflow:  'hidden',
       background: C.bg, color: C.tx,
       fontFamily: C.font,
     }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 28px 120px' }}>
-
-        {/* ── Toolbar (back to canvas) ──────────────────────────────────── */}
-        {onBackToCanvas && (
-          <div style={{ marginBottom: 16 }}>
-            <button
-              onClick={onBackToCanvas}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 10px', background: 'transparent',
-                border: `1px solid ${C.border}`, borderRadius: 6,
-                color: C.txMuted, fontSize: 12, cursor: 'pointer',
-                fontFamily: C.font,
-              }}
-            >
-              <ChevronLeft size={12} />
-              Back to Flow
-            </button>
-          </div>
-        )}
-
-        {/* ── Header ────────────────────────────────────────────────────── */}
-        <header style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingBottom: 20, borderBottom: `1px solid ${C.border}`, marginBottom: 32,
+      {/* Thin top strip — mirrors AssetsWorkspace's inline-mode header.
+          "Back to Flow" button removed per UX critique; the editor
+          menubar's workspace tabs are the canonical navigation. */}
+      <div style={{
+        height:      36,
+        minHeight:   36,
+        display:     'flex',
+        alignItems:  'center',
+        gap:         10,
+        padding:     '0 14px',
+        background:  C.surface,
+        borderBottom: `1px solid ${C.border}`,
+        flexShrink:  0,
+      }}>
+        <span style={{
+          fontSize: 11, fontWeight: 700, color: C.gold,
+          letterSpacing: '.06em', textTransform: 'uppercase',
         }}>
-          <div>
-            <div style={{
-              display: 'flex', alignItems: 'baseline', gap: 10,
-            }}>
-              <span style={{ fontSize: 22, color: C.gold, fontStyle: 'italic',
-                             fontFamily: "'Instrument Serif','Playfair Display',serif" }}>
-                T
-              </span>
-              <span style={{ fontSize: 15, fontWeight: 600 }}>Typography</span>
-              <span style={{ width: 3, height: 3, borderRadius: 2, background: C.txFaint }} />
-              <span style={{ fontSize: 11, color: C.txMuted, letterSpacing: '.02em' }}>
-                Font pairing from game art
-              </span>
-            </div>
-          </div>
-        </header>
-
-        {/* ── Intro ─────────────────────────────────────────────────────── */}
-        <div style={{ marginBottom: 32, maxWidth: 560 }}>
-          <h1 style={{
-            fontSize: 26, fontWeight: 400, lineHeight: 1.15, letterSpacing: '-0.02em',
-            fontFamily: "'Instrument Serif','Playfair Display',serif",
-            marginBottom: 8,
+          Typography Workspace
+        </span>
+        <div style={{ flex: 1 }} />
+        {spec && (
+          <span style={{
+            fontSize: 10, color: C.gold, background: C.goldDim,
+            border: `1px solid ${C.goldLine}`, borderRadius: 10,
+            padding: '1px 7px', fontWeight: 600, fontFamily: "'DM Mono',monospace",
           }}>
-            Generate a typography spec from your <em style={{ color: C.gold, fontStyle: 'italic' }}>game art</em>.
+            {findPairing(spec.pairingId).name}
+          </span>
+        )}
+      </div>
+
+      {/* Scrollable body — full-width (like Art), inner wrapper caps
+          line length for the long-form inputs without dropping out of
+          the standard Spinative layout. */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <div style={{ maxWidth: 1060, margin: '0 auto', padding: '28px 28px 120px' }}>
+
+        {/* Intro — plain workspace voice, no serif. */}
+        <div style={{ marginBottom: 28, maxWidth: 620 }}>
+          <h1 style={{
+            fontSize: 18, fontWeight: 600, lineHeight: 1.25,
+            letterSpacing: '-0.01em', color: C.tx, marginBottom: 6,
+            fontFamily: C.font,
+          }}>
+            Generate a typography spec from your game art
           </h1>
-          <p style={{ fontSize: 13, color: C.txMid, lineHeight: 1.55 }}>
+          <p style={{ fontSize: 12, color: C.txMid, lineHeight: 1.55 }}>
             Pick screenshots from this project or upload new ones. We identify the
-            aesthetic, pick a font pairing verified across your locales, and return
-            a full six-style JSON spec ready for your front-end team.
+            aesthetic, match a font pairing verified across your locales, and
+            return a six-style JSON spec ready for your front-end team.
           </p>
         </div>
 
@@ -659,6 +655,7 @@ export function TypographyWorkspace({
             onDownloadHtml={downloadHtml}
           />
         )}
+        </div>
       </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
@@ -773,8 +770,8 @@ function ResultBlock({
       }}>
         <div>
           <h2 style={{
-            fontSize: 24, fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.015em',
-            fontFamily: "'Instrument Serif','Playfair Display',serif",
+            fontSize: 16, fontWeight: 700, lineHeight: 1.15, letterSpacing: '.06em',
+            textTransform: 'uppercase', fontFamily: C.font,
             color: C.tx, marginBottom: 6,
           }}>
             {spec.gameTitle || 'Typography Spec'}
@@ -803,8 +800,8 @@ function ResultBlock({
         <SectionLabel>Pairing</SectionLabel>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
           <span style={{
-            fontSize: 20, color: C.gold, fontStyle: 'italic',
-            fontFamily: "'Instrument Serif','Playfair Display',serif",
+            fontSize: 15, color: C.gold, fontWeight: 700,
+            letterSpacing: '-.005em', fontFamily: C.font,
           }}>
             {pairing.name}
           </span>
@@ -1102,7 +1099,7 @@ function buildStandaloneHtml(spec: TypographySpec, pairing: FontPairing): string
     `${f.family.replace(/ /g, '+')}:wght@${f.weights.join(';')}`
   const fontUrl = `https://fonts.googleapis.com/css2?family=${toSpec(pairing.display)}` +
                   `&family=${toSpec(pairing.ui)}` +
-                  `&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono&display=swap`
+                  `&family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap`
 
   const bundle: TypographyBundle = {
     meta: {
@@ -1196,12 +1193,12 @@ function buildStandaloneHtml(spec: TypographySpec, pairing: FontPairing): string
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.5;letter-spacing:-0.005em;-webkit-font-smoothing:antialiased;padding:48px 28px 96px}
 .wrap{max-width:1060px;margin:0 auto}
-h1{font-family:'Instrument Serif',serif;font-weight:400;font-size:28px;line-height:1.1;letter-spacing:-0.02em;margin-bottom:6px}
+h1{font-family:inherit;font-weight:700;font-size:16px;line-height:1.15;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
 .meta{font-size:11px;color:var(--text-dim);letter-spacing:.02em;margin-bottom:32px;padding-bottom:18px;border-bottom:1px solid var(--line)}
 .section-label{font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px}
 .pairing{margin-bottom:36px}
 .pairing-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
-.pairing-name{font-family:'Instrument Serif',serif;font-style:italic;font-size:20px;color:var(--accent);line-height:1.2}
+.pairing-name{font-family:inherit;font-weight:700;font-size:15px;color:var(--accent);line-height:1.2}
 .pairing-fams{font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace}
 .pairing-desc{font-size:12px;color:var(--text-mid);margin-bottom:14px}
 .rationale{font-size:13px;color:var(--text);line-height:1.6;padding-top:12px;border-top:1px solid var(--line);max-width:640px}

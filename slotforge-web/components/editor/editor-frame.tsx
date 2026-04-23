@@ -16,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v102'
+const EDITOR_VERSION = 'v103'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -614,9 +614,6 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
               if (payloadRef.current) {
                 payloadRef.current = { ...payloadRef.current, typographySpec: spec }
               }
-            }}
-            onBackToCanvas={() => {
-              iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)
             }}
           />
         )}

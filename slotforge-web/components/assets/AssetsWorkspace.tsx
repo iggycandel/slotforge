@@ -938,6 +938,11 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
       {/* ── Inline mode: compact back bar (no full toolbar) ───────────────── */}
       {inlineMode && (
+        // Thin top strip — just the workspace label + progress pill. The
+        // "< Canvas" back button that used to live here was removed; users
+        // switch workspaces via the tabs in the editor menubar (Art /
+        // Typography / Flow / …), so the redundant in-workspace back arrow
+        // was clutter.
         <div style={{
           height:      36,
           minHeight:   36,
@@ -949,28 +954,6 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           borderBottom: `1px solid ${C.border}`,
           flexShrink:  0,
         }}>
-          <button
-            onClick={onBackToCanvas}
-            style={{
-              display:    'flex',
-              alignItems: 'center',
-              gap:        5,
-              fontSize:   11,
-              fontWeight: 600,
-              color:      C.txMuted,
-              background: 'none',
-              border:     `1px solid ${C.border}`,
-              borderRadius: 6,
-              padding:    '3px 8px',
-              cursor:     'pointer',
-            }}
-            className="sf-btn"
-          >
-            <ChevronLeft size={11} />
-            Canvas
-          </button>
-
-          <span style={{ fontSize: 11, color: C.txFaint }}>·</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: C.gold, letterSpacing: '.06em', textTransform: 'uppercase' }}>
             Art Workspace
           </span>
