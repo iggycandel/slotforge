@@ -25,6 +25,7 @@ import { GRAPHIC_STYLES } from '@/lib/ai/styles'
 import { SingleGeneratePopup } from '@/components/generate/SingleGeneratePopup'
 import { ReviewPromptsModal, readPromptOverrides, type ReviewSlot } from '@/components/generate/ReviewPromptsModal'
 import { StyleIcon } from '@/components/generate/StyleIcon'
+import { PromptInputsPanel, type PromptInputsMeta } from '@/components/assets/PromptInputsPanel'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -248,13 +249,20 @@ interface Props {
    *  the right-sidebar AssetsPanel was wired up; AssetsWorkspace silently
    *  dropped the sync, causing character/logo to disappear on round-trip. */
   onAddToCanvas?: (assetType: string, url: string) => void
+  /** Patch a subset of project meta (game name, theme, style, palette, world
+   *  fields, symbol names) back into the editor iframe. The iframe applies
+   *  each field to its corresponding DOM input / P state and marks dirty,
+   *  so autosave + cross-workspace consistency are automatic. Used by the
+   *  PromptInputsPanel — without it, edits in Art would be lost on the next
+   *  payload refresh. */
+  onUpdateMeta?: (patch: Partial<PromptInputsMeta>) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta, exportsEnabled = false, onAddToCanvas }: Props) {
+export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta, exportsEnabled = false, onAddToCanvas, onUpdateMeta }: Props) {
   // Route params (for billing page link)
   const params = useParams<{ orgSlug: string }>()
   const routeSlug = orgSlug ?? params?.orgSlug ?? ''
@@ -281,6 +289,10 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // which by checking FEATURE_SLOT_KEYS and route label/regen accordingly.
   const [selected,    setSelected]    = useState<string | null>(null)
   const [activeGroup, setActiveGroup] = useState<string | null>(null)
+  // Left-sidebar tab: 'assets' (the legacy navigator) or 'inputs' (the
+  // consolidated Prompt Inputs panel introduced in v109). Kept on the
+  // component itself so navigating away-and-back remembers the mode.
+  const [sidebarMode, setSidebarMode] = useState<'assets' | 'inputs'>('assets')
   const [rightTab,    setRightTab]    = useState<'inspector' | 'prompt' | 'feedback'>('inspector')
 
   // Generation control
@@ -987,23 +999,39 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       }}>
 
         {/* ── LEFT SIDEBAR ────────────────────────────────────────────────── */}
-        {/* missingCount stays restricted to base-type gaps — the "Fill gaps"
-            and "Generate All" buttons only batch-generate base assets;
-            feature slots are created one at a time from the tile Generate
-            action. The progress pill inside LeftSidebar uses the combined
-            totals (base + feature) so the user sees the whole picture. */}
-        <LeftSidebar
-          groups={assetGroups}
-          featureGroups={featureGroups}
-          assets={assets}
-          featureAssets={featureAssets}
-          activeGroup={activeGroup}
-          onSelectGroup={setActiveGroup}
-          batchRunning={batchRunning}
-          onGenerateAll={handleGenerate}
-          onGenerateMissing={handleGenerateMissing}
-          missingCount={assetGroups.flatMap(g => g.types).filter(t => !assets[t]).length}
-        />
+        {/* Two modes on one column:
+              Assets — the legacy navigator (progress pill + group buttons +
+                       batch actions).
+              Inputs — the PromptInputsPanel (v109): every field that shapes
+                       the AI prompt, editable inline.
+            A header tab-switcher keeps them peers so users can flip without
+            leaving the Art workspace. Each mode owns its own scroll. */}
+        <aside style={{
+          width: SIDEBAR_W, minWidth: SIDEBAR_W,
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden', background: C.surface,
+        }}>
+          <SidebarTabSwitcher mode={sidebarMode} onChange={setSidebarMode} />
+          {sidebarMode === 'assets' ? (
+            <LeftSidebar
+              groups={assetGroups}
+              featureGroups={featureGroups}
+              assets={assets}
+              featureAssets={featureAssets}
+              activeGroup={activeGroup}
+              onSelectGroup={setActiveGroup}
+              batchRunning={batchRunning}
+              onGenerateAll={handleGenerate}
+              onGenerateMissing={handleGenerateMissing}
+              missingCount={assetGroups.flatMap(g => g.types).filter(t => !assets[t]).length}
+            />
+          ) : (
+            <PromptInputsPanel
+              meta={(projectMeta ?? {}) as PromptInputsMeta}
+              onChange={patch => onUpdateMeta?.(patch)}
+            />
+          )}
+        </aside>
 
         {/* ── MAIN AREA ───────────────────────────────────────────────────── */}
         <main style={{
@@ -1216,16 +1244,15 @@ function LeftSidebar({
   const totalTypes       = baseTypes + featureTypes
 
   return (
-    <aside style={{
-      width:     SIDEBAR_W,
-      minWidth:  SIDEBAR_W,
-      display:   'flex',
-      flexDirection: 'column',
-      overflow:  'hidden',
-      background: C.surface,
+    // NOTE: no outer <aside> wrapper here — the parent AssetsWorkspace now
+    // wraps this + PromptInputsPanel in a shared <aside> with the
+    // SidebarTabSwitcher on top, so LeftSidebar is just the flex-growing
+    // body of whichever tab is active.
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Header */}
-      <div style={{ padding: '16px 16px 12px', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ padding: '14px 16px 12px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <LayoutGrid size={14} style={{ color: C.gold }} />
           <span style={{ fontSize: 12, fontWeight: 700, color: C.tx, letterSpacing: '.04em' }}>
@@ -1428,7 +1455,43 @@ function LeftSidebar({
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-    </aside>
+    </div>
+  )
+}
+
+// ─── Sidebar tab switcher — flips between Assets / Inputs modes ───────────
+function SidebarTabSwitcher({
+  mode, onChange,
+}: { mode: 'assets' | 'inputs'; onChange: (m: 'assets' | 'inputs') => void }) {
+  return (
+    <div style={{
+      display: 'flex', gap: 4, padding: '8px 10px 6px',
+      borderBottom: `1px solid ${C.border}`, flexShrink: 0,
+    }}>
+      {([
+        { id: 'assets', label: 'Assets' },
+        { id: 'inputs', label: 'Inputs' },
+      ] as const).map(tab => {
+        const active = mode === tab.id
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            style={{
+              flex: 1, padding: '6px 10px',
+              background: active ? C.surfHigh : 'transparent',
+              border: `1px solid ${active ? C.borderMed : 'transparent'}`,
+              borderRadius: 5,
+              color: active ? C.tx : C.txMuted,
+              fontSize: 11, fontWeight: 600, fontFamily: C.font,
+              cursor: 'pointer', letterSpacing: '.02em',
+            }}
+          >
+            {tab.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

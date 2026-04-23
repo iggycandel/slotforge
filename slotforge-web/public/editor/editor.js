@@ -12657,6 +12657,95 @@ window._sfBridge = (function(){
       return;
     }
 
+    // Bulk-apply a patch from the Art workspace's PromptInputsPanel. Each
+    // field maps to either a DOM input (so the existing change-listeners
+    // fire and side-effects like live canvas repaint happen) or directly
+    // into P (for colour toggles and symbol-name arrays that don't have a
+    // DOM representation in the editor chrome). markDirty at the end
+    // schedules autosave via the existing bridge.
+    if(msg.type === 'SF_UPDATE_META' && msg.patch && typeof msg.patch === 'object'){
+      var patch = msg.patch;
+      try {
+        // Helper: write value into a DOM input + dispatch the event the
+        // field's own listener is bound to. Without the dispatch, setting
+        // input.value alone wouldn't trigger the side-effect — some fields
+        // listen on 'change' (selects, color pickers) and some on 'input'
+        // (text fields, textareas). Fire both defensively.
+        function setFieldById(id, value){
+          var el = document.getElementById(id);
+          if(!el || typeof value !== 'string') return;
+          el.value = value;
+          try { el.dispatchEvent(new Event('input',  { bubbles: true })); } catch(_){}
+          try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(_){}
+        }
+
+        // Identity — gameName lives on both DOM (#game-name) and P.
+        if(patch.gameName !== undefined)       setFieldById('game-name', patch.gameName);
+        if(patch.themeKey !== undefined){ P.theme = patch.themeKey; setFieldById('theme-sel', patch.themeKey); }
+        if(patch.styleId  !== undefined)       setFieldById('game-art-style', patch.styleId);
+
+        // World & tone — all DOM-backed textareas/inputs in Project Settings.
+        if(patch.setting         !== undefined) setFieldById('game-setting',         patch.setting);
+        if(patch.story           !== undefined) setFieldById('game-story',           patch.story);
+        if(patch.mood            !== undefined) setFieldById('game-mood',            patch.mood);
+        if(patch.bonusNarrative  !== undefined) setFieldById('game-bonus-narrative', patch.bonusNarrative);
+        if(patch.artNotes        !== undefined) setFieldById('game-art-notes',       patch.artNotes);
+        if(patch.artRef          !== undefined) setFieldById('game-art-ref',         patch.artRef);
+
+        // Colour palette — P.colors is the source of truth; the palette UI
+        // in Project Settings reflects it. Write directly, then re-sync the
+        // palette UI bits so Project Settings looks right on return.
+        if(patch.colorPrimary   !== undefined) P.colors.c1 = patch.colorPrimary;
+        if(patch.colorBg        !== undefined) P.colors.c2 = patch.colorBg;
+        if(patch.colorAccent    !== undefined) P.colors.c3 = patch.colorAccent;
+        if(patch.colorPrimaryOn !== undefined) P.colors.t1 = !!patch.colorPrimaryOn;
+        if(patch.colorBgOn      !== undefined) P.colors.t2 = !!patch.colorBgOn;
+        if(patch.colorAccentOn  !== undefined) P.colors.t3 = !!patch.colorAccentOn;
+        var paletteChanged = patch.colorPrimary !== undefined || patch.colorBg !== undefined ||
+                             patch.colorAccent  !== undefined || patch.colorPrimaryOn !== undefined ||
+                             patch.colorBgOn    !== undefined || patch.colorAccentOn  !== undefined;
+        if(paletteChanged){
+          // Mirror _sfApplyPayload's palette-sync block so the Project
+          // Settings UI reflects the new values on return.
+          try {
+            [
+              { hex: P.colors.c1, on: P.colors.t1, inp: 'col1', hex_lbl: 'hex1', tog: 'tog1', chip: 'sw1' },
+              { hex: P.colors.c2, on: P.colors.t2, inp: 'col2', hex_lbl: 'hex2', tog: 'tog2', chip: 'sw2' },
+              { hex: P.colors.c3, on: P.colors.t3, inp: 'col3', hex_lbl: 'hex3', tog: 'tog3', chip: 'sw3' },
+            ].forEach(function(c){
+              if(c.hex){
+                var inp = document.getElementById(c.inp);      if(inp) inp.value = c.hex;
+                var txt = document.getElementById(c.hex_lbl);  if(txt) txt.textContent = c.hex;
+                var chip= document.getElementById(c.chip);     if(chip) chip.style.background = c.hex;
+              }
+              var tog = document.getElementById(c.tog);
+              if(tog) tog.classList.toggle('on', !!c.on);
+            });
+          } catch(_){}
+        }
+
+        // Symbol names — P.symbols is an array of { type, name } entries.
+        // We patch name fields by type-index (high_0..N, low_0..N, special_0..N)
+        // so the editor's own Symbols UI stays the source of truth for
+        // count / type / id; we only rewrite the .name field per entry.
+        function patchSymbolNames(group, names){
+          if(!Array.isArray(names)) return;
+          if(!Array.isArray(P.symbols)) P.symbols = [];
+          var typed = P.symbols.filter(function(s){ return s.type === group; });
+          for(var i = 0; i < names.length; i++){
+            var name = names[i];
+            if(typed[i]){ typed[i].name = typeof name === 'string' ? name : ''; }
+          }
+        }
+        if(patch.symbolHighNames)    patchSymbolNames('high',    patch.symbolHighNames);
+        if(patch.symbolLowNames)     patchSymbolNames('low',     patch.symbolLowNames);
+        if(patch.symbolSpecialNames) patchSymbolNames('special', patch.symbolSpecialNames);
+
+        if(typeof markDirty === 'function') markDirty();
+      } catch(e) { console.warn('[SF] SF_UPDATE_META failed:', e); }
+      return;
+    }
+
     if(msg.type === 'SF_LAYER_OP'){
       var op=msg.op, k=msg.key;
       try {

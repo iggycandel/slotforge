@@ -16,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v108'
+const EDITOR_VERSION = 'v109'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -461,6 +461,17 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     iframeRef.current?.contentWindow?.postMessage({ type: 'SF_INJECT_IMAGE_LAYER', assetType, url }, window.location.origin)
   }, [])
 
+  // Patch project meta (name / theme / style / palette / world fields /
+  // symbol names) from the Art workspace's PromptInputsPanel. Forwarded
+  // to editor.js as SF_UPDATE_META; the iframe fans the patch out to
+  // DOM inputs + P state + markDirty so autosave persists.
+  const handleUpdateMeta = useCallback((patch: Record<string, unknown>) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'SF_UPDATE_META', patch },
+      window.location.origin,
+    )
+  }, [])
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -627,6 +638,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             // inline arrow here would break the identity stability
             // AssetsWorkspace's effects rely on.
             onAddToCanvas={handleAddToCanvas}
+            onUpdateMeta={handleUpdateMeta}
             onBackToCanvas={() => {
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)
