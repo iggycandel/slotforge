@@ -12000,6 +12000,58 @@ window._sfApplyPayload = function(payload){
   try { var ph=document.getElementById('ph-chip');    if(ph) ph.textContent=P.gameName||''; } catch(e){}
   try { var ts=document.getElementById('theme-sel');  if(ts) ts.value=P.theme||'western'; } catch(e){}
   try { var rs=document.getElementById('reel-sel');   if(rs) rs.value=P.reelset||'5x3';  } catch(e){}
+
+  // ── Restore Theme / Art-Direction DOM fields from payload.meta ───────────
+  // collectMeta() reads these DOM values at save time; without this block
+  // every reload silently wiped them from the UI and the next save emitted
+  // empty strings. See getPayload() + collectMeta() above.
+  try {
+    var setInp = function(id, val){
+      if (val == null) return;
+      var el = document.getElementById(id);
+      if (el && typeof val === 'string') el.value = val;
+    };
+    var m = s.meta || {};
+    setInp('game-setting',          m.setting);
+    setInp('game-story',            m.story);
+    setInp('game-mood',             m.mood);
+    setInp('game-bonus-narrative',  m.bonusNarrative);
+    // Art Style select: prefer styleId (canonical), fall back to legacy
+    // free-text artStyle mapped through legacyStyleToId so old payloads
+    // still land on a valid option in the rewritten select.
+    if (m.styleId || m.artStyle) {
+      var styleVal = m.styleId || '';
+      if (!styleVal && m.artStyle) {
+        try { styleVal = (typeof legacyStyleToId === 'function')
+                ? legacyStyleToId(m.artStyle) : m.artStyle; } catch(_){}
+      }
+      setInp('game-art-style', styleVal);
+    }
+    setInp('game-art-ref',          m.artRef);
+    setInp('game-art-notes',        m.artNotes);
+  } catch(e){ console.warn('[_sfApplyPayload] meta restore failed:', e); }
+
+  // ── Restore Colour Palette UI from P.colors ──────────────────────────────
+  // P.colors has shape { c1, c2, c3, t1, t2, t3 } where c* are hex strings
+  // and t* are booleans. All four DOM bits per entry need to sync: the
+  // <input type="color">, the hex text display, the toggle dot, and the
+  // background of the small swatch chip.
+  try {
+    var cfg = [
+      { hex: P.colors?.c1, on: P.colors?.t1, inp: 'col1', hex_lbl: 'hex1', tog: 'tog1', chip: 'sw1' },
+      { hex: P.colors?.c2, on: P.colors?.t2, inp: 'col2', hex_lbl: 'hex2', tog: 'tog2', chip: 'sw2' },
+      { hex: P.colors?.c3, on: P.colors?.t3, inp: 'col3', hex_lbl: 'hex3', tog: 'tog3', chip: 'sw3' },
+    ];
+    cfg.forEach(function(c){
+      if (c.hex) {
+        var inp = document.getElementById(c.inp);          if (inp) inp.value = c.hex;
+        var txt = document.getElementById(c.hex_lbl);      if (txt) txt.textContent = c.hex;
+        var chip = document.getElementById(c.chip);        if (chip) chip.style.background = c.hex;
+      }
+      var tog = document.getElementById(c.tog);
+      if (tog) tog.classList.toggle('on', !!c.on);
+    });
+  } catch(e){ console.warn('[_sfApplyPayload] palette restore failed:', e); }
   // Re-render — each call is individually guarded
   try { if(typeof renderReelViz==='function') renderReelViz(); } catch(e){}
   try { if(typeof rebuildTabs==='function')   rebuildTabs();   } catch(e){}
@@ -12218,6 +12270,30 @@ window._sfBridge = (function(){
       thumbnail: thumbnail
     }, '*');
   }
+
+  /* ─── 5b. beforeunload safety-net — sync-save on tab close / refresh ──
+     If the user has unsaved edits queued (debounced autosave hasn't
+     fired yet, or they refreshed before the 1.5 s debounce elapsed),
+     fire a LAST payload with no thumbnail so the changes land. Runs
+     synchronously via postMessage (fire-and-forget) so beforeunload
+     doesn't block. The parent shell's SF_AUTOSAVE listener persists it
+     to Supabase. */
+  function _safetySave(){
+    try {
+      if (!window._sfPayloadLoaded) return;  // don't overwrite with defaults
+      var p = getPayload();
+      // Skip thumbnail capture — html2canvas is async and would miss the
+      // unload window entirely. A fresh thumbnail is nice-to-have; the
+      // payload data is the priority.
+      window.parent.postMessage({ type: 'SF_AUTOSAVE', payload: p }, '*');
+    } catch(_){}
+  }
+  window.addEventListener('beforeunload', _safetySave);
+  // Also fire on visibilitychange → hidden (covers mobile Safari where
+  // beforeunload is unreliable and tab backgrounding is the real signal).
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'hidden') _safetySave();
+  });
 
   /* ─── 6. Pre-fill welcome form name + Game Identity field ─── */
   function prefillName(name){
