@@ -16,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v104'
+const EDITOR_VERSION = 'v105'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -417,9 +417,16 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     setSaveState({ status: 'saved', lastSaved: new Date() })
   }
 
-  function handleAddToCanvas(assetType: AssetType, url: string) {
+  // Stable reference — AssetsWorkspace passes this into its own
+  // useEffect/useCallback dep arrays (auto-rehydrate on mount,
+  // handleRevert, handleUpload). If this identity changed every render,
+  // the mount-hydrate effect would fire repeatedly and wipe any
+  // client-side revert before it could stick. Wrapped in useCallback
+  // with an empty dep list since iframeRef is a ref (stable) and the
+  // origin is constant.
+  const handleAddToCanvas = useCallback((assetType: AssetType, url: string) => {
     iframeRef.current?.contentWindow?.postMessage({ type: 'SF_INJECT_IMAGE_LAYER', assetType, url }, window.location.origin)
-  }
+  }, [])
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -583,7 +590,10 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             // (Canvas workspace) wired this up; the full-page Art view
             // silently dropped the sync, which is why character + logo
             // disappeared on project reload.
-            onAddToCanvas={(assetType, url) => handleAddToCanvas(assetType as AssetType, url)}
+            // Directly pass the memoised callback — wrapping it in an
+            // inline arrow here would break the identity stability
+            // AssetsWorkspace's effects rely on.
+            onAddToCanvas={handleAddToCanvas}
             onBackToCanvas={() => {
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)

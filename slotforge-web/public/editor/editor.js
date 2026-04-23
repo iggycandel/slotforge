@@ -11962,6 +11962,17 @@ window._sfApplyPayload = function(payload){
   try { if(s.keyOrders && typeof SDEFS!=='undefined') Object.entries(s.keyOrders).forEach(function(e){ if(SDEFS[e[0]]) SDEFS[e[0]].keys=[].concat(e[1]); }); } catch(e){}
   // Restore custom layer definitions so buildCanvas/renderLayers can find them
   try { if(s.customPsd && typeof PSD!=='undefined') Object.assign(PSD, s.customPsd); } catch(e){}
+  // Restore per-layer z-index overrides. layerReorder() rewrites
+  // PSD[k].z in place; the renderer sorts by PSD[k].z; so without this
+  // block every reload resurrects the editor's default layer stack and
+  // silently wipes the user's layer reordering.
+  try {
+    if(s.layerZ && typeof PSD!=='undefined'){
+      Object.entries(s.layerZ).forEach(function(e){
+        if(PSD[e[0]] && typeof e[1] === 'number') PSD[e[0]].z = e[1];
+      });
+    }
+  } catch(e){}
   // Fill any symbol slots that the saved project didn't have assets for
   try { if(typeof window._loadDefaultSymbols==='function') setTimeout(window._loadDefaultSymbols, 50); } catch(e){}
   // Restore Game Flow Designer state — handles both multi-flow and legacy formats
@@ -12135,6 +12146,16 @@ window._sfBridge = (function(){
       keyOrders:   (function(){ var ko={}; try{ Object.entries(typeof SDEFS!=='undefined'?SDEFS:{}).forEach(function(e){ if(e[1].keys) ko[e[0]]=[].concat(e[1].keys); }); }catch(ex){} return ko; })(),
       // Save custom layer definitions (PSD entries for custom_N keys) — required for layers to survive reload
       customPsd:   (function(){ var cp={}; try{ Object.entries(typeof PSD!=='undefined'?PSD:{}).forEach(function(e){ if(e[0].indexOf('custom_')===0) cp[e[0]]=e[1]; }); }catch(ex){} return cp; })(),
+      // Per-layer z-index override map. The canvas renderer sorts by
+      // PSD[k].z at paint time — but PSD is the built-in layer library
+      // (not user-specific state), so a reload re-imports default
+      // z-values and wipes every reorder the user did. `keyOrders`
+      // only captures the `SDEFS[screen].keys` array ordering, which
+      // doesn't drive paint order here. Emitting the live PSD[k].z
+      // snapshot fixes the round-trip. custom_N layers already survive
+      // via `customPsd` above (whole PSD entry), so we skip them to
+      // keep the payload small.
+      layerZ:      (function(){ var lz={}; try{ Object.entries(typeof PSD!=='undefined'?PSD:{}).forEach(function(e){ if(e[0].indexOf('custom_')!==0 && typeof e[1]?.z === 'number') lz[e[0]]=e[1].z; }); }catch(ex){} return lz; })(),
       blendModes:  (function(){ var bm={}; try{ Object.entries(EL_BLEND_MODES).forEach(function(e){ if(e[1]&&e[1]!=='normal') bm[e[0]]=e[1]; }); }catch(ex){} return bm; })(),
       // Game Flow Designer — multi-flow format: { flows, activeFlowId, _seq }
       gfd: (function(){

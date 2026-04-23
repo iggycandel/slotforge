@@ -388,6 +388,14 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
   // ─── In inline mode, pre-load existing assets from API (no server-side fetch) ─
 
+  // Keep a ref to the latest onAddToCanvas so the one-shot mount fetch
+  // below can invoke it without taking a dep on its identity. If we
+  // listed it in the dep array, an inline arrow in the parent would
+  // re-run this effect on every render of EditorFrame and clobber
+  // client-side state (reverts, unsaved uploads) with a stale DB fetch.
+  const onAddToCanvasRef = useRef<typeof onAddToCanvas>(onAddToCanvas)
+  useEffect(() => { onAddToCanvasRef.current = onAddToCanvas }, [onAddToCanvas])
+
   useEffect(() => {
     if (!inlineMode) return
     fetch(`/api/generate?project_id=${projectId}`)
@@ -406,20 +414,23 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           // v101. Pushing the latest version of every base asset (+ every
           // feature slot) here rebuilds the iframe canvas from
           // ground-truth Supabase data without requiring the user to
-          // manually re-generate. onAddToCanvas is a no-op when omitted,
-          // so standalone mode stays unchanged.
-          if (onAddToCanvas) {
+          // manually re-generate. Ref lookup so this effect stays a
+          // one-shot on (projectId, inlineMode) — adding the callback
+          // to the deps would fire the fetch on every parent render and
+          // overwrite any in-flight revert.
+          const add = onAddToCanvasRef.current
+          if (add) {
             for (const [type, asset] of Object.entries(assetMap)) {
-              if (asset?.url) onAddToCanvas(type, asset.url)
+              if (asset?.url) add(type, asset.url)
             }
             for (const [key, asset] of Object.entries(featureMap)) {
-              if (asset?.url) onAddToCanvas(key, asset.url)
+              if (asset?.url) add(key, asset.url)
             }
           }
         }
       })
       .catch(() => {/* non-fatal */})
-  }, [projectId, inlineMode, onAddToCanvas])
+  }, [projectId, inlineMode])
 
   const saveContext = useCallback((t: string, s: string, p: 'openai' | 'mock') => {
     fetch('/api/project-context', {
