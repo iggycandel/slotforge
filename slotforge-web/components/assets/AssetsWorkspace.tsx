@@ -14,7 +14,7 @@ import {
   Sparkles, ChevronLeft, LayoutGrid, Layers, Box,
   RefreshCw, Download, Loader2, CheckCircle2,
   XCircle, Wand2, ZapIcon, AlignLeft, MessageSquare,
-  Eye, Upload, X, FileText,
+  Eye, Upload, X, FileText, History,
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import { ASSET_LABELS } from '@/types/assets'
@@ -1076,6 +1076,11 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           selectedKey={selected}
           selectedIsFeature={selectedIsFeature}
           selectedAsset={selectedAsset ?? undefined}
+          selectedHistory={
+            selected && !selectedIsFeature
+              ? (assetHistory[selected as AssetType] ?? [])
+              : []
+          }
           rightTab={rightTab}
           onTabChange={setRightTab}
           customPrompt={customPrompt}
@@ -1083,6 +1088,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           regenTarget={regenTarget}
           theme={theme}
           onRegenBase={handleRegen}
+          onRevertBase={handleRevert}
           onGenerateFeature={handleFeatureSlotGenerate}
           logs={batchLogs}
           shortLabels={shortLabels}
@@ -2072,28 +2078,36 @@ function AssetTile({
         </div>
       )}
 
-      {/* History badge — shown when multiple versions exist */}
+      {/* History badge — shown when multiple versions exist. Icon + count
+          makes the affordance scannable ("there's history here") instead
+          of a cryptic "v2" pill that users missed entirely in the prior
+          build. The badge opens the full-tile history overlay below. */}
       {prevVersions.length > 0 && !isRegenerating && (
         <button
-          title={`${prevVersions.length} previous version${prevVersions.length > 1 ? 's' : ''}`}
+          title={`${prevVersions.length} previous version${prevVersions.length > 1 ? 's' : ''} — click to browse`}
           onClick={e => { e.stopPropagation(); setShowHistory(v => !v) }}
           style={{
             position:   'absolute',
             top:        5,
             left:       5,
-            padding:    '1px 5px',
-            background: showHistory ? 'rgba(201,168,76,.3)' : 'rgba(0,0,0,.55)',
-            border:     `1px solid ${showHistory ? C.gold : 'rgba(255,255,255,.15)'}`,
-            borderRadius: 4,
-            color:      showHistory ? C.gold : C.txMuted,
-            fontSize:   8,
+            display:    'flex',
+            alignItems: 'center',
+            gap:        3,
+            padding:    '2px 6px 2px 5px',
+            background: showHistory ? 'rgba(201,168,76,.35)' : 'rgba(6,6,10,.75)',
+            border:     `1px solid ${showHistory ? C.gold : 'rgba(201,168,76,.4)'}`,
+            borderRadius: 10,
+            color:      showHistory ? '#06060a' : C.gold,
+            backdropFilter: 'blur(2px)',
+            fontSize:   9,
             fontWeight: 700,
             cursor:     'pointer',
-            lineHeight: '14px',
+            lineHeight: 1,
             letterSpacing: '.04em',
           }}
         >
-          v{prevVersions.length + 1}
+          <History size={9} />
+          <span>{prevVersions.length + 1}</span>
         </button>
       )}
 
@@ -2280,6 +2294,9 @@ interface RightPanelProps {
   /** True when the selection is a feature-slot key (drives regen routing). */
   selectedIsFeature: boolean
   selectedAsset?:    GeneratedAsset
+  /** Full per-type history (newest-first) for the currently selected base
+   *  asset. Empty array when selection is a feature slot or has no history. */
+  selectedHistory:   GeneratedAsset[]
   rightTab:          RightTab
   onTabChange:       (tab: RightTab) => void
   customPrompt:      string
@@ -2288,6 +2305,8 @@ interface RightPanelProps {
   theme:             string
   /** Regenerate a base asset type (existing batch/single flow). */
   onRegenBase:       (type: AssetType, prompt?: string) => void
+  /** Revert a base asset type to a previous version (client-side only). */
+  onRevertBase:      (type: AssetType, asset: GeneratedAsset) => void
   /** Generate a single feature slot (wired from handleFeatureSlotGenerate). */
   onGenerateFeature: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
   logs:              string[]
@@ -2297,9 +2316,10 @@ interface RightPanelProps {
 }
 
 function RightInspectorPanel({
-  selectedKey, selectedIsFeature, selectedAsset, rightTab, onTabChange,
+  selectedKey, selectedIsFeature, selectedAsset, selectedHistory,
+  rightTab, onTabChange,
   customPrompt, onPromptChange,
-  regenTarget, theme, onRegenBase, onGenerateFeature, logs, shortLabels,
+  regenTarget, theme, onRegenBase, onRevertBase, onGenerateFeature, logs, shortLabels,
   exportsEnabled, onUpgradeGate,
 }: RightPanelProps) {
   const TABS: { id: RightTab; label: string; icon: React.ReactNode }[] = [
@@ -2368,9 +2388,11 @@ function RightInspectorPanel({
               selectedKey={selectedKey ?? null}
               selectedIsFeature={selectedIsFeature}
               selectedAsset={selectedAsset}
+              selectedHistory={selectedHistory}
               regenTarget={regenTarget}
               theme={theme}
               onRegenBase={onRegenBase}
+              onRevertBase={onRevertBase}
               onGenerateFeature={onGenerateFeature}
               shortLabels={shortLabels}
               exportsEnabled={exportsEnabled}
@@ -2423,16 +2445,18 @@ function resolveLabel(
 }
 
 function InspectorTab({
-  selectedKey, selectedIsFeature, selectedAsset,
-  regenTarget, theme, onRegenBase, onGenerateFeature,
+  selectedKey, selectedIsFeature, selectedAsset, selectedHistory,
+  regenTarget, theme, onRegenBase, onRevertBase, onGenerateFeature,
   shortLabels, exportsEnabled, onUpgradeGate,
 }: {
   selectedKey:      string | null
   selectedIsFeature: boolean
   selectedAsset?:   GeneratedAsset
+  selectedHistory:  GeneratedAsset[]
   regenTarget:      AssetType | null
   theme:            string
   onRegenBase:      (type: AssetType) => void
+  onRevertBase:     (type: AssetType, asset: GeneratedAsset) => void
   onGenerateFeature: (slotKey: string) => Promise<{ ok: boolean; error?: string }>
   shortLabels:      Partial<Record<AssetType, string>>
   exportsEnabled:   boolean
@@ -2512,6 +2536,85 @@ function InspectorTab({
           <p style={{ fontSize: 12, color: C.txMuted, margin: 0 }}>Not yet generated</p>
         )}
       </div>
+
+      {/* Version history — newest first. Every regeneration inserts a
+          fresh row in generated_assets, so this strip is populated
+          automatically across sessions. The user can click any
+          thumbnail to revert that slot to an earlier version
+          (client-side swap only — the previous version remains in the
+          DB and reappears here after a re-generate). The current
+          version shows a gold border + "active" pill; everything else
+          is a clickable thumb with a hover-revealed "restore" hint. */}
+      {!selectedIsFeature && selectedHistory.length > 1 && selectedKey && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            marginBottom: 8,
+          }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: C.gold,
+              letterSpacing: '.08em', textTransform: 'uppercase',
+            }}>
+              Versions
+            </span>
+            <span style={{ fontSize: 9, color: C.txFaint }}>
+              {selectedHistory.length} total · click to restore
+            </span>
+          </div>
+          <div style={{
+            display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4,
+          }}>
+            {selectedHistory.map(v => {
+              const isActive = v.id === selectedAsset?.id
+              return (
+                <button
+                  key={v.id}
+                  title={
+                    isActive
+                      ? `Active version — ${timeAgo(v.created_at)}`
+                      : `Restore version from ${timeAgo(v.created_at)}`
+                  }
+                  onClick={() => {
+                    if (isActive) return
+                    onRevertBase(selectedKey as AssetType, v)
+                  }}
+                  disabled={isActive}
+                  style={{
+                    position: 'relative', padding: 0,
+                    width: 56, height: 56, flexShrink: 0,
+                    background: 'none',
+                    border: `1.5px solid ${isActive ? C.gold : C.border}`,
+                    borderRadius: 6, overflow: 'hidden',
+                    cursor: isActive ? 'default' : 'pointer',
+                    boxShadow: isActive ? `0 0 0 1px ${C.gold}40` : 'none',
+                  }}
+                >
+                  <img
+                    src={v.url}
+                    alt={timeAgo(v.created_at)}
+                    style={{
+                      width: '100%', height: '100%', objectFit: 'cover',
+                      display: 'block',
+                      opacity: isActive ? 1 : 0.85,
+                    }}
+                  />
+                  {isActive && (
+                    <span style={{
+                      position: 'absolute', bottom: 2, left: 2, right: 2,
+                      fontSize: 7, color: '#06060a', background: C.gold,
+                      fontWeight: 700, textAlign: 'center',
+                      borderRadius: 2, lineHeight: '10px',
+                      letterSpacing: '.04em', textTransform: 'uppercase',
+                    }}>
+                      active
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Actions — primary Generate (filled gold) + ghost Download per
           UX critique. Previously both buttons had near-identical visual
