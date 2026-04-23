@@ -107,7 +107,14 @@ export function SingleGeneratePopup({
   // Default remains 'replace' so Review-Prompts overrides behave as before;
   // users who type a fresh custom prompt can flip to 'append' to keep the
   // consistency benefit of Project Settings.
-  const [customPromptMode, setCustomPromptMode] = useState<'replace' | 'append'>('replace')
+  // v111: flipped default from 'replace' → 'append'. The replace mode
+  // throws away the entire composed prompt (style, template, tier,
+  // differentiator, negatives-aside) and uses the user's text as THE
+  // prompt — most users who type a quick note don't want that; they
+  // want their note ADDED to the consistency-inducing Spinative stack.
+  // Review-Prompts overrides still start in replace mode (they're full
+  // composed prompts the user hand-edited), see the useEffect below.
+  const [customPromptMode, setCustomPromptMode] = useState<'replace' | 'append'>('append')
   // Per-asset reference images. Each entry stores the data-URL preview
   // plus its GPT-4o-described aesthetic (populated async by the describe
   // pipeline). Descriptions are passed into the generate call as

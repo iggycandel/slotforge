@@ -1126,6 +1126,18 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             overrideCount={overrideCount}
           />
 
+          {/* Symbol-name nag banner — sits above the grid so it's visible
+              EVERY time the user is about to generate, not buried in the
+              Inputs tab. Names are the single biggest unused lever on
+              generation quality; without them, every tier comes back as a
+              generic "premium icon" in the chosen theme. Dismisses for the
+              session on click (we don't persist dismissal; the user should
+              see it again when they return if still empty). */}
+          <SymbolNameNag
+            meta={effectiveMeta}
+            onJumpToNames={() => setSidebarMode('inputs')}
+          />
+
           {/* SSE Progress Bar */}
           {batchRunning && (
             <BatchProgressBar
@@ -1559,6 +1571,77 @@ function SidebarTabSwitcher({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+// ─── Symbol-name nag banner ────────────────────────────────────────────────
+// Thin amber strip above the asset grid. Counts empty symbol names (high /
+// low / special) and surfaces a single-click jump to the Inputs panel's
+// Symbols section. Hidden when every tier is named OR when the project has
+// zero symbol slots configured.
+function SymbolNameNag({
+  meta, onJumpToNames,
+}: { meta: PromptInputsMeta; onJumpToNames: () => void }) {
+  const [dismissed, setDismissed] = useState(false)
+  const countEmpty = (names: string[] | undefined, total: number | undefined) => {
+    const t = Math.max(0, Math.min(8, Number(total ?? 5)))
+    const list = names ?? []
+    let empty = 0
+    for (let i = 0; i < t; i++) if (!(list[i] ?? '').trim()) empty++
+    return empty
+  }
+  const h = countEmpty(meta.symbolHighNames,    meta.symbolHighCount)
+  const l = countEmpty(meta.symbolLowNames,     meta.symbolLowCount)
+  const s = countEmpty(meta.symbolSpecialNames, meta.symbolSpecialCount)
+  const total = h + l + s
+  if (total === 0 || dismissed) return null
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '8px 14px',
+      background: 'rgba(251,191,36,.08)',
+      borderBottom: `1px solid rgba(251,191,36,.25)`,
+      color: '#fbbf24', fontSize: 11, fontFamily: C.font,
+    }}>
+      <span style={{
+        fontSize: 9, fontWeight: 700,
+        background: 'rgba(251,191,36,.18)',
+        border: '1px solid rgba(251,191,36,.4)',
+        borderRadius: 3, padding: '2px 6px', letterSpacing: '.04em',
+      }}>
+        {total} unnamed
+      </span>
+      <span style={{ color: '#e5c07b', flex: 1, minWidth: 0 }}>
+        Symbol names drive icon identity — without them, every tier comes
+        back as a generic "premium icon in {meta.themeKey || 'your theme'}".
+        {h > 0 && ` ${h} high,`}{l > 0 && ` ${l} low,`}{s > 0 && ` ${s} special`} still blank.
+      </span>
+      <button
+        onClick={onJumpToNames}
+        style={{
+          padding: '4px 10px', borderRadius: 5,
+          background: 'rgba(251,191,36,.16)',
+          border: '1px solid rgba(251,191,36,.45)',
+          color: '#fbbf24', fontSize: 11, fontWeight: 600,
+          cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+        }}
+      >
+        Fill in names →
+      </button>
+      <button
+        onClick={() => setDismissed(true)}
+        title="Dismiss for this session"
+        style={{
+          padding: '3px 5px', borderRadius: 4,
+          background: 'transparent', border: 'none',
+          color: '#c89a2e', fontSize: 11, cursor: 'pointer',
+          fontFamily: 'inherit', flexShrink: 0,
+        }}
+      >
+        <X size={11} />
+      </button>
     </div>
   )
 }
