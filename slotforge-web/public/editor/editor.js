@@ -3310,17 +3310,28 @@ document.querySelectorAll('.psh').forEach(h=>{h.addEventListener('click',()=>{co
 // editor.js can't import TS, so this list mirrors the server definitions so
 // the Project Settings "Art Style" dropdown exposes the same styleId values
 // the prompt builder (buildPrompt / buildFeatureSlotPrompt) uses. Option
-// value = styleId verbatim. Keep in sync with lib/ai/styles.ts.
+// value = styleId verbatim. Keep in sync with lib/ai/styles.ts — when adding
+// a style over there, mirror { id, emoji, name, desc } here. Descriptions
+// have been updated in v108 to drop "Hand-painted" / "brushwork" phrasing
+// since we no longer want any "brush" language affecting the render.
 const GRAPHIC_STYLES_MIRROR = [
   { id: '',                     emoji: '—',   name: '(none — use theme only)', desc: '' },
   { id: 'cartoon_3d',           emoji: '🎨',  name: 'Cartoon 3D',              desc: 'Bold, vibrant, Pixar-style' },
   { id: 'realistic_3d',         emoji: '💎',  name: 'Realistic 3D',            desc: 'Photorealistic, cinematic' },
-  { id: 'fantasy_illustrated',  emoji: '🖌️', name: 'Fantasy Illustrated',     desc: 'Hand-painted, semi-realistic' },
+  { id: 'fantasy_illustrated',  emoji: '🖼️',  name: 'Fantasy Illustrated',     desc: 'Painterly concept art, semi-realistic' },
   { id: 'art_deco',             emoji: '🏛️', name: 'Art Deco',                desc: 'Geometric, luxury gold, 1920s' },
   { id: 'dark_gothic',          emoji: '🦇',  name: 'Dark Gothic',             desc: 'Grim, atmospheric, fantasy' },
   { id: 'pixel_art',            emoji: '👾',  name: 'Pixel Art',               desc: 'Retro 8/16-bit aesthetic' },
   { id: 'anime',                emoji: '⛩️', name: 'Anime / Manga',           desc: 'Japanese animation, cel-shaded' },
-  { id: 'watercolor',           emoji: '💧',  name: 'Watercolor',              desc: 'Painterly, soft, illustrative' },
+  { id: 'watercolor',           emoji: '💧',  name: 'Watercolor',              desc: 'Translucent washes, soft edges' },
+  // Added v108 — widens the style bench. Maps to the same slots in
+  // lib/ai/styles.ts; see that file for the full promptModifier text.
+  { id: 'cartoon_2d',           emoji: '✏️',  name: 'Cartoon 2D Stylised',     desc: 'Flat 2D, bold outlines, vector-like' },
+  { id: 'low_poly',             emoji: '🔷',  name: 'Low Poly',                desc: 'Faceted polygons, indie-game geometry' },
+  { id: 'ukiyo_e',              emoji: '⛩️', name: 'Ukiyo-e / Edo Woodblock', desc: 'Japanese woodblock print tradition' },
+  { id: 'minimalist_ui',        emoji: '◎',   name: 'Minimalist UI',           desc: 'Flat geometry, limited palette, icon-first' },
+  { id: 'claymation',           emoji: '🧱',  name: 'Claymation',              desc: 'Stop-motion clay, handcrafted feel' },
+  { id: 'neo_noir',             emoji: '🎞️', name: 'Neo-Noir',                desc: 'High contrast shadows, pulp crime mood' },
 ];
 
 function _populateStyleOptions(){
@@ -3356,9 +3367,17 @@ function legacyStyleToId(text){
   if (/\b(pixel|8.?bit|16.?bit|retro\s+(arcade|game))\b/.test(s))           return 'pixel_art';
   if (/\b(anime|manga|ghibli|jrpg)\b/.test(s))                              return 'anime';
   if (/\b(watercolor|watercolour|gouache)\b/.test(s))                       return 'watercolor';
+  // Added v108 — newly-added styles. Order matters: more-specific matches
+  // come before the earlier loose cartoon fallback below.
+  if (/\b(2d\s+cartoon|2d\s+stylized|2d\s+stylised|vector\s+art|flat\s+cartoon|netflix)\b/.test(s)) return 'cartoon_2d';
+  if (/\b(low.?poly|polygonal|faceted|monument\s+valley)\b/.test(s))        return 'low_poly';
+  if (/\b(ukiyo|woodblock|hokusai|hiroshige|edo)\b/.test(s))                return 'ukiyo_e';
+  if (/\b(minimal|minimalist|flat\s+ui|airbnb|duolingo)\b/.test(s))         return 'minimalist_ui';
+  if (/\b(claymation|plasticine|stop.?motion|aardman|laika)\b/.test(s))     return 'claymation';
+  if (/\b(neo.?noir|film\s+noir|pulp\s+crime|chiaroscuro)\b/.test(s))       return 'neo_noir';
   // Legacy dropdown labels that don't have a 1-to-1 mapping — pick a close fit.
-  if (/\b(2d\s+stylized|stylized)\b/.test(s))                               return 'cartoon_3d';
-  if (/\b(flat|minimal|comic)\b/.test(s))                                   return 'cartoon_3d';
+  if (/\b(stylized|stylised)\b/.test(s))                                    return 'cartoon_2d';
+  if (/\b(flat|comic)\b/.test(s))                                           return 'cartoon_2d';
   return '';
 }
 

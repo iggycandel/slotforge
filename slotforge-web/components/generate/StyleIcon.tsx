@@ -59,11 +59,12 @@ const Realistic3DIcon = (p: IconProps) => base(p, <>
   <path d="M9 9 L12 2 L15 9 L12 22"/>
 </>)
 
-/** Fantasy Illustrated — calligraphic brush stroke with flourish. */
+/** Fantasy Illustrated — framed painterly vista (no brush reference). */
 const FantasyIllustratedIcon = (p: IconProps) => base(p, <>
-  <path d="M5 18 Q8 11 13 9 Q17 8 19 5" strokeWidth="2.2"/>
-  <path d="M15 4 Q18 3 20 5 Q18 6 16 5.5"/>
-  <circle cx="5" cy="18" r="1.3" fill="currentColor" stroke="none"/>
+  <rect x="3.5" y="5" width="17" height="14" rx="1"/>
+  <path d="M3.5 15 L9 10 L13 14 L16 11 L20.5 15" fill="currentColor" fillOpacity="0.2"/>
+  <path d="M3.5 15 L9 10 L13 14 L16 11 L20.5 15"/>
+  <circle cx="16.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/>
 </>)
 
 /** Art Deco — geometric fan / sunburst rays from a corner. */
@@ -110,13 +111,64 @@ const AnimeIcon = (p: IconProps) => base(p, <>
   <circle cx="13.3" cy="10.7" r="0.9" fill="#ffffff" stroke="none"/>
 </>)
 
-/** Watercolor — fluid brush drop / splash (fixes the wrong snorkel emoji). */
+/** Watercolor — pigment droplet with surrounding colour bleeds. */
 const WatercolorIcon = (p: IconProps) => base(p, <>
   <path d="M12 3 Q17 9 17 14 Q17 19 12 19 Q7 19 7 14 Q7 9 12 3 Z" fill="currentColor" fillOpacity="0.18"/>
   <path d="M12 3 Q17 9 17 14 Q17 19 12 19 Q7 19 7 14 Q7 9 12 3 Z"/>
   <path d="M9.5 11 Q10.5 10 11 12" strokeWidth="1.2" opacity="0.7"/>
   <circle cx="19" cy="17" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
   <circle cx="5" cy="18.5" r="0.8" fill="currentColor" stroke="none" opacity="0.5"/>
+</>)
+
+// ─── Added v108 ──────────────────────────────────────────────────────────────
+
+/** Cartoon 2D Stylised — bold outlined speech-bubble face. */
+const Cartoon2DIcon = (p: IconProps) => base(p, <>
+  <path d="M4 6 Q4 4 6 4 L18 4 Q20 4 20 6 L20 15 Q20 17 18 17 L10 17 L6 20 L7 17 L6 17 Q4 17 4 15 Z"
+        strokeWidth="2" fill="currentColor" fillOpacity="0.15"/>
+  <circle cx="9" cy="10" r="1.3" fill="currentColor" stroke="none"/>
+  <circle cx="15" cy="10" r="1.3" fill="currentColor" stroke="none"/>
+  <path d="M9 13.5 Q12 15.5 15 13.5" strokeWidth="1.6"/>
+</>)
+
+/** Low Poly — 3D faceted gem made of triangulated planes. */
+const LowPolyIcon = (p: IconProps) => base(p, <>
+  <path d="M12 3 L5 8 L3 16 L8 22 L16 22 L21 16 L19 8 Z" fill="currentColor" fillOpacity="0.15"/>
+  <path d="M12 3 L5 8 L3 16 L8 22 L16 22 L21 16 L19 8 Z"/>
+  <path d="M12 3 L3 16 M12 3 L21 16 M12 3 L8 22 M12 3 L16 22"/>
+</>)
+
+/** Ukiyo-e — stylised cresting wave (Hokusai reference). */
+const UkiyoEIcon = (p: IconProps) => base(p, <>
+  <path d="M3 15 Q7 9 11 12 Q15 15 19 10 Q20 9 21 10" fill="currentColor" fillOpacity="0.2"/>
+  <path d="M3 15 Q7 9 11 12 Q15 15 19 10 Q20 9 21 10"/>
+  <path d="M4 17 Q10 14 14 17 Q18 20 21 17" strokeWidth="1.2" opacity="0.7"/>
+  <circle cx="8" cy="7" r="1.2" fill="currentColor" stroke="none" opacity="0.8"/>
+</>)
+
+/** Minimalist UI — three stacked geometric primitives, zero ornament. */
+const MinimalistUIIcon = (p: IconProps) => base(p, <>
+  <circle cx="7"  cy="8"  r="3" fill="currentColor" fillOpacity="0.2"/>
+  <rect   x="13" y="5"  width="6" height="6" rx="1" fill="currentColor" fillOpacity="0.12"/>
+  <path d="M4 19 L20 19" strokeWidth="2"/>
+  <path d="M4 15.5 L10 15.5" strokeWidth="1.4" opacity="0.6"/>
+</>)
+
+/** Claymation — soft rounded clay blob with a highlight dimple. */
+const ClaymationIcon = (p: IconProps) => base(p, <>
+  <path d="M6 12 Q6 6 12 6 Q18 6 18 12 Q19 16 16 18 Q12 20 8 18 Q5 16 6 12 Z"
+        fill="currentColor" fillOpacity="0.2"/>
+  <path d="M6 12 Q6 6 12 6 Q18 6 18 12 Q19 16 16 18 Q12 20 8 18 Q5 16 6 12 Z"/>
+  <ellipse cx="10" cy="10" rx="1.6" ry="1" fill="#ffffff" stroke="none" opacity="0.6"/>
+  <path d="M13 14 Q14 15 15 14" strokeWidth="1.2" opacity="0.6"/>
+</>)
+
+/** Neo-Noir — chiaroscuro silhouette with a single accent light ray. */
+const NeoNoirIcon = (p: IconProps) => base(p, <>
+  <path d="M4 20 L20 20 L20 14 L14 10 L12 4 L10 10 L4 14 Z" fill="currentColor" fillOpacity="0.85" stroke="none"/>
+  <path d="M4 20 L20 20 L20 14 L14 10 L12 4 L10 10 L4 14 Z"/>
+  <path d="M17 4 L21 2" strokeWidth="1.6"/>
+  <path d="M15 6 L19 3" strokeWidth="1.2" opacity="0.7"/>
 </>)
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -134,6 +186,13 @@ const STYLE_ICON_MAP: Record<string, (p: IconProps) => JSX.Element> = {
   'pixel_art':           PixelArtIcon,
   'anime':               AnimeIcon,
   'watercolor':          WatercolorIcon,
+  // v108 additions — match GRAPHIC_STYLES ids in lib/ai/styles.ts.
+  'cartoon_2d':          Cartoon2DIcon,
+  'low_poly':            LowPolyIcon,
+  'ukiyo_e':             UkiyoEIcon,
+  'minimalist_ui':       MinimalistUIIcon,
+  'claymation':          ClaymationIcon,
+  'neo_noir':            NeoNoirIcon,
 }
 
 /** Renders the custom SVG for the given styleId. Falls back to the Default

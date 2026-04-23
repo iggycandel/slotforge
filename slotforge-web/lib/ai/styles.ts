@@ -56,15 +56,16 @@ export const GRAPHIC_STYLES: GraphicStyle[] = [
   {
     id:          'fantasy_illustrated',
     name:        'Fantasy Illustrated',
-    description: 'Hand-painted, semi-realistic',
+    description: 'Painterly concept art, semi-realistic',
     promptModifier:
-      'fantasy illustration style, hand-painted brushwork, rich warm colors, ' +
-      'semi-realistic concept art, oil painting technique, intricate details, ' +
-      'painterly texture, guild wars 2 concept art quality',
-    negativeModifier: 'photo, 3D render, flat, minimalist',
+      'fantasy illustration style, painterly semi-realistic concept art, rich warm ' +
+      'saturated colours, layered pigment passes, soft diffused edges, intricate ' +
+      'material detail, atmospheric depth, guild wars 2 / world of warcraft loading ' +
+      'screen aesthetic, high-fidelity fantasy artwork',
+    negativeModifier: 'photo, 3D render, flat, minimalist, painterly texture, loose hand-painted finish',
     cardGradient: 'linear-gradient(135deg, #6b3a2a 0%, #c9a84c 100%)',
     accentColor:  '#c9a84c',
-    emoji:        '🖌️',
+    emoji:        '🖼️',
   },
   {
     id:          'art_deco',
@@ -130,23 +131,129 @@ export const GRAPHIC_STYLES: GraphicStyle[] = [
   {
     id:          'watercolor',
     name:        'Watercolor',
-    description: 'Painterly, soft, illustrative',
+    description: 'Translucent washes, soft edges',
     promptModifier:
-      'watercolor painting style, soft wet paint edges, translucent color washes, ' +
-      'painterly texture, paper grain, loose expressive brushwork, ' +
-      'botanical illustration quality, delicate color gradients',
-    negativeModifier: 'sharp, 3D, digital, crisp, photorealistic',
+      'watercolor painting style, translucent pigment washes, soft wet-edge bleeds, ' +
+      'delicate colour transitions, paper grain texture, gentle tonal gradients, ' +
+      'botanical illustration quality, muted layered hues',
+    negativeModifier: 'sharp, 3D, digital, crisp, photorealistic, painterly texture, loose hand-painted finish',
     qualityModifier:
-      'loose painterly brushwork, visible paper grain and wet-edge bleeds, ' +
-      'intentionally imperfect boundaries, no digital polish or rendered ' +
-      'gloss, gallery-quality traditional illustration feel',
+      'intentionally imperfect boundaries, feathered colour edges, visible paper ' +
+      'grain, no digital polish or rendered gloss, traditional illustration feel',
     cardGradient: 'linear-gradient(135deg, #2d7a9a 0%, #c9f0ff 100%)',
     accentColor:  '#7fd4f0',
-    // Emoji is only used in the <select> dropdown fallback where text
-    // is the only option — the style cards use <StyleIcon id="watercolor" />
-    // which draws a proper paint-drop glyph. Replaced the old 🎭 (theatre
-    // masks; critique flagged it as a wrong/snorkel-looking metaphor).
     emoji:        '💧',
+  },
+
+  // ─── Added v108: filling gaps in the genre coverage ──────────────────────
+  // The original 8 styles leaned hard toward 3D / illustrated. These five
+  // open up the low-fidelity and stylised corners of the space (Pixi / CSS
+  // friendly), an Eastern art tradition, and a contemporary flat look for
+  // minimalist UI games.
+
+  {
+    id:          'cartoon_2d',
+    name:        'Cartoon 2D Stylised',
+    description: 'Flat 2D, bold outlines, vector-like',
+    promptModifier:
+      'stylised 2D cartoon illustration, thick confident outlines, flat colour ' +
+      'fills with simple shading zones, vector-art clarity, playful exaggerated ' +
+      'proportions, Netflix animated series aesthetic, clean graphic design feel',
+    negativeModifier: 'photorealistic, 3D render, painterly, loose painterly',
+    qualityModifier:
+      'crisp vector-style line art, clean colour separations, intentionally flat ' +
+      'rendering with controlled shadow passes, production-ready stylised 2D asset',
+    cardGradient: 'linear-gradient(135deg, #ff4081 0%, #5f50ff 100%)',
+    accentColor:  '#ff4081',
+    emoji:        '✏️',
+  },
+
+  {
+    id:          'low_poly',
+    name:        'Low Poly',
+    description: 'Faceted polygons, indie-game geometry',
+    promptModifier:
+      'low-poly 3D art style, faceted geometric surfaces, visible triangulated ' +
+      'polygons, flat-shaded planes, indie game aesthetic, monument valley / ' +
+      'alto\'s adventure vibe, stylised simplified forms, soft directional lighting',
+    negativeModifier: 'smooth, subdivision-surface, photorealistic, painterly, loose painterly',
+    qualityModifier:
+      'clean polygon topology, crisp facet edges, controlled limited palette, ' +
+      'stylised geometric rendering, production-ready low-poly asset',
+    cardGradient: 'linear-gradient(135deg, #3b5aa6 0%, #8affb0 100%)',
+    accentColor:  '#8affb0',
+    emoji:        '🔷',
+  },
+
+  {
+    id:          'ukiyo_e',
+    name:        'Ukiyo-e / Edo Woodblock',
+    description: 'Japanese woodblock print tradition',
+    promptModifier:
+      'ukiyo-e Japanese woodblock print style, bold flat colour blocks, strong ' +
+      'linear outlines, decorative compositional flattening, stylised natural forms, ' +
+      'Hokusai / Hiroshige aesthetic, muted traditional palette of indigo, crimson, ' +
+      'warm ochre and sumi ink black',
+    negativeModifier: 'photorealistic, 3D render, western cartoon, loose painterly, messy painterly',
+    qualityModifier:
+      'crisp printed edges, registered colour separations, controlled tonal fields, ' +
+      'authentic woodblock print feel, no digital gloss',
+    cardGradient: 'linear-gradient(135deg, #2a3f5a 0%, #d44c3e 100%)',
+    accentColor:  '#d44c3e',
+    emoji:        '⛩️',
+  },
+
+  {
+    id:          'minimalist_ui',
+    name:        'Minimalist UI',
+    description: 'Flat geometry, limited palette, icon-first',
+    promptModifier:
+      'minimalist flat UI illustration style, pure geometric shapes, limited 3-4 ' +
+      'colour palette, generous negative space, icon-first clarity, airbnb / duolingo ' +
+      'illustration language, clean rounded forms, no gradients in fills, soft long shadows only',
+    negativeModifier: 'photorealistic, 3D render, painterly, ornamental, intricate detail',
+    qualityModifier:
+      'precise geometric construction, intentionally minimal detail, crisp flat ' +
+      'colour separations, production-ready flat UI asset',
+    cardGradient: 'linear-gradient(135deg, #0e5eff 0%, #9bd2ff 100%)',
+    accentColor:  '#0e5eff',
+    emoji:        '◎',
+  },
+
+  {
+    id:          'claymation',
+    name:        'Claymation',
+    description: 'Stop-motion clay, handcrafted feel',
+    promptModifier:
+      'claymation stop-motion style, handcrafted plasticine surface texture, soft ' +
+      'matte finish with visible fingerprint imperfections, cosy warm key lighting, ' +
+      'aardman / laika studio aesthetic, slightly irregular organic shapes, ' +
+      'tactile modelled material feel',
+    negativeModifier: 'photorealistic, glossy CGI, vector art, painterly, loose painterly',
+    qualityModifier:
+      'soft modelled surfaces, gentle matte highlights, intentional handcrafted ' +
+      'irregularities, no digital gloss, production-ready claymation-style asset',
+    cardGradient: 'linear-gradient(135deg, #8a4a1f 0%, #f4b063 100%)',
+    accentColor:  '#f4b063',
+    emoji:        '🧱',
+  },
+
+  {
+    id:          'neo_noir',
+    name:        'Neo-Noir',
+    description: 'High contrast shadows, pulp crime mood',
+    promptModifier:
+      'neo-noir graphic illustration style, extreme chiaroscuro lighting, deep ' +
+      'pure black shadows against limited warm accent lights, smoky atmospheric ' +
+      'haze, 1940s pulp crime cover aesthetic updated with modern graphic clarity, ' +
+      'monochrome base palette with a single saturated accent colour',
+    negativeModifier: 'bright cheerful, cartoon, pastel, photorealistic, loose painterly',
+    qualityModifier:
+      'crisp silhouette separation, controlled shadow passes, intentional palette ' +
+      'restraint, moody cinematic lighting, production-ready neo-noir asset',
+    cardGradient: 'linear-gradient(135deg, #050508 0%, #b8272e 100%)',
+    accentColor:  '#b8272e',
+    emoji:        '🎞️',
   },
 ]
 

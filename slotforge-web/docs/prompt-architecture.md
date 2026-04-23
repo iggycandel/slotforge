@@ -226,7 +226,7 @@ quality line is swapped:
 | Style              | `qualityModifier` — replaces CORE_QUALITY                                          |
 |--------------------|-------------------------------------------------------------------------------------|
 | `pixel_art`        | crisp pixel grid, pure flat colour fills, intentionally low detail, sharp 1-pixel edges, no anti-aliasing, authentic arcade sprite feel, production-ready retro game asset |
-| `watercolor`       | loose painterly brushwork, visible paper grain and wet-edge bleeds, intentionally imperfect boundaries, no digital polish or rendered gloss, gallery-quality traditional illustration feel |
+| `watercolor`       | intentionally imperfect boundaries, feathered colour edges, visible paper grain, no digital polish or rendered gloss, traditional illustration feel |
 | `anime`            | clean cel-shaded finish, bold confident line art, flat colour fills with sharp controlled highlights, intentionally non-photorealistic material rendering, production-ready anime asset |
 
 `cartoon_3d`, `realistic_3d`, `fantasy_illustrated`, `art_deco`,
