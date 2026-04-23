@@ -5,6 +5,8 @@ import { autosaveProject, createSnapshot, getSnapshots, restoreSnapshot } from '
 import type { ProjectSnapshot, SaveState } from '../../types'
 import { RightPanel } from './RightPanel'
 import { AssetsWorkspace } from '../assets/AssetsWorkspace'
+import { TypographyWorkspace } from '../typography/TypographyWorkspace'
+import type { TypographySpec } from '@/types/typography'
 import type { AssetType } from '@/types/assets'
 
 interface EditorFrameProps { projectId: string; orgSlug: string; initialPayload: Record<string, unknown> | null; projectName: string; exportsEnabled?: boolean }
@@ -14,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v101'
+const EDITOR_VERSION = 'v102'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -542,14 +544,18 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       <div style={{
         flex:          1,
         display:       'flex',
-        flexDirection: editorWorkspace === 'assets' ? 'column' : 'row',
+        // Workspaces that take over the main area (full-page React) flip
+        // the layout to column — iframe shrinks to the menubar strip,
+        // React workspace fills below. Assets and Typography share the
+        // same pattern.
+        flexDirection: (editorWorkspace === 'assets' || editorWorkspace === 'typography') ? 'column' : 'row',
         overflow:      'hidden',
         position:      'relative',
       }}>
 
-        {/* ── Editor iframe — always mounted; shrinks to menubar strip when assets active ── */}
+        {/* ── Editor iframe — always mounted; shrinks to menubar strip when a full-page workspace is active ── */}
         <div style={
-          editorWorkspace === 'assets'
+          (editorWorkspace === 'assets' || editorWorkspace === 'typography')
             ? { height: 36, flexShrink: 0, position: 'relative', overflow: 'hidden', width: '100%', boxShadow: '0 2px 10px rgba(0,0,0,0.35)' }
             : { flex: 1, position: 'relative', overflow: 'hidden' }
         }>
@@ -580,6 +586,36 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             onAddToCanvas={(assetType, url) => handleAddToCanvas(assetType as AssetType, url)}
             onBackToCanvas={() => {
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
+              iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)
+            }}
+          />
+        )}
+
+        {/* ── Typography workspace (inline, fills below the menubar strip) ── */}
+        {editorWorkspace === 'typography' && (
+          <TypographyWorkspace
+            projectId={projectId}
+            projectName={liveProjectName}
+            projectMeta={editorMeta ?? undefined}
+            // Commit 3 will hydrate this from payload.typographySpec. For
+            // now the workspace just shows its inputs on first mount.
+            initialSpec={(initialPayload?.typographySpec as TypographySpec | null | undefined) ?? null}
+            onSpecChange={spec => {
+              // Push the spec back into the iframe so the autosave
+              // payload picks it up. The iframe merges it into its
+              // serialised P + EL_ASSETS payload under payload.typographySpec.
+              iframeRef.current?.contentWindow?.postMessage(
+                { type: 'SF_SAVE_TYPOGRAPHY', spec },
+                window.location.origin,
+              )
+              // Also mirror into the shell's payloadRef so any save that
+              // short-circuits the iframe round-trip (beforeunload /
+              // unmount) still captures the latest spec.
+              if (payloadRef.current) {
+                payloadRef.current = { ...payloadRef.current, typographySpec: spec }
+              }
+            }}
+            onBackToCanvas={() => {
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)
             }}
           />
