@@ -12453,8 +12453,24 @@ window._sfBridge = (function(){
         elVP:           p.elVP,
         userLocks:      p.userLocks,
         keyOrders:      p.keyOrders,
+        // Layer z-index overrides — mutated by layerReorder() every time
+        // the user brings a layer forward / back. MUST travel with the
+        // SF_DIRTY snapshot so the React shell's payloadRef mirrors the
+        // live PSD state. Previously omitted, which meant a reorder
+        // followed by a fast dashboard-nav (no beforeunload, no 30-s
+        // periodic save fired yet) dropped the new z on the floor —
+        // user saw the layer bounce back to the default stack on return.
+        layerZ:         p.layerZ,
+        // customPsd carries per-project custom layer definitions. Same
+        // rationale as layerZ: if the user added / renamed a custom
+        // layer then navigated, we need the shell to have the latest
+        // copy for the fallback save path.
+        customPsd:      p.customPsd,
         adjs:           p.adjs,
         masks:          p.masks,
+        // Typography spec too — it's saved via SF_SAVE_TYPOGRAPHY, but
+        // mirroring it here keeps the safety-save path self-consistent.
+        typographySpec: p.typographySpec,
         assets:         cdnAssets,
       };
     } catch(ex){}

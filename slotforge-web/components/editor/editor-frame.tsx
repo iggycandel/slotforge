@@ -16,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v106'
+const EDITOR_VERSION = 'v107'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -404,6 +404,39 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  // ─── Last-chance safety save ─────────────────────────────────────────────
+  // When the user navigates away (dashboard link, back button, tab close),
+  // fire one final save using the latest payloadRef.current. Without this,
+  // a dirty edit made between the most-recent SF_AUTOSAVE and the
+  // navigation would be silently dropped — the iframe's own beforeunload
+  // hook only fires on full-page unloads, not on client-side route
+  // changes that unmount EditorFrame. We don't await the promise because
+  // pagehide blocks only briefly; fire-and-forget is the pragmatic choice.
+  useEffect(() => {
+    const flush = () => {
+      if (!payloadRef.current) return
+      // Ask the iframe to post a FRESH payload first — its getPayload()
+      // captures live PSD state (layerZ, keyOrders, etc.) that the
+      // debounce-free SF_DIRTY path doesn't always mirror into
+      // payloadRef. If the iframe isn't reachable (already torn down)
+      // we fall back to the last known payloadRef.
+      try {
+        iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_SAVE' }, window.location.origin)
+      } catch { /* ignore */ }
+      // Also kick off a direct server save as a backup. The duplicate
+      // round-trip is fine; autosaveProject is idempotent (updates by
+      // project_id) and the server accepts whichever arrives last.
+      void doSave(payloadRef.current, false)
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      // Component unmount (client-side nav). Same flush — beforeunload
+      // won't have fired for a SPA transition.
+      flush()
+    }
+  }, [doSave])
 
   function triggerManualSave() {
     manualSaveFlag.current = true
