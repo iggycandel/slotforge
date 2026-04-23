@@ -2093,11 +2093,16 @@ function startResize(e,k,handle){
         else if(handle==='tr'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); y=orig.y+orig.h-h; }
         else if(handle==='tl'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; y=orig.y+orig.h-h; }
       } else {
-        // Edge drag: resize on that axis, derive the other from aspect
-        if(handle==='mr'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); y=orig.y+Math.round((orig.h-h)/2); }
-        else if(handle==='ml'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; y=orig.y+Math.round((orig.h-h)/2); }
-        else if(handle==='bc'){ h=Math.max(40,orig.h+dy); w=Math.round(h*aspect); x=orig.x+Math.round((orig.w-w)/2); }
-        else if(handle==='tc'){ h=Math.max(40,orig.h-dy); w=Math.round(h*aspect); x=orig.x+Math.round((orig.w-w)/2); y=orig.y+orig.h-h; }
+        // Edge drag: single-axis resize — the OTHER axis stays fixed.
+        // Previous behaviour locked the aspect ratio on edge drags too,
+        // so side handles silently dragged the height along and the user
+        // couldn't actually stretch just one axis. Corner handles still
+        // keep aspect (the expected Photoshop default); Shift-drag here
+        // could re-introduce aspect lock in a future pass.
+        if(handle==='mr'){ w=Math.max(40,orig.w+dx); }
+        else if(handle==='ml'){ w=Math.max(40,orig.w-dx); x=orig.x+orig.w-w; }
+        else if(handle==='bc'){ h=Math.max(40,orig.h+dy); }
+        else if(handle==='tc'){ h=Math.max(40,orig.h-dy); y=orig.y+orig.h-h; }
       }
       setPos(k,{x,y,w,h});
       const el=document.getElementById('el-'+k);
