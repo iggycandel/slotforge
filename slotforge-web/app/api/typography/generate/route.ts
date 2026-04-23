@@ -78,6 +78,10 @@ function buildSystemPrompt(): string {
     `and pick the single best font pairing from a CURATED library. ` +
     `Then emit a structured typography spec with six popup text styles ` +
     `whose colours, gradients, and glows are derived from the art. ` +
+    `Slot popups overlay the live game — every text style you output ` +
+    `MUST POP off the background at a glance. Bright metallic gradients, ` +
+    `dark strokes, strong drop shadows and contrasting glows are the ` +
+    `baseline — low-contrast "tasteful" specs are a bug. ` +
     `Return ONLY a JSON object — no prose, no markdown.`
   )
 }
@@ -170,15 +174,64 @@ RETURN ONLY a JSON object of this exact shape (fill every field):
   }
 }
 
-COLOUR GUIDANCE
-  - Derive colours from the screenshot, not from the pairing's nominal
-    genre — a pink-and-mint candy slot should still get pink-and-mint
-    gradients even if you pick a "candy-kids" pairing.
-  - Title + numeric gradients: bright → mid → dark, vertical top-to-bottom.
-  - Drop shadows stay black for contrast. Glow colours match the
-    dominant accent/neon hue of the UI.
-  - If the screenshot background is bright, raise dropShadow blur to
-    6–8 and alpha to 0.95 so copy stays legible.
+CONTRAST & POP — NON-NEGOTIABLE
+  Slot popups appear OVER the live game art. The text MUST pop off the
+  background at a glance, readable from 2m on a phone. Low-contrast
+  "tasteful" specs are a failure mode. Treat these as hard rules:
+
+  1. FILL COLOURS MUST CONTRAST THE BACKGROUND.
+     - Look at the dominant midtone of the screenshot. The fill (or the
+       MIDDLE stop of a gradient) must sit on the OPPOSITE side of the
+       luminance scale. Dark game → bright fill (#e0d080…#ffffff range);
+       bright / pastel game → deep saturated fill or a dark stroked
+       light-fill combo.
+     - NEVER emit a fill whose hue and luminance are close to the
+       dominant background — e.g. no muted gold on a warm gold bg, no
+       soft cyan on a teal bg. Shift luminance by at least 40 % or hue
+       by at least 60°.
+
+  2. GRADIENTS ARE METAL, NOT WATERCOLOUR.
+     - popup.title and popup.numeric MUST use fillGradient (3 stops).
+     - Top stop = BRIGHT highlight (lightness ~85–95 %).
+     - Middle stop = saturated body colour (lightness ~55–70 %).
+     - Bottom stop = DEEP shadow (lightness ~20–35 %).
+     - The gap between top and bottom lightness MUST be ≥ 50 %. That
+       gap is what reads as "embossed metal" and makes the text pop.
+
+  3. STROKE + SHADOW ARE MANDATORY ON DISPLAY TEXT.
+     - popup.title and popup.numeric MUST include a dark strokeColor
+       (near-black, #000000–#1a1010) with strokeWidth ≥ 3. Raise to 4–5
+       if the background is busy or bright.
+     - dropShadow.alpha MUST be ≥ 0.85 for title / numeric, ≥ 0.8 for
+       subtitle / cta / smallLabel, ≥ 0.7 for body. dropShadow.blur
+       ≥ 4 for display text, ≥ 3 for UI text.
+     - If the screenshot background is bright or pale, raise every
+       dropShadow.blur by 2 and push alpha to 0.95. Dark backgrounds
+       keep the defaults.
+
+  4. GLOW IS THE OPPOSITE HUE.
+     - Glow colours should CONTRAST the fill, not match it. Warm-gold
+       fill → cyan / teal / electric-blue glow. Cool-neon fill → warm
+       orange / magenta glow. This is what produces the neon-sign
+       separation from the background.
+     - popup.title and popup.numeric MUST have ≥ 2 glow layers: a tight
+       inner one (blur 6–10) and a soft outer halo (blur 18–28).
+
+  5. BODY TEXT STAYS SIMPLE BUT STILL CONTRASTS.
+     - popup.body is usually white (#f0ede6–#ffffff) on a dark overlay,
+       or near-black (#1a1010) on a light overlay. Pick whichever
+       contrasts the screenshot midtone more. No strokes, no gradients
+       — just a solid fill plus a soft dropShadow (blur 3, alpha 0.85).
+
+  6. DERIVE HUES FROM THE ART, NOT THE PAIRING.
+     - A pink-and-mint candy slot with the "candy-kids" pairing should
+       still get pink-and-mint gradients — the pairing is about form,
+       the colour is about the art.
+
+  7. DO NOT USE PAIRING-GENRE CLICHÉS AT THE COST OF CONTRAST.
+     - "Luxury-gold" fills on a gold-ish screenshot is a contrast
+       failure. Flip the fill to ivory / platinum with a dark charcoal
+       stroke instead.
 
 RETURN ONLY the JSON object, nothing else.`)
 }
@@ -186,8 +239,12 @@ RETURN ONLY the JSON object, nothing else.`)
 // ─── Validation + defaults ──────────────────────────────────────────────────
 
 /** Fallback style for each popup key — used when the model omits a
- *  style entirely. Values mirror the shape in buildUserPrompt so the
- *  final spec is always fully populated. */
+ *  style entirely. Values follow the same CONTRAST & POP rules as the
+ *  prompt so even a degraded-generation spec still reads from 2 m:
+ *  display text gets a bright metallic gradient + dark stroke +
+ *  strong drop shadow + a 2-layer glow. UI text stays white-on-dark
+ *  with a firm shadow. No "muted" defaults — we'd rather over-emphasise
+ *  than ship invisible text. */
 function defaultStyle(key: PopupStyleKey): Record<string, unknown> {
   const base = {
     'popup.title':      { size: 72, letterSpacing: 0.03, lineHeight: 1.0,  case: 'upper' },
@@ -197,10 +254,31 @@ function defaultStyle(key: PopupStyleKey): Record<string, unknown> {
     'popup.numeric':    { size: 56, letterSpacing: 0,    lineHeight: 1.0,  case: 'asis' },
     'popup.smallLabel': { size: 16, letterSpacing: 0.15, lineHeight: 1.2,  case: 'upper' },
   }[key]
+
+  // Display text (title + numeric): full "embossed metal" treatment —
+  // bright→mid→dark gradient, dark stroke, heavy shadow, stacked glow.
+  if (key === 'popup.title' || key === 'popup.numeric') {
+    return {
+      ...base,
+      fillGradient: ['#fff4c2', '#ffd24a', '#7a4a0c'],   // lightness 95→60→25
+      strokeColor:  '#1a0f05',
+      strokeWidth:  4,
+      dropShadow:   { color: '#000000', alpha: 0.9, blur: 6, offsetY: 3 },
+      glow: [
+        { color: '#ffb84a', blur: 8,  alpha: 1.0  },
+        { color: '#ff9500', blur: 22, alpha: 0.55 },
+      ],
+    }
+  }
+
+  // UI text (subtitle / cta / body / smallLabel): bright flat fill,
+  // thick dark shadow, one subtle glow for lift. Enough to pop on a
+  // dark popup backdrop; the user can tune for light backdrops.
   return {
     ...base,
-    fillColor:  '#ffffff',
-    dropShadow: { color: '#000000', alpha: 0.85, blur: 3, offsetY: 2 },
+    fillColor:   '#f4eedc',
+    dropShadow:  { color: '#000000', alpha: 0.9, blur: 4, offsetY: 2 },
+    glow:       [{ color: '#c9a84c', blur: 6, alpha: 0.6 }],
   }
 }
 
