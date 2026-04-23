@@ -108,7 +108,13 @@ export function SingleGeneratePopup({
   // users who type a fresh custom prompt can flip to 'append' to keep the
   // consistency benefit of Project Settings.
   const [customPromptMode, setCustomPromptMode] = useState<'replace' | 'append'>('replace')
-  const [refImages,   setRefImages]   = useState<string[]>([])
+  // Per-asset reference images. Each entry stores the data-URL preview
+  // plus its GPT-4o-described aesthetic (populated async by the describe
+  // pipeline). Descriptions are passed into the generate call as
+  // `reference_descriptions` and stack on top of project-level
+  // artRefImages descriptions already injected via buildAssetContext.
+  interface LocalRef { id: string; dataUrl: string; description: string; describing: boolean; error?: string }
+  const [refImages,   setRefImages]   = useState<LocalRef[]>([])
   const [generating,  setGenerating]  = useState(false)
   const [error,       setError]       = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -230,6 +236,13 @@ export function SingleGeneratePopup({
           // panel reflects append/replace correctly.
           custom_prompt:      customPrompt.trim() || undefined,
           custom_prompt_mode: customPrompt.trim() ? customPromptMode : undefined,
+          // Per-asset reference descriptions — only the ones that finished
+          // describing. In-flight references are omitted; the preview
+          // re-runs when they complete (describe flow triggers a React
+          // re-render, which re-runs the useEffect that calls fetchPreview).
+          reference_descriptions: refImages
+            .filter(r => r.description && !r.describing)
+            .map(r => r.description),
         }),
       })
       const raw  = await res.text()
@@ -246,7 +259,7 @@ export function SingleGeneratePopup({
     } finally {
       setPreviewLoading(false)
     }
-  }, [slotKey, theme, projectId, styleId, projectMeta, tier.isSymbol, symbolFrame, symbolColor, isLabelSymbol, symbolLabel, customPrompt, customPromptMode])
+  }, [slotKey, theme, projectId, styleId, projectMeta, tier.isSymbol, symbolFrame, symbolColor, isLabelSymbol, symbolLabel, customPrompt, customPromptMode, refImages])
 
   // Refetch when the panel is opened (lazy — don't pay for a preview call
   // if the user never opens the panel) and when any composition-affecting
@@ -254,7 +267,7 @@ export function SingleGeneratePopup({
   useEffect(() => {
     if (!open || !promptOpen) return
     void fetchPreview()
-  }, [open, promptOpen, styleId, symbolFrame, symbolColor, customPrompt, customPromptMode, fetchPreview])
+  }, [open, promptOpen, styleId, symbolFrame, symbolColor, customPrompt, customPromptMode, refImages, fetchPreview])
 
   // Close on ESC
   useEffect(() => {
@@ -282,13 +295,49 @@ export function SingleGeneratePopup({
     const files = Array.from(e.target.files ?? []).slice(0, 3 - refImages.length)
     e.target.value = ''
     if (!files.length) return
+
+    // Read each file → data URL, show an optimistic "describing…" tile.
     const reads = await Promise.all(files.map(f => new Promise<string>((res, rej) => {
       const r = new FileReader()
-      r.onload = () => res(r.result as string)
+      r.onload  = () => res(r.result as string)
       r.onerror = rej
       r.readAsDataURL(f)
     })))
-    setRefImages(prev => [...prev, ...reads].slice(0, 3))
+
+    const additions: LocalRef[] = reads.map(dataUrl => ({
+      id:          `ref_${Math.random().toString(36).slice(2, 10)}`,
+      dataUrl,
+      description: '',
+      describing:  true,
+    }))
+    setRefImages(prev => [...prev, ...additions].slice(0, 3))
+
+    // For each pending ref, call /api/references/describe. gpt-4o vision
+    // returns a ~90-word aesthetic description (palette / material /
+    // lighting / form language) with no subject matter. Feed to generate
+    // as an extra context line.  Sends the data URL directly — no need
+    // to upload these to Storage, they're scoped to this one generation.
+    additions.forEach(ref => {
+      fetch('/api/references/describe', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ project_id: projectId, image: ref.dataUrl, hint: slotKey }),
+      })
+        .then(async r => {
+          const j = await r.json().catch(() => ({}))
+          if (!r.ok || !j.description) {
+            throw new Error(j.error || `Describe failed (${r.status})`)
+          }
+          setRefImages(prev => prev.map(x =>
+            x.id === ref.id ? { ...x, description: j.description, describing: false } : x
+          ))
+        })
+        .catch(err => {
+          setRefImages(prev => prev.map(x =>
+            x.id === ref.id ? { ...x, describing: false, error: err.message || 'Describe failed' } : x
+          ))
+        })
+    })
   }
 
   function removeRef(i: number) {
@@ -322,7 +371,12 @@ export function SingleGeneratePopup({
           // double-checks the category, but we gate here too so a stray
           // label state can't leak onto a high/low symbol.
           symbol_label: isLabelSymbol && symbolLabel.trim() ? symbolLabel.trim() : undefined,
-          // reference_images: refImages,  // P3 — server ignores today
+          // Per-asset references — only ones whose describe succeeded.
+          // In-flight / errored refs are dropped silently so an API hiccup
+          // doesn't block generation.
+          reference_descriptions: refImages
+            .filter(r => r.description && !r.describing)
+            .map(r => r.description),
         }),
       })
       // Read the body as text first, then try JSON. A non-JSON response
@@ -716,19 +770,47 @@ export function SingleGeneratePopup({
           </Section>
         )}
 
-        {/* ── Reference images (P3 stub) ────────────────────────────────── */}
+        {/* ── Reference images (per-asset) ──────────────────────────────
+            Uploads stay in the popup. Each ref is sent to GPT-4o vision
+            for a ~90-word aesthetic description; the description rides
+            into this generation's prompt only (project-level references
+            in Art → Inputs apply to every asset). 1 credit per describe. */}
         <Section
           title="Reference images"
-          subtitle="Up to 3 • attachment coming in P3"
+          subtitle="Up to 3 · style only, not subject matter · 1 credit per ref"
         >
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {refImages.map((src, i) => (
-              <div key={i} style={{
+            {refImages.map((ref, i) => (
+              <div key={ref.id} style={{
                 width: 72, height: 72, borderRadius: 6, overflow: 'hidden',
                 background: T.surfaceHigh, border: `1px solid ${T.border}`,
                 position: 'relative',
-              }}>
-                <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              }}
+              title={
+                ref.error ? `Describe failed: ${ref.error}` :
+                ref.describing ? 'Analysing style…' :
+                ref.description
+              }
+              >
+                <img src={ref.dataUrl} alt="" style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  opacity: ref.describing ? 0.55 : 1,
+                }} />
+                {ref.describing && (
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: T.gold,
+                  }}>
+                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  </div>
+                )}
+                {ref.description && !ref.describing && (
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0,
+                    height: 4, background: T.green, opacity: 0.8,
+                  }} title="Style analysed"/>
+                )}
                 <button
                   onClick={() => removeRef(i)}
                   style={{
@@ -764,12 +846,14 @@ export function SingleGeneratePopup({
           </div>
           <div style={{
             marginTop: 8, fontSize: 10, color: T.textMuted,
-            display: 'flex', alignItems: 'center', gap: 4,
+            display: 'flex', alignItems: 'flex-start', gap: 4, lineHeight: 1.5,
           }}>
-            <Info size={10} />
-            Uploads are stored in the popup for now. Provider-side image
-            conditioning (Runway reference_images, OpenAI image edits) lands
-            in P3 of the AI overhaul.
+            <Info size={10} style={{ marginTop: 2, flexShrink: 0 }}/>
+            <span>
+              References guide the aesthetic (palette, material, lighting)
+              without copying the depicted subject. Scoped to this
+              generation — for project-wide refs, use Art → Inputs → References.
+            </span>
           </div>
         </Section>
 

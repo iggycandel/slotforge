@@ -539,10 +539,23 @@ function buildAssetContext(type: AssetType | string, category: PromptCategory, m
   if (artNotes) parts.push(`art direction: ${wrapUserValue(artNotes)}`)
 
   // Visual reference — tightest cap: 120. Treated as a free-text
-  // inspiration tag, not a long description. Text-only until reference-
-  // image plumbing lands in a future phase.
+  // inspiration tag, not a long description.
   const artRef = sanitizeUserText(meta.artRef, 120)
   if (artRef) parts.push(`visual reference: ${wrapUserValue(artRef)}`)
+
+  // Reference images — not sent to the image model directly (the Images
+  // API is text-only) but GPT-4o vision produced a STYLE description for
+  // each upload (see /api/references/describe). We inject those
+  // descriptions as extra context lines so the aesthetic of the
+  // reference carries into the output. Cap per-description at 500 chars
+  // to keep the prompt under OpenAI's soft ~4k limit even with all 3
+  // reference slots full.  Descriptions already went through the
+  // describe-pass prompt which forbids subject-matter — we still wrap
+  // them in <user-supplied> as a belt-and-braces injection guard.
+  for (const ref of (meta.artRefImages ?? [])) {
+    const desc = sanitizeUserText(ref?.description, 500)
+    if (desc) parts.push(`style reference: ${wrapUserValue(desc)}`)
+  }
 
   return parts.filter(Boolean)
 }
@@ -669,6 +682,13 @@ export interface BuildPromptOptions {
    *  where text on a symbol is allowed). When unset, strong no-text
    *  negatives reinforce the template's clean-centrepiece guidance. */
   symbolLabel?:  string
+  /** Per-asset reference image descriptions — produced by
+   *  /api/references/describe from images the user dropped into the
+   *  SingleGeneratePopup (NOT the project-level artRefImages, which
+   *  flow through meta). When both sources have entries we include
+   *  both; project-level descriptions fire on every generation,
+   *  per-asset descriptions fire only for this call. */
+  referenceDescriptions?: string[]
   /** User-supplied prompt text. Combined with customPromptMode below. */
   customPrompt?: string
   /** 'replace' = use customPrompt as the final prompt verbatim (layers
@@ -791,10 +811,20 @@ export function buildPrompt(
   const customMode: 'replace' | 'append' =
     userCustom && options?.customPromptMode === 'append' ? 'append' : 'replace'
 
+  // Per-asset reference-image descriptions flow in as extra context lines
+  // alongside the project-level artRefImages already injected via
+  // buildAssetContext. Both sources describe aesthetics only (the vision
+  // pass forbids subject matter), so stacking them tightens the style
+  // match without hijacking the symbol's depicted motif.
+  const perAssetRefs = (options?.referenceDescriptions ?? [])
+    .map(d => sanitizeUserText(d, 500))
+    .filter(Boolean)
+    .map(d => `per-asset style reference: ${wrapUserValue(d)}`)
+
   const effectiveContext =
     userCustom && customMode === 'append'
-      ? [...assetContext, `user note: ${sanitizeUserText(userCustom, 500)}`]
-      : assetContext
+      ? [...assetContext, ...perAssetRefs, `user note: ${sanitizeUserText(userCustom, 500)}`]
+      : [...assetContext, ...perAssetRefs]
 
   // ── Quality block — style may override CORE_QUALITY (item 5 of critique) ──
   // Pixel / watercolor / anime styles would be pulled toward photo-realism
@@ -1071,10 +1101,18 @@ export function buildFeatureSlotPrompt(
   const customMode: 'replace' | 'append' =
     userCustom && options?.customPromptMode === 'append' ? 'append' : 'replace'
 
+  // Per-asset reference-image descriptions — same treatment as buildPrompt.
+  // Feature-slot generations benefit from reference styling too (e.g. a
+  // bonus-pick background that needs to match the main game's mood).
+  const perAssetRefs = (options?.referenceDescriptions ?? [])
+    .map(d => sanitizeUserText(d, 500))
+    .filter(Boolean)
+    .map(d => `per-asset style reference: ${wrapUserValue(d)}`)
+
   const effectiveContext =
     userCustom && customMode === 'append'
-      ? [...assetContext, `user note: ${sanitizeUserText(userCustom, 500)}`]
-      : assetContext
+      ? [...assetContext, ...perAssetRefs, `user note: ${sanitizeUserText(userCustom, 500)}`]
+      : [...assetContext, ...perAssetRefs]
 
   // Per-style quality override — pixel / watercolor / anime swap in
   // their own tailored quality line in place of CORE_QUALITY.

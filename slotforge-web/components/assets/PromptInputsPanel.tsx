@@ -26,8 +26,9 @@
 // in the References section is hidden until that lands.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, Info } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, ChevronDown, ChevronRight, Info,
+         Upload, X, Loader2, Image as ImageIcon } from 'lucide-react'
 import { GRAPHIC_STYLES }                     from '@/lib/ai/styles'
 import { StyleIcon }                           from '@/components/generate/StyleIcon'
 
@@ -85,19 +86,32 @@ export interface PromptInputsMeta {
   symbolHighNames?:     string[]
   symbolLowNames?:      string[]
   symbolSpecialNames?:  string[]
+  /** Uploaded reference images + their GPT-4o-generated STYLE descriptions.
+   *  See types/assets.ts → ProjectMeta.artRefImages for the source-of-truth
+   *  definition. Capped at 3 slots in the UI. */
+  artRefImages?:        Array<{ id: string; url: string; description: string }>
 }
 
 interface Props {
   meta:      PromptInputsMeta
   /** Partial patch — only the fields that changed. Parent merges. */
   onChange:  (patch: Partial<PromptInputsMeta>) => void
+  /** Upload a new reference image: parent uploads it to Supabase Storage
+   *  + calls /api/references/describe, then emits `onChange` with the full
+   *  artRefImages array including the new entry. Returns a promise so the
+   *  panel can show a spinner while both requests are in flight. */
+  onAddReference?:    (file: File) => Promise<void>
+  /** Remove a reference by id. Parent emits onChange with the filtered array. */
+  onRemoveReference?: (id: string) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function PromptInputsPanel({ meta, onChange }: Props) {
+export function PromptInputsPanel({
+  meta, onChange, onAddReference, onRemoveReference,
+}: Props) {
   // All sections default open — the panel is meant to be a survey of what
   // the model will see, not a click-through.  User can collapse any to
   // save vertical space.
@@ -421,23 +435,18 @@ export function PromptInputsPanel({ meta, onChange }: Props) {
         />
       </Section>
 
-      {/* ── References (wired in Commit 3) ───────────────────────────── */}
+      {/* ── References ───────────────────────────────────────────────── */}
       <Section
         label="Reference images"
-        hint="Coming next: upload images and we'll describe the aesthetic into the prompt"
+        hint="Up to 3 — we describe each image's aesthetic and inject it into every generation"
         open={open.refs}
         onToggle={() => setOpen(o => ({ ...o, refs: !o.refs }))}
       >
-        <div style={{
-          padding: '14px 12px', textAlign: 'center',
-          border: `1px dashed ${C.borderMed}`,
-          borderRadius: 6, color: C.txMuted, fontSize: 10,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-          background: C.surfInp,
-        }}>
-          <Info size={12} style={{ opacity: 0.5 }} />
-          <span>Image-reference pipeline ships in the next commit.</span>
-        </div>
+        <ReferenceList
+          refs={meta.artRefImages ?? []}
+          onAdd={onAddReference}
+          onRemove={onRemoveReference}
+        />
       </Section>
 
       <div style={{ height: 20 }}/>
@@ -691,6 +700,204 @@ function SymbolGroup({
           />
         ))}
       </div>
+    </div>
+  )
+}
+
+// ─── Reference images ───────────────────────────────────────────────────────
+// Project-level reference uploader. Each slot shows:
+//   - empty: a dashed drop-zone button (or file-picker)
+//   - uploading: thumbnail + spinner + "Uploading…"
+//   - describing: thumbnail + spinner + "Analysing style…"
+//   - done: thumbnail + first ~90 chars of description, hover full text
+// Up to 3 slots; add-slot hidden when full.
+
+function ReferenceList({
+  refs, onAdd, onRemove,
+}: {
+  refs:     Array<{ id: string; url: string; description: string }>
+  onAdd?:    (file: File) => Promise<void>
+  onRemove?: (id: string) => void
+}) {
+  const MAX = 3
+  const fileInput = useRef<HTMLInputElement>(null)
+  // Short-lived local state while an upload is in flight. We track this
+  // locally instead of plumbing a tri-state through the parent because
+  // the parent's meta doesn't reflect pending work — it only holds the
+  // final artRefImages array after onAdd resolves.
+  const [uploading, setUploading] = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
+
+  const handlePick = useCallback(async (files: FileList | null) => {
+    if (!files || !files[0] || !onAdd) return
+    const file = files[0]
+    if (!file.type.startsWith('image/')) return
+    setUploading(true)
+    setError(null)
+    try {
+      await onAdd(file)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reference upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }, [onAdd])
+
+  const slots = refs.slice(0, MAX)
+  const hasRoom = slots.length < MAX && !!onAdd
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {slots.map(ref => (
+        <ReferenceTile
+          key={ref.id}
+          url={ref.url}
+          description={ref.description}
+          onRemove={onRemove ? () => onRemove(ref.id) : undefined}
+        />
+      ))}
+
+      {hasRoom && (
+        <>
+          <button
+            onClick={() => fileInput.current?.click()}
+            disabled={uploading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 10px', width: '100%',
+              background: C.surfInp,
+              border: `1px dashed ${C.borderMed}`,
+              borderRadius: 6,
+              color: uploading ? C.gold : C.txMuted,
+              cursor: uploading ? 'wait' : 'pointer',
+              fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
+            }}
+          >
+            {uploading ? (
+              <>
+                <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }}/>
+                <span>Uploading &amp; analysing reference…</span>
+              </>
+            ) : (
+              <>
+                <Upload size={12} />
+                <span>Add reference image</span>
+                <span style={{ marginLeft: 'auto', color: C.txFaint, fontWeight: 400 }}>
+                  {slots.length} / {MAX}
+                </span>
+              </>
+            )}
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            style={{ display: 'none' }}
+            onChange={e => { handlePick(e.target.files); e.target.value = '' }}
+          />
+        </>
+      )}
+
+      {error && (
+        <div style={{
+          fontSize: 10, color: C.red,
+          background: 'rgba(248,113,113,.08)',
+          border: '1px solid rgba(248,113,113,.3)',
+          borderRadius: 5, padding: '6px 8px',
+          display: 'flex', alignItems: 'flex-start', gap: 6,
+        }}>
+          <AlertTriangle size={10} style={{ flexShrink: 0, marginTop: 1 }}/>
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div style={{
+        marginTop: 4, fontSize: 10, color: C.txFaint, lineHeight: 1.5,
+        display: 'flex', alignItems: 'flex-start', gap: 6,
+      }}>
+        <Info size={10} style={{ flexShrink: 0, marginTop: 1 }}/>
+        <span>
+          References guide the aesthetic (palette, material, lighting) —
+          not the subject matter. Uses 1 credit per image to describe the style.
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function ReferenceTile({
+  url, description, onRemove,
+}: { url: string; description: string; onRemove?: () => void }) {
+  const [expanded, setExpanded] = useState(false)
+  const short = (description ?? '').length > 120 && !expanded
+    ? (description ?? '').slice(0, 120) + '…'
+    : (description ?? '')
+  const empty = !description
+
+  return (
+    <div style={{
+      display: 'flex', gap: 8,
+      padding: 6, background: C.surfHigh,
+      border: `1px solid ${C.border}`, borderRadius: 6,
+      position: 'relative',
+    }}>
+      <div style={{
+        width: 48, height: 48, flexShrink: 0,
+        borderRadius: 4, overflow: 'hidden',
+        background: C.surfInp,
+      }}>
+        {url ? (
+          <img src={url} alt="reference" style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+          }}/>
+        ) : (
+          <div style={{
+            width: '100%', height: '100%', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            color: C.txFaint,
+          }}>
+            <ImageIcon size={16}/>
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {empty ? (
+          <div style={{
+            fontSize: 10, color: C.amber, fontStyle: 'italic',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
+            <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }}/>
+            Analysing style…
+          </div>
+        ) : (
+          <div
+            onClick={() => setExpanded(v => !v)}
+            style={{
+              fontSize: 10, color: C.txMid, lineHeight: 1.45,
+              cursor: 'pointer',
+            }}
+            title={expanded ? 'Click to collapse' : 'Click to expand'}
+          >
+            {short}
+          </div>
+        )}
+      </div>
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          title="Remove reference"
+          style={{
+            width: 20, height: 20, flexShrink: 0,
+            background: 'rgba(0,0,0,.4)',
+            border: `1px solid ${C.border}`, borderRadius: 4,
+            color: C.txMuted, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0,
+          }}
+        >
+          <X size={10}/>
+        </button>
+      )}
     </div>
   )
 }

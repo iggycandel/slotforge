@@ -24,8 +24,21 @@ export interface ProjectMeta {
   /** Canonical style token (GRAPHIC_STYLES id). Preferred over artStyle
    *  when both are present. */
   styleId?:        string
-  /** Visual Inspiration / Art Reference */
+  /** Visual Inspiration / Art Reference — free text. */
   artRef?:         string
+  /** Uploaded reference images + their GPT-4o-generated STYLE descriptions.
+   *  The image URLs go to Supabase Storage (CDN URLs) so the payload
+   *  stays small. The description is what actually gets injected into
+   *  the prompt at generation time — the image bytes aren't seen by
+   *  gpt-image-1 (it's a text-to-image API). See
+   *  /api/references/describe for how descriptions are produced.
+   *  Capped at 3 entries by the UI; the builder iterates whatever is
+   *  present, so ignore-or-include is free server-side. */
+  artRefImages?:   Array<{
+    id:          string
+    url:         string
+    description: string
+  }>
   /** Art Direction Notes */
   artNotes?:       string
   /** Colour palette primary */

@@ -80,6 +80,12 @@ const RequestSchema = z.object({
    *  honoured for those categories — high/low symbols are always
    *  text-free. Capped at 20 chars to fit the casino-symbol lettering. */
   symbol_label:  z.string().max(20).optional(),
+  /** Per-asset reference image descriptions — produced client-side by
+   *  /api/references/describe. Stack on top of any project-level
+   *  meta.artRefImages descriptions already injected via buildAssetContext.
+   *  Each string capped at 500 chars in the prompt builder; we cap the
+   *  array length here so a hostile client can't blow up the prompt. */
+  reference_descriptions: z.array(z.string().max(600)).max(5).optional(),
 })
 
 // ─── Route handler ───────────────────────────────────────────────────────────
@@ -120,7 +126,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { asset_type, theme, project_id, provider, style_id, custom_prompt, custom_prompt_mode, project_meta, ratio, quality, symbol_frame, symbol_color, symbol_label } = parsed.data
+  const { asset_type, theme, project_id, provider, style_id, custom_prompt, custom_prompt_mode, project_meta, ratio, quality, symbol_frame, symbol_color, symbol_label, reference_descriptions } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -139,11 +145,12 @@ export async function POST(req: NextRequest) {
     // array; replace mode bypasses layers 1-5). The route no longer
     // post-mutates built.prompt.
     const promptOpts = {
-      hasFrame:         symbol_frame,
-      primaryColor:     symbol_color || null,
-      symbolLabel:      symbol_label || undefined,
-      customPrompt:     custom_prompt,
-      customPromptMode: custom_prompt_mode,
+      hasFrame:             symbol_frame,
+      primaryColor:         symbol_color || null,
+      symbolLabel:           symbol_label || undefined,
+      customPrompt:          custom_prompt,
+      customPromptMode:      custom_prompt_mode,
+      referenceDescriptions: reference_descriptions,
     }
     const built = isFeature
       ? buildFeatureSlotPrompt(asset_type, theme, style_id, project_meta as ProjectMeta | undefined, promptOpts)

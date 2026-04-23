@@ -16,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v109'
+const EDITOR_VERSION = 'v110'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -147,6 +147,13 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
   const [editorMeta, setEditorMeta] = useState<Record<string, unknown> | null>(() => {
     if (!initialPayload) return null
     const p = initialPayload
+    // The editor serialises both a top-level subset (gameName, theme, …)
+    // AND the full collectMeta() output under payload.meta. Most fields
+    // have top-level mirrors, but artRefImages + world/tone text fields
+    // live only inside meta — pull them through so the Prompt Inputs
+    // panel can read every prompt-affecting input without another
+    // round-trip on mount.
+    const m = (p.meta as Record<string, unknown> | undefined) ?? {}
     return {
       gameName:          p.gameName,
       themeKey:          p.theme,
@@ -157,6 +164,25 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       symbolLowNames:    p.symbolLowNames,
       symbolSpecialNames:p.symbolSpecialNames,
       features:          p.features,
+      // Fields from collectMeta() that the Art workspace needs:
+      styleId:           m.styleId,
+      artStyle:          m.artStyle,
+      setting:           m.setting,
+      story:             m.story,
+      mood:              m.mood,
+      bonusNarrative:    m.bonusNarrative,
+      artRef:            m.artRef,
+      artNotes:          m.artNotes,
+      artRefImages:      m.artRefImages,
+      colorPrimary:      m.colorPrimary,
+      colorBg:           m.colorBg,
+      colorAccent:       m.colorAccent,
+      // Colour toggles — not in collectMeta(), but we mirror P.colors.t*
+      // for the panel's PaletteRow toggles. Derived from top-level
+      // payload.colors (if present).
+      colorPrimaryOn:    (p.colors as Record<string, unknown> | undefined)?.t1 ?? true,
+      colorBgOn:         (p.colors as Record<string, unknown> | undefined)?.t2 ?? true,
+      colorAccentOn:     (p.colors as Record<string, unknown> | undefined)?.t3 ?? true,
     }
   })
   // Bumped whenever an asset upload completes — propagated to RightPanel → AssetsPanel for auto-refresh
@@ -285,6 +311,11 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
         // Keep editorMeta in sync so RightPanel symbol counts stay accurate.
         // `features` propagates the enabled-feature map (P.features) so
         // AssetsPanel can show feature-specific slot rows (e.g. Bonus Pick).
+        // Also mirror the full meta block (styleId, setting, artRefImages
+        // etc.) so PromptInputsPanel always reflects the freshest data
+        // without needing another round-trip.
+        const plMeta = (pl.meta as Record<string, unknown> | undefined) ?? {}
+        const plColors = (pl.colors as Record<string, unknown> | undefined) ?? {}
         setEditorMeta(prev => ({
           ...prev,
           gameName:          pl.gameName,
@@ -296,6 +327,21 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           symbolLowNames:    pl.symbolLowNames,
           symbolSpecialNames:pl.symbolSpecialNames,
           features:          pl.features,
+          styleId:           plMeta.styleId,
+          artStyle:          plMeta.artStyle,
+          setting:           plMeta.setting,
+          story:             plMeta.story,
+          mood:              plMeta.mood,
+          bonusNarrative:    plMeta.bonusNarrative,
+          artRef:            plMeta.artRef,
+          artNotes:          plMeta.artNotes,
+          artRefImages:      plMeta.artRefImages,
+          colorPrimary:      plMeta.colorPrimary ?? plColors.c1,
+          colorBg:           plMeta.colorBg      ?? plColors.c2,
+          colorAccent:       plMeta.colorAccent  ?? plColors.c3,
+          colorPrimaryOn:    plColors.t1 ?? true,
+          colorBgOn:         plColors.t2 ?? true,
+          colorAccentOn:     plColors.t3 ?? true,
         } as Record<string, unknown>))
         const isManual = manualSaveFlag.current
         manualSaveFlag.current = false

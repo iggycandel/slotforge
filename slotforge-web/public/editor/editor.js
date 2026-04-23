@@ -10542,6 +10542,11 @@ function collectMeta(){
     styleId:         g('game-art-style'),
     artStyle:        g('game-art-style'),
     artRef:          g('game-art-ref'),
+    // Reference images live on P (not DOM) because there's no Project
+    // Settings UI for them — they're uploaded from the Art workspace's
+    // PromptInputsPanel. Pass through as-is; promptBuilder iterates the
+    // array and injects one "style reference: …" context line per entry.
+    artRefImages:    Array.isArray(P.artRefImages) ? JSON.parse(JSON.stringify(P.artRefImages)) : [],
     artNotes:        g('game-art-notes'),
     colorPrimary:    P.colors?.c1 || '',
     colorBg:         P.colors?.c2 || '',
@@ -12080,6 +12085,12 @@ window._sfApplyPayload = function(payload){
     }
     setInp('game-art-ref',          m.artRef);
     setInp('game-art-notes',        m.artNotes);
+    // Reference images — restore to P.artRefImages (no DOM field). The
+    // Art workspace's PromptInputsPanel reads from projectMeta in the
+    // shell, which tracks the SF_DIRTY snapshot that mirrors collectMeta.
+    if (Array.isArray(m.artRefImages)) {
+      P.artRefImages = m.artRefImages.filter(function(r){ return r && typeof r === 'object' && typeof r.url === 'string'; });
+    }
   } catch(e){ console.warn('[_sfApplyPayload] meta restore failed:', e); }
 
   // ── Restore Colour Palette UI from P.colors ──────────────────────────────
@@ -12740,6 +12751,21 @@ window._sfBridge = (function(){
         if(patch.symbolHighNames)    patchSymbolNames('high',    patch.symbolHighNames);
         if(patch.symbolLowNames)     patchSymbolNames('low',     patch.symbolLowNames);
         if(patch.symbolSpecialNames) patchSymbolNames('special', patch.symbolSpecialNames);
+
+        // Reference images — the Art workspace uploads images, calls the
+        // describe API, and lands here with the complete array. We don't
+        // patch entries individually (too many moving parts) — the caller
+        // always sends the full list. Each entry is { id, url, description }.
+        if(Array.isArray(patch.artRefImages)){
+          P.artRefImages = patch.artRefImages.slice(0, 3).map(function(r){
+            if(!r || typeof r !== 'object') return null;
+            return {
+              id:          typeof r.id === 'string' ? r.id : '',
+              url:         typeof r.url === 'string' ? r.url : '',
+              description: typeof r.description === 'string' ? r.description : '',
+            };
+          }).filter(function(r){ return r && r.url; });
+        }
 
         if(typeof markDirty === 'function') markDirty();
       } catch(e) { console.warn('[SF] SF_UPDATE_META failed:', e); }

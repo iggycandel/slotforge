@@ -293,6 +293,20 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // consolidated Prompt Inputs panel introduced in v109). Kept on the
   // component itself so navigating away-and-back remembers the mode.
   const [sidebarMode, setSidebarMode] = useState<'assets' | 'inputs'>('assets')
+
+  // Optimistic overlay for PromptInputsPanel edits. The shell's editorMeta
+  // only updates on SF_AUTOSAVE round-trips (the SF_DIRTY path into
+  // payloadRef intentionally doesn't trigger a re-render to avoid input
+  // thrash). But a controlled input that fires onChange WITHOUT getting
+  // its value updated on the next render will snap back to stale state,
+  // so we layer user-patched fields over projectMeta locally. Cleared
+  // when the project id changes.
+  const [metaOverlay, setMetaOverlay] = useState<Partial<PromptInputsMeta>>({})
+  useEffect(() => { setMetaOverlay({}) }, [projectId])
+  const effectiveMeta = useMemo<PromptInputsMeta>(
+    () => ({ ...(projectMeta as PromptInputsMeta | undefined ?? {}), ...metaOverlay }),
+    [projectMeta, metaOverlay]
+  )
   const [rightTab,    setRightTab]    = useState<'inspector' | 'prompt' | 'feedback'>('inspector')
 
   // Generation control
@@ -1027,8 +1041,62 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             />
           ) : (
             <PromptInputsPanel
-              meta={(projectMeta ?? {}) as PromptInputsMeta}
-              onChange={patch => onUpdateMeta?.(patch)}
+              meta={effectiveMeta}
+              onChange={patch => {
+                // Apply optimistically so controlled inputs reflect the
+                // keystroke immediately — the server round-trip confirms
+                // and overwrites the overlay on next autosave.
+                setMetaOverlay(prev => ({ ...prev, ...patch }))
+                onUpdateMeta?.(patch)
+              }}
+              onAddReference={async (file) => {
+                // Step 1 — upload to Supabase Storage under a references.*
+                // asset-key so the image survives a payload refresh.
+                //   The key is namespaced with a random id so multiple
+                //   references don't collide on storage filenames.
+                const refId = `ref_${Math.random().toString(36).slice(2, 10)}`
+                const fd = new FormData()
+                fd.append('file',     file)
+                fd.append('projectId', projectId)
+                fd.append('assetKey',  `references.${refId}`)
+                const upRes = await fetch('/api/assets/upload', { method: 'POST', body: fd })
+                if (!upRes.ok) {
+                  const err = await upRes.json().catch(() => ({}))
+                  throw new Error(err.error || `Upload failed (${upRes.status})`)
+                }
+                const { url } = await upRes.json() as { url?: string }
+                if (!url) throw new Error('Upload returned no URL')
+
+                // Step 2 — describe the reference's style. GPT-4o vision
+                // returns a ~90-word aesthetic description (palette /
+                // material / lighting / form language) with NO subject
+                // matter, so the style carries without hijacking the
+                // depicted content of the generated asset.
+                const descRes = await fetch('/api/references/describe', {
+                  method:  'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body:    JSON.stringify({ project_id: projectId, image: url }),
+                })
+                const descJson = await descRes.json().catch(() => ({}))
+                if (!descRes.ok || !descJson.description) {
+                  throw new Error(descJson.error || `Describe failed (${descRes.status})`)
+                }
+                const description = descJson.description as string
+
+                // Step 3 — patch the meta with the full array. The
+                // SF_UPDATE_META bridge writes to P.artRefImages and
+                // markDirty so autosave persists. collectMeta emits it
+                // as part of the payload.meta.artRefImages on next save.
+                const existing = (effectiveMeta.artRefImages as Array<{id:string;url:string;description:string}> | undefined) ?? []
+                const next     = [...existing, { id: refId, url, description }].slice(0, 3)
+                onUpdateMeta?.({ artRefImages: next } as unknown as Partial<PromptInputsMeta>)
+                addLog(`✓ Reference image analysed — ${description.length} chars of style description`)
+              }}
+              onRemoveReference={(id) => {
+                const existing = (effectiveMeta.artRefImages as Array<{id:string;url:string;description:string}> | undefined) ?? []
+                const next     = existing.filter(r => r.id !== id)
+                onUpdateMeta?.({ artRefImages: next } as unknown as Partial<PromptInputsMeta>)
+              }}
             />
           )}
         </aside>
