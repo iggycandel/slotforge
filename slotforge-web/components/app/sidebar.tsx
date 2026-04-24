@@ -90,15 +90,32 @@ export function Sidebar() {
           className="flex items-center gap-2"
           title={collapsed ? 'Spinative' : undefined}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={collapsed ? '/logo.png' : '/spinative-logo.png'}
-            alt="Spinative"
-            style={{ height: collapsed ? 22 : 26, width: 'auto', objectFit: 'contain' }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = '/logo.png'
-            }}
-          />
+          {/* The old /logo.png was the legacy SLOTFORGE brand — dropping
+              it from every codepath here. Expanded shows the full
+              Spinative word-mark; collapsed shows a tight "S" glyph in
+              the same orange accent so the narrow sidebar stays
+              readable without cramming the whole word-mark into 28 px. */}
+          {collapsed ? (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6,
+              background: 'rgba(240,168,40,.12)',
+              border: '1px solid rgba(240,168,40,.35)',
+              color: '#f0a828',
+              fontFamily: "'Nunito','Varela Round',system-ui,sans-serif",
+              fontWeight: 900, fontSize: 16, lineHeight: 1,
+              letterSpacing: '-0.02em',
+            }}>
+              s
+            </span>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src="/spinative-logo.png"
+              alt="Spinative"
+              style={{ height: 26, width: 'auto', objectFit: 'contain' }}
+            />
+          )}
         </Link>
       </div>
 
