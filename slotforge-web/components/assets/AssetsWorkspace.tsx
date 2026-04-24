@@ -527,7 +527,14 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           project_id:   projectId,
           provider,
           style_id:     styleId || undefined,
-          project_meta: projectMeta ?? undefined,
+          // Uses effectiveMeta (overlay-merged) rather than the raw
+          // projectMeta prop. Without this, palette toggles / settings
+          // / symbol-name edits the user made since the last
+          // SF_AUTOSAVE wouldn't reach the server — the shell's
+          // editorMeta only updates on autosave round-trips, and the
+          // 30-s periodic nudge means a user who edits then clicks
+          // Generate within that window sends stale meta.
+          project_meta: effectiveMeta ?? undefined,
           asset_types:  fillGaps ? targetTypes : undefined,
           custom_prompts: overrideKeys.length ? activeOverrides : undefined,
         }),
@@ -1269,7 +1276,11 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         currentUrl={popupSlot.url}
         projectId={projectId}
         theme={theme}
-        projectMeta={(projectMeta ?? {}) as Record<string, unknown>}
+        // effectiveMeta carries the optimistic metaOverlay on top of
+        // the shell's editorMeta, so inline edits from the Inputs panel
+        // reach the popup's preview + generate calls immediately — not
+        // only after the next SF_AUTOSAVE round-trips them to the shell.
+        projectMeta={effectiveMeta as Record<string, unknown>}
         defaultStyleId={styleId || undefined}
         onGenerated={(key, asset) => {
           if (FEATURE_SLOT_KEYS.has(key)) {
@@ -1297,10 +1308,13 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       open={reviewOpen}
       onClose={() => setReviewOpen(false)}
       projectId={projectId}
-      projectName={(projectMeta?.gameName as string | undefined) || undefined}
+      projectName={(effectiveMeta.gameName as string | undefined) || undefined}
       theme={theme}
       styleId={styleId || undefined}
-      projectMeta={(projectMeta ?? {}) as Record<string, unknown>}
+      // Same reason as the popup above — effectiveMeta beats projectMeta
+      // so the live preview in Review Prompts reflects the user's
+      // pre-save edits.
+      projectMeta={effectiveMeta as Record<string, unknown>}
       slots={reviewSlots}
       onOverridesChanged={(next) => {
         setOverrideCount(Object.values(next).filter(v => v && v.trim()).length)

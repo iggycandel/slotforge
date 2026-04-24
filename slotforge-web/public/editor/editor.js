@@ -10551,6 +10551,14 @@ function collectMeta(){
     colorPrimary:    P.colors?.c1 || '',
     colorBg:         P.colors?.c2 || '',
     colorAccent:     P.colors?.c3 || '',
+    // Toggle bits from P.colors.t1/t2/t3 — the Art workspace's palette
+    // row exposes these as on/off switches. promptBuilder skips a tone
+    // whose toggle is explicitly false. Default to true when unset so
+    // pre-v113 payloads (no toggle bits persisted) keep their original
+    // "all three colours inform the prompt" behaviour.
+    colorPrimaryOn:  P.colors?.t1 !== false,
+    colorBgOn:       P.colors?.t2 !== false,
+    colorAccentOn:   P.colors?.t3 !== false,
     // Symbol configuration — drives the asset tile grid in AssetsWorkspace
     symbolHighCount:    highSymbols.length,
     symbolLowCount:     lowSymbols.length,

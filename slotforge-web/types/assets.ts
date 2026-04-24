@@ -47,6 +47,13 @@ export interface ProjectMeta {
   colorBg?:        string
   /** Colour palette accent */
   colorAccent?:    string
+  /** Whether the matching colour is "active" — when false the prompt
+   *  builder skips that tone entirely (it's not just hidden from the
+   *  palette UI). Defaults to true when unset so older payloads with
+   *  the three hexes but no toggle bits still behave. */
+  colorPrimaryOn?: boolean
+  colorBgOn?:      boolean
+  colorAccentOn?:  boolean
   /** Symbol counts */
   symbolHighCount?:    number
   symbolLowCount?:     number

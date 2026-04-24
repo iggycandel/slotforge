@@ -490,10 +490,18 @@ function buildAssetContext(type: AssetType | string, category: PromptCategory, m
   // prompt caused gpt-image-1 to paint the entire scene in just those three
   // tones, starving the composition of complementary and supporting colours
   // a real illustrator would add.
+  //
+  // Toggle bits (colorPrimaryOn/BgOn/AccentOn) let the user disable a
+  // tone without clearing its hex. `undefined` means "on" (backwards
+  // compatible with payloads pre-v113 that never set the toggles);
+  // `false` means "skip entirely in the prompt". Prior to v113 the
+  // toggles lived only in the UI — the prompt ignored them, which is
+  // why users toggled a colour off and still saw it dominate outputs.
+  const colorOn = (on: boolean | undefined) => on !== false
   const tones = [
-    meta.colorPrimary && nearestColorName(meta.colorPrimary),
-    meta.colorBg      && nearestColorName(meta.colorBg),
-    meta.colorAccent  && nearestColorName(meta.colorAccent),
+    colorOn(meta.colorPrimaryOn) && meta.colorPrimary && nearestColorName(meta.colorPrimary),
+    colorOn(meta.colorBgOn)      && meta.colorBg      && nearestColorName(meta.colorBg),
+    colorOn(meta.colorAccentOn)  && meta.colorAccent  && nearestColorName(meta.colorAccent),
   ].filter((x): x is string => !!x)
   if (tones.length) {
     // De-duplicate — if two of the three hexes map to the same named
