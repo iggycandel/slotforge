@@ -470,16 +470,25 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
   /** Runs the generate pipeline. When `fillGaps` is true, only generates types
    *  that have no existing asset in the current `assets` map. */
-  const runBatchGenerate = useCallback(async (fillGaps = false) => {
+  const runBatchGenerate = useCallback(async (
+    fillGaps = false,
+    /** Optional scope — when present, the batch runs against exactly these
+     *  types instead of every type in every group. Used by the per-group
+     *  "Generate all" buttons added in v112 so the user can re-roll just
+     *  the high symbols without touching backgrounds or UI assets. */
+    explicitTypes?: AssetType[],
+  ) => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
-    // Compute which types to generate
-    const allTypes  = assetGroups.flatMap(g => g.types)
-    const targetTypes = fillGaps
-      ? allTypes.filter(t => !assets[t])
-      : allTypes
+    // Compute which types to generate. Per-group calls use `explicitTypes`
+    // as the candidate pool; `fillGaps` still decides whether to skip
+    // already-filled slots inside that pool.
+    const candidateTypes = explicitTypes ?? assetGroups.flatMap(g => g.types)
+    const targetTypes    = fillGaps
+      ? candidateTypes.filter(t => !assets[t])
+      : candidateTypes
 
     if (targetTypes.length === 0) {
       addLog('All assets already generated — nothing to do.')
@@ -599,8 +608,16 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     }
   }, [theme, projectId, provider, styleId, addLog, saveContext, assetGroups, assets])
 
-  const handleGenerate      = useCallback(() => runBatchGenerate(false), [runBatchGenerate])
-  const handleGenerateMissing = useCallback(() => runBatchGenerate(true),  [runBatchGenerate])
+  const handleGenerate        = useCallback(() => runBatchGenerate(false), [runBatchGenerate])
+  const handleGenerateMissing  = useCallback(() => runBatchGenerate(true),  [runBatchGenerate])
+  // Per-group batch — reuses the same pipeline as the global Generate-All
+  // button, but narrows the type list to this group and chooses
+  // fill-gaps mode when some slots are already filled (re-roll-all when
+  // none are, so the button is always actionable).
+  const handleGenerateGroup   = useCallback((types: AssetType[]) => {
+    const anyEmpty = types.some(t => !assets[t])
+    runBatchGenerate(anyEmpty, types)
+  }, [assets, runBatchGenerate])
 
   // ─── Single-asset regeneration ──────────────────────────────────────────────
 
@@ -1124,6 +1141,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             missingCount={assetGroups.flatMap(g => g.types).filter(t => !assets[t]).length}
             onReviewPrompts={() => setReviewOpen(true)}
             overrideCount={overrideCount}
+            onOpenInputs={() => setSidebarMode('inputs')}
           />
 
           {/* Symbol-name nag banner — sits above the grid so it's visible
@@ -1174,6 +1192,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 assetHistory={assetHistory}
                 isActive={activeGroup === group.id}
                 shortLabels={shortLabels}
+                onGenerateGroup={handleGenerateGroup}
+                batchRunning={batchRunning}
               />
             ))}
 
@@ -1680,14 +1700,25 @@ interface GenBarProps {
   /** Count of slots with a user-saved prompt override (drives the small
    *  gold pill on the Review Prompts button). */
   overrideCount?:    number
+  /** Flip the left sidebar to Inputs mode. Wired to the tiny "change"
+   *  link on the style status pill since the full picker now lives in
+   *  PromptInputsPanel — duplicate pickers were confusing. */
+  onOpenInputs?:     () => void
 }
 
 function GenerationControlBar({
-  theme, onThemeChange, styleId, onStyleChange,
+  theme, onThemeChange, styleId, onStyleChange: _onStyleChange,
   provider, onProviderChange,
   generating, onGenerate, onGenerateMissing, missingCount,
-  onReviewPrompts, overrideCount = 0,
+  onReviewPrompts, overrideCount = 0, onOpenInputs,
 }: GenBarProps) {
+  // onStyleChange is preserved in the interface for legacy callers; the
+  // status pill no longer lets the user *change* the style — that UI
+  // moved to PromptInputsPanel (v109) so the Art workspace has exactly
+  // one place where every prompt-affecting input lives.
+  const currentStyle = styleId
+    ? GRAPHIC_STYLES.find(s => s.id === styleId)
+    : undefined
   return (
     <div style={{
       padding:      '16px 24px',
@@ -1841,103 +1872,62 @@ function GenerationControlBar({
         </button>
       </div>
 
-      {/* Row 2: Graphic style picker — always visible. Users asked to
-          remove the Advanced-toggle gate so the style is never hidden
-          behind a collapsed section; the selected card is always
-          discoverable and the picker doubles as a status readout. */}
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 11, color: C.txMuted, marginBottom: 8, fontWeight: 600, letterSpacing: '.06em' }}>
-          GRAPHIC STYLE
-        </div>
-        <StylePickerStrip selected={styleId} onSelect={onStyleChange} />
+      {/* Row 2: Style status pill. The full 14-card picker used to live
+          here and again in the sidebar's Inputs panel — users flagged
+          the duplication. Keeping only a compact readout here (current
+          style + "change in Inputs" link) makes the hierarchy clear:
+          Inputs owns the prompt inputs, the bar owns the action. */}
+      <div style={{
+        marginTop: 10,
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      }}>
+        <span style={{
+          fontSize: 10, color: C.txMuted, fontWeight: 600,
+          letterSpacing: '.06em', textTransform: 'uppercase',
+        }}>
+          Style
+        </span>
+        <button
+          onClick={onOpenInputs}
+          title={currentStyle
+            ? `${currentStyle.name} — click to change in Inputs`
+            : 'No style selected — click to pick one in Inputs'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '5px 10px 5px 6px',
+            background: currentStyle ? C.goldBg : C.surfHigh,
+            border: `1px solid ${currentStyle ? 'rgba(201,168,76,.35)' : C.border}`,
+            borderRadius: 16,
+            color: currentStyle ? C.gold : C.txMuted,
+            fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+            cursor: onOpenInputs ? 'pointer' : 'default',
+          }}
+        >
+          <StyleIcon id={currentStyle?.id ?? 'default'} size={14} />
+          <span>{currentStyle?.name ?? 'No style'}</span>
+          {onOpenInputs && (
+            <span style={{
+              fontSize: 9, color: C.txFaint, fontWeight: 400,
+              paddingLeft: 6, borderLeft: `1px solid ${C.border}`,
+            }}>
+              change in Inputs ↗
+            </span>
+          )}
+        </button>
+        {currentStyle?.description && (
+          <span style={{ fontSize: 10, color: C.txFaint }}>
+            {currentStyle.description}
+          </span>
+        )}
       </div>
     </div>
   )
 }
 
-// ─── Style Picker Strip ───────────────────────────────────────────────────────
-
-function StylePickerStrip({ selected, onSelect }: { selected: string; onSelect: (id: string) => void }) {
-  return (
-    <div style={{
-      display:        'flex',
-      gap:            8,
-      overflowX:      'auto',
-      paddingBottom:  4,
-    }}>
-      {/* "No style" card */}
-      <button
-        onClick={() => onSelect('')}
-        className={`sf-style-card${!selected ? ' active' : ''}`}
-        style={{
-          flex:         '0 0 auto',
-          width:        80,
-          padding:      '8px 6px',
-          background:   !selected ? C.goldBg : C.surfHigh,
-          border:       `1px solid ${!selected ? C.gold : C.border}`,
-          borderRadius: 8,
-          cursor:       'pointer',
-          color:        !selected ? C.gold : C.txMuted,
-          fontSize:     11,
-          fontWeight:   600,
-          textAlign:    'center',
-        }}
-      >
-        <div style={{
-          display: 'flex', justifyContent: 'center', alignItems: 'center',
-          height: 22, marginBottom: 3, color: !selected ? C.gold : '#e8c96d',
-        }}>
-          <StyleIcon id="default" size={20} />
-        </div>
-        Default
-      </button>
-
-      {GRAPHIC_STYLES.map(style => {
-        const isActive = selected === style.id
-        return (
-          <button
-            key={style.id}
-            onClick={() => onSelect(style.id)}
-            className={`sf-style-card${isActive ? ' active' : ''}`}
-            style={{
-              flex:         '0 0 auto',
-              width:        80,
-              padding:      '8px 6px',
-              background:   isActive ? C.goldBg : style.cardGradient,
-              border:       `1px solid ${isActive ? C.gold : 'rgba(255,255,255,.1)'}`,
-              borderRadius: 8,
-              cursor:       'pointer',
-              color:        C.tx,
-              fontSize:     10,
-              fontWeight:   600,
-              textAlign:    'center',
-              boxShadow:    isActive ? `0 0 0 1px ${C.gold}50` : 'none',
-              transition:   'all .15s',
-            }}
-          >
-            {/* Custom SVG replaces the per-OS emoji; one consistent icon
-                family across the nine cards, drawn at same line weight so
-                the row reads as one visual set. currentColor inherits from
-                the button's foreground so each card picks up its own
-                accent on the gradient background. */}
-            <div style={{
-              display: 'flex', justifyContent: 'center', alignItems: 'center',
-              height: 22, marginBottom: 3,
-              color: isActive ? C.gold : '#ffffffcc',
-              filter: isActive ? 'none' : 'drop-shadow(0 1px 2px rgba(0,0,0,.35))',
-            }}>
-              <StyleIcon id={style.id} size={20} />
-            </div>
-            <div style={{ color: isActive ? C.gold : '#ffffffcc', lineHeight: 1.2 }}>
-              {style.name}
-            </div>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
+// StylePickerStrip was removed in v112. The full 14-card picker now lives
+// exclusively in PromptInputsPanel (sidebar Inputs tab) — users flagged
+// the duplicate pickers as confusing. GenerationControlBar now renders a
+// compact status pill + "change in Inputs" link instead.
 // ─────────────────────────────────────────────────────────────────────────────
 // Batch Progress Bar
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1989,12 +1979,29 @@ interface AssetGroupSectionProps {
   onRevert:        (type: AssetType, asset: GeneratedAsset) => void
   isActive:        boolean
   shortLabels:     Partial<Record<AssetType, string>>
+  /** Batch-generate every type in this group. Fill-gaps vs regenerate-all
+   *  is decided inside the handler — if any slot in the group is empty,
+   *  fill-gaps; otherwise regenerate all. Keeps the per-group button
+   *  always actionable. */
+  onGenerateGroup: (types: AssetType[]) => void
+  /** Global batch-running flag — disables the per-group button while a
+   *  batch is in flight to avoid queueing two competing batches. */
+  batchRunning:    boolean
 }
 
 function AssetGroupSection({
-  group, assets, failedTypes, assetHistory, selectedType, regenTarget, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, isActive, shortLabels,
+  group, assets, failedTypes, assetHistory, selectedType, regenTarget,
+  onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, isActive, shortLabels,
+  onGenerateGroup, batchRunning,
 }: AssetGroupSectionProps) {
   const filledCount = group.types.filter(t => !!assets[t]).length
+  const emptyCount  = group.types.length - filledCount
+  // "Fill" mode when some slots are empty; "Re-roll" when the group is
+  // complete. Same button, label + semantics flip.
+  const fillMode    = emptyCount > 0
+  const buttonLabel = fillMode
+    ? `Generate ${emptyCount} missing`
+    : `Re-roll all ${group.types.length}`
 
   return (
     <div
@@ -2028,6 +2035,33 @@ function AssetGroupSection({
         {filledCount === group.types.length && (
           <CheckCircle2 size={12} style={{ color: C.green }} />
         )}
+        <div style={{ flex: 1 }} />
+        {/* Per-group batch button. Dimmed while any batch is running so a
+            click doesn't stack two concurrent runs. Label flips based on
+            whether the group has empty slots — "fill gaps" by default so
+            the action is lossless; re-roll is opt-in once the group is
+            complete. */}
+        <button
+          onClick={() => onGenerateGroup(group.types)}
+          disabled={batchRunning}
+          title={fillMode
+            ? `Generate every empty slot in ${group.label}`
+            : `Regenerate every slot in ${group.label} — overwrites existing assets`}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '4px 10px', borderRadius: 5,
+            background: batchRunning
+              ? C.surfHigh
+              : fillMode ? C.goldBg : 'rgba(255,255,255,.04)',
+            border: `1px solid ${fillMode ? 'rgba(201,168,76,.35)' : C.border}`,
+            color: batchRunning ? C.txFaint : fillMode ? C.gold : C.txMuted,
+            fontSize: 10, fontWeight: 600, fontFamily: C.font,
+            cursor: batchRunning ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Sparkles size={10} />
+          <span>{buttonLabel}</span>
+        </button>
       </div>
 
       {/* Tile grid */}
