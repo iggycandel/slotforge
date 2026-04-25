@@ -38,7 +38,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Sparkles, Loader2, X, Copy, Download, FileText, Info,
-  Check, AlertCircle,
+  Check, AlertCircle, ExternalLink,
 } from 'lucide-react'
 import type {
   FontPairing, TypographySpec, TypographyLocale, PopupStyle,
@@ -50,6 +50,10 @@ import { SAMPLE_STRINGS, LOCALE_LABELS,
          SUPPORTED_LOCALES, applyCase }             from '@/lib/typography/sampleStrings'
 import { specToPixiBundle, popupStyleToPixi,
          type PixiPopupStyle }                       from '@/lib/typography/toPixi'
+import { googleFontsSpecimenUrl,
+         googleFontsDownloadUrl,
+         googleFontsCssUrl,
+         googleFontsCssUrlPair }                    from '@/lib/typography/googleFonts'
 import type { GeneratedAsset, AssetType }           from '@/types/assets'
 
 /** Preview-tab formats. 'web' is the raw TypographySpec (what the
@@ -316,13 +320,10 @@ export function TypographyWorkspace({
     if (!pairing) return
     const LINK_ID = 'sf-typography-pairing-fonts'
     document.getElementById(LINK_ID)?.remove()
-    const toSpec = (f: FontPairing['display']) =>
-      `${f.family.replace(/ /g, '+')}:wght@${f.weights.join(';')}`
-    const url = `https://fonts.googleapis.com/css2?family=${toSpec(pairing.display)}&family=${toSpec(pairing.ui)}&display=swap`
     const link = document.createElement('link')
-    link.id = LINK_ID
+    link.id  = LINK_ID
     link.rel = 'stylesheet'
-    link.href = url
+    link.href = googleFontsCssUrlPair(pairing.display, pairing.ui)
     document.head.appendChild(link)
   }, [pairing])
 
@@ -342,10 +343,24 @@ export function TypographyWorkspace({
         supportedLocales: spec.supportedLocales,
       },
       fonts: {
-        display: { id: 'display', family: pairing.display.family, weights: pairing.display.weights,
-                   fallback: ['Impact', 'sans-serif'], source: 'google', license: 'OFL-1.1' },
-        ui:      { id: 'ui',      family: pairing.ui.family,      weights: pairing.ui.weights,
-                   fallback: ['Rajdhani', 'sans-serif'], source: 'google', license: 'OFL-1.1' },
+        display: {
+          id: 'display', family: pairing.display.family, weights: pairing.display.weights,
+          fallback: ['Impact', 'sans-serif'], source: 'google', license: 'OFL-1.1',
+          // Three URL variants — see lib/typography/googleFonts.ts for
+          // the deterministic builders. cssUrl plugs into a <link>;
+          // specimenUrl is the human preview; downloadUrl is the
+          // direct .zip of every weight's .ttf for self-hosting.
+          cssUrl:      googleFontsCssUrl(pairing.display),
+          specimenUrl: googleFontsSpecimenUrl(pairing.display.family),
+          downloadUrl: googleFontsDownloadUrl(pairing.display.family),
+        },
+        ui: {
+          id: 'ui', family: pairing.ui.family, weights: pairing.ui.weights,
+          fallback: ['Rajdhani', 'sans-serif'], source: 'google', license: 'OFL-1.1',
+          cssUrl:      googleFontsCssUrl(pairing.ui),
+          specimenUrl: googleFontsSpecimenUrl(pairing.ui.family),
+          downloadUrl: googleFontsDownloadUrl(pairing.ui.family),
+        },
       },
       popupTextStyles: {
         scope:            'popups',
@@ -837,6 +852,21 @@ function ResultBlock({
         <div style={{ fontSize: 12, color: C.txMid, marginBottom: 14 }}>
           {pairing.description}
         </div>
+
+        {/* Google Fonts links — one row per family with a Specimen and a
+            Download button. The download URL goes straight to a .zip of
+            every weight's .ttf so a FE dev can self-host without the
+            Google CDN dependency.  Both are deterministic helpers in
+            lib/typography/googleFonts.ts; the URLs also appear in the
+            JSON bundle's fonts.{display,ui} block. */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 6,
+          marginBottom: 14,
+        }}>
+          <FontLinkRow role="Display" face={pairing.display} />
+          <FontLinkRow role="UI"      face={pairing.ui} />
+        </div>
+
         {spec.rationale && (
           <div style={{
             fontSize: 13, color: C.tx, lineHeight: 1.6,
@@ -925,6 +955,79 @@ function SegmentedPicker<T extends string>({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+// ─── Google Fonts links row (one per family in the pairing) ───────────────
+// Compact row: role tag + family name + Specimen link + Download .zip
+// link. Both links are deterministic helpers from
+// lib/typography/googleFonts.ts. The download link goes straight to a
+// .zip of every weight's .ttf so a FE dev can self-host. target="_blank"
+// + rel="noreferrer noopener" because Google sometimes redirects to a
+// captcha for the .zip and we don't want the workspace tab navigated.
+function FontLinkRow({
+  role, face,
+}: { role: string; face: FontPairing['display'] | FontPairing['ui'] }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '6px 10px',
+      background: C.surfHigh,
+      border: `1px solid ${C.border}`,
+      borderRadius: 6,
+    }}>
+      <span style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: '.06em',
+        textTransform: 'uppercase', color: C.txMuted,
+        width: 50, flexShrink: 0,
+      }}>
+        {role}
+      </span>
+      <span style={{
+        flex: 1, minWidth: 0, fontSize: 12, color: C.tx, fontWeight: 600,
+        fontFamily: "'DM Mono','JetBrains Mono',monospace",
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {face.family}
+      </span>
+      <span style={{ fontSize: 9, color: C.txFaint, flexShrink: 0 }}>
+        {face.weights.join(' · ')}
+      </span>
+      <a
+        href={googleFontsSpecimenUrl(face.family)}
+        target="_blank"
+        rel="noreferrer noopener"
+        title="Open the Google Fonts specimen page (preview, characters, weights)"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '4px 8px', borderRadius: 5,
+          background: 'transparent',
+          border: `1px solid ${C.borderMed}`,
+          color: C.txMid, fontSize: 10, fontWeight: 600,
+          textDecoration: 'none', flexShrink: 0,
+        }}
+      >
+        <ExternalLink size={10} />
+        Specimen
+      </a>
+      <a
+        href={googleFontsDownloadUrl(face.family)}
+        target="_blank"
+        rel="noreferrer noopener"
+        title="Download a .zip of every weight's .ttf for self-hosting"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '4px 8px', borderRadius: 5,
+          background: C.goldDim,
+          border: `1px solid ${C.goldLine}`,
+          color: C.gold, fontSize: 10, fontWeight: 600,
+          textDecoration: 'none', flexShrink: 0,
+        }}
+      >
+        <Download size={10} />
+        .zip
+      </a>
     </div>
   )
 }
@@ -1187,12 +1290,18 @@ function buildStandaloneHtml(spec: TypographySpec, pairing: FontPairing): string
     { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c] as string
   ))
 
-  const toSpec = (f: FontPairing['display']) =>
-    `${f.family.replace(/ /g, '+')}:wght@${f.weights.join(';')}`
-  const fontUrl = `https://fonts.googleapis.com/css2?family=${toSpec(pairing.display)}` +
-                  `&family=${toSpec(pairing.ui)}` +
-                  `&family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap`
+  // Pairing fonts + Inter (body) + JetBrains Mono (code blocks) loaded
+  // from Google Fonts. The pairing CSS URL uses the shared helper so the
+  // standalone doc gets the same wght@ list the workspace previews with.
+  const pairingCssUrl = googleFontsCssUrlPair(pairing.display, pairing.ui)
+  const fontUrl =
+    pairingCssUrl.replace('&display=swap', '') +
+    `&family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap`
 
+  // Each font block in the embedded bundle now carries cssUrl /
+  // specimenUrl / downloadUrl — same shape as the .json export — so a
+  // FE dev opening the .html doc can copy-paste any of the three from
+  // the Full JSON section without going back to fonts.google.com.
   const bundle: TypographyBundle = {
     meta: {
       generatedAt:      new Date().toISOString(),
@@ -1201,10 +1310,20 @@ function buildStandaloneHtml(spec: TypographySpec, pairing: FontPairing): string
       supportedLocales: spec.supportedLocales,
     },
     fonts: {
-      display: { id: 'display', family: pairing.display.family, weights: pairing.display.weights,
-                 fallback: ['Impact', 'sans-serif'], source: 'google', license: 'OFL-1.1' },
-      ui:      { id: 'ui',      family: pairing.ui.family,      weights: pairing.ui.weights,
-                 fallback: ['Rajdhani', 'sans-serif'], source: 'google', license: 'OFL-1.1' },
+      display: {
+        id: 'display', family: pairing.display.family, weights: pairing.display.weights,
+        fallback: ['Impact', 'sans-serif'], source: 'google', license: 'OFL-1.1',
+        cssUrl:      googleFontsCssUrl(pairing.display),
+        specimenUrl: googleFontsSpecimenUrl(pairing.display.family),
+        downloadUrl: googleFontsDownloadUrl(pairing.display.family),
+      },
+      ui: {
+        id: 'ui', family: pairing.ui.family, weights: pairing.ui.weights,
+        fallback: ['Rajdhani', 'sans-serif'], source: 'google', license: 'OFL-1.1',
+        cssUrl:      googleFontsCssUrl(pairing.ui),
+        specimenUrl: googleFontsSpecimenUrl(pairing.ui.family),
+        downloadUrl: googleFontsDownloadUrl(pairing.ui.family),
+      },
     },
     popupTextStyles: {
       scope:            'popups',
@@ -1311,6 +1430,14 @@ h1{font-family:inherit;font-weight:700;font-size:16px;line-height:1.15;letter-sp
 .pairing-fams{font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace}
 .pairing-desc{font-size:12px;color:var(--text-mid);margin-bottom:14px}
 .rationale{font-size:13px;color:var(--text);line-height:1.6;padding-top:12px;border-top:1px solid var(--line);max-width:640px}
+.font-links{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.font-row{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--bg-raised);border:1px solid var(--line);border-radius:6px}
+.font-row .role{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);width:50px;flex-shrink:0}
+.font-row .fam{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.font-row .wts{font-size:9px;color:var(--text-faint);flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.font-row a{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:5px;font-size:10px;font-weight:600;text-decoration:none;flex-shrink:0;font-family:inherit}
+.font-row a.spec{background:transparent;border:1px solid var(--line-strong);color:var(--text-mid)}
+.font-row a.zip{background:var(--accent-dim);border:1px solid var(--accent-line);color:var(--accent)}
 .lang-bar,.fmt-bar{display:flex;gap:3px;padding:3px;background:var(--bg-raised);border:1px solid var(--line);border-radius:8px;width:fit-content}
 .preview-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
 .lang-pill,.fmt-pill{background:transparent;border:none;color:var(--text-dim);font-family:inherit;font-size:11px;font-weight:500;padding:6px 12px;border-radius:5px;cursor:pointer}
@@ -1339,6 +1466,22 @@ pre.json{background:var(--bg-input);border:1px solid var(--line);border-radius:6
       <div class="pairing-fams">${escape(pairing.display.family)} + ${escape(pairing.ui.family)}</div>
     </div>
     <div class="pairing-desc">${escape(pairing.description)}</div>
+    <div class="font-links">
+      <div class="font-row">
+        <span class="role">Display</span>
+        <span class="fam">${escape(pairing.display.family)}</span>
+        <span class="wts">${pairing.display.weights.join(' · ')}</span>
+        <a class="spec" href="${escape(googleFontsSpecimenUrl(pairing.display.family))}" target="_blank" rel="noreferrer noopener">Specimen ↗</a>
+        <a class="zip"  href="${escape(googleFontsDownloadUrl(pairing.display.family))}" target="_blank" rel="noreferrer noopener">Download .zip ↓</a>
+      </div>
+      <div class="font-row">
+        <span class="role">UI</span>
+        <span class="fam">${escape(pairing.ui.family)}</span>
+        <span class="wts">${pairing.ui.weights.join(' · ')}</span>
+        <a class="spec" href="${escape(googleFontsSpecimenUrl(pairing.ui.family))}" target="_blank" rel="noreferrer noopener">Specimen ↗</a>
+        <a class="zip"  href="${escape(googleFontsDownloadUrl(pairing.ui.family))}" target="_blank" rel="noreferrer noopener">Download .zip ↓</a>
+      </div>
+    </div>
     ${spec.rationale ? `<div class="rationale">${escape(spec.rationale)}</div>` : ''}
   </div>
 

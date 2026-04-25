@@ -151,8 +151,20 @@ export interface TypographyBundle {
     supportedLocales: TypographyLocale[]
   }
   fonts: {
-    display: FontFace & { id: 'display'; fallback: string[]; source: 'google'; license: 'OFL-1.1' }
-    ui:      FontFace & { id: 'ui';      fallback: string[]; source: 'google'; license: 'OFL-1.1' }
+    /** Each font block carries three deterministic URLs so a FE dev can
+     *  pick whichever path matches their pipeline:
+     *    cssUrl       — drop into a <link rel="stylesheet"> for instant use
+     *    specimenUrl  — fonts.google.com preview page (human-facing)
+     *    downloadUrl  — direct .zip of all weights' .ttf for self-hosting
+     *  See lib/typography/googleFonts.ts for the URL builders. */
+    display: FontFace & {
+      id: 'display'; fallback: string[]; source: 'google'; license: 'OFL-1.1'
+      cssUrl?: string; specimenUrl?: string; downloadUrl?: string
+    }
+    ui:      FontFace & {
+      id: 'ui'; fallback: string[]; source: 'google'; license: 'OFL-1.1'
+      cssUrl?: string; specimenUrl?: string; downloadUrl?: string
+    }
   }
   popupTextStyles: {
     scope:            'popups'
