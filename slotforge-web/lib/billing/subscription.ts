@@ -99,7 +99,15 @@ export interface CreditStatus {
   canGenerate: boolean
 }
 
-/** Fetch how many credits this org has used this month vs their allowance. */
+/** Fetch how many credits this org has used this month vs their allowance.
+ *
+ *  v122 / H1: production column is `used`, not `credits_used`. The whole
+ *  history of this function up to v121 silently failed into the catch
+ *  block (column doesn't exist → SELECT errors → catch returns
+ *  `{ used: 0, remaining: included, canGenerate: true }` to every caller).
+ *  Net effect: the credit gate has been theatre — every user got their
+ *  full allowance reported as remaining no matter how many they consumed.
+ *  This commit restores the actual gate. */
 export async function getOrgCreditStatus(orgId: string): Promise<CreditStatus> {
   const sub     = await getOrgSubscription(orgId)
   const plan    = PLANS[sub.plan]
@@ -115,12 +123,12 @@ export async function getOrgCreditStatus(orgId: string): Promise<CreditStatus> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (supabase as any)
       .from('credit_usage')
-      .select('credits_used')
+      .select('used')
       .eq('org_id', orgId)
       .eq('month', month)
       .maybeSingle()
 
-    const used      = data?.credits_used ?? 0
+    const used      = data?.used ?? 0
     const remaining = Math.max(included - used, 0)
     return { included, used, remaining, canGenerate: remaining > 0 }
   } catch {
