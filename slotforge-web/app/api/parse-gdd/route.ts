@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth }                      from '@clerk/nextjs/server'
+import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 export const maxDuration = 60
 
@@ -129,6 +130,14 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     )
   }
+
+  // v121 / H3 — parse-gdd makes a real OpenAI call (gpt-4o, ~2 K tokens
+  // out) but currently doesn't consume credits, so without a rate limit
+  // it's the easiest cost burn surface. 6/min/user is plenty for a busy
+  // import session and stops scripted abuse. Pulling parse-gdd into the
+  // credit system is tracked for v122.
+  const rl = await rateLimit(effectiveId, 'ai_parse')
+  if (!rl.ok) return rateLimitResponse(rl)
 
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 })

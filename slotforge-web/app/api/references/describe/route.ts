@@ -26,8 +26,10 @@ import { callOpenAIVision }           from '@/lib/ai/openaiVision'
 import { getOrgPlan,
          canUseAI,
          getOrgCreditStatus,
-         consumeCredits }             from '@/lib/billing/subscription'
+         reserveCredits,
+         refundCredits }              from '@/lib/billing/subscription'
 import { assertProjectAccess }        from '@/lib/supabase/authz'
+import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 // Vision on a single small image is snappy (~3-6 s). Short ceiling
 // because this runs while the user is watching the upload spinner.
@@ -132,6 +134,12 @@ export async function POST(req: NextRequest) {
       { status: 403 },
     )
   }
+
+  // v121 / H3 — vision-call rate limit. Same bucket as typography since
+  // the cost profile is similar.
+  const rl = await rateLimit(effectiveId, 'ai_vision')
+  if (!rl.ok) return rateLimitResponse(rl)
+
   const credits = await getOrgCreditStatus(effectiveId)
   if (!credits.canGenerate) {
     return NextResponse.json(
@@ -157,6 +165,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  // v121 / C2 — reserve before the vision call; refund on failure.
+  const reserve = await reserveCredits(effectiveId, 1)
+  if (!reserve.ok) {
+    if (reserve.reason === 'insufficient') {
+      return NextResponse.json(
+        { error: 'credits_exhausted', remaining: 0,
+          message: 'No AI credits remaining this month.' },
+        { status: 402 },
+      )
+    }
+    if (reserve.reason === 'plan_disabled') {
+      return NextResponse.json(
+        { error: 'upgrade_required', plan,
+          message: 'Reference descriptions require a Freelancer or Studio plan.' },
+        { status: 403 },
+      )
+    }
+    return NextResponse.json({ error: 'credit_tracking_failed' }, { status: 500 })
+  }
+
   try {
     const vision = await callOpenAIVision({
       // Full gpt-4o here — this is a one-shot style summariser and we want
@@ -178,19 +206,9 @@ export async function POST(req: NextRequest) {
 
     const description = (vision.text || '').trim()
     if (!description) {
+      // Refund — empty model output isn't billable.
+      await refundCredits(effectiveId, 1)
       return NextResponse.json({ error: 'empty_description' }, { status: 500 })
-    }
-
-    // Consume credit on success.
-    try {
-      await consumeCredits(effectiveId, 1)
-    } catch (err) {
-      console.error('[references/describe] Failed to consume credit:', err)
-      return NextResponse.json(
-        { error: 'credit_tracking_failed', description,
-          message: 'Description generated but credit tracking failed. Contact support.' },
-        { status: 500 },
-      )
     }
 
     return NextResponse.json({
@@ -201,8 +219,9 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (err) {
+    await refundCredits(effectiveId, 1)
     const message = err instanceof Error ? err.message : 'Reference describe failed'
-    console.error('[references/describe] failed:', message)
+    console.error('[references/describe] failed (credit refunded):', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

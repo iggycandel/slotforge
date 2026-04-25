@@ -28,6 +28,7 @@ import { ASSET_TYPES }                   from '@/types/assets'
 import type { AssetType, ProjectMeta }   from '@/types/assets'
 import { getOrgPlan, canUseAI }          from '@/lib/billing/subscription'
 import { assertProjectAccess }           from '@/lib/supabase/authz'
+import { rateLimit, rateLimitResponse }  from '@/lib/rateLimit'
 
 export const maxDuration = 15
 
@@ -72,6 +73,13 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     )
   }
+
+  // v121 / H3 — defensive cap on the metadata bucket. Preview doesn't
+  // call OpenAI but does run the full prompt builder; the popup may
+  // call this on every keystroke if the user is editing the custom-
+  // prompt field, so 30/min/user is the right ceiling.
+  const rl = await rateLimit(effectiveId, 'ai_metadata')
+  if (!rl.ok) return rateLimitResponse(rl)
 
   // Parse + validate
   const body = await req.json().catch(() => null)

@@ -34,6 +34,7 @@ import { ASSET_TYPES }                   from '@/types/assets'
 import type { AssetType, ProjectMeta }   from '@/types/assets'
 import { getOrgPlan, canUseAI }          from '@/lib/billing/subscription'
 import { assertProjectAccess }           from '@/lib/supabase/authz'
+import { rateLimit, rateLimitResponse }  from '@/lib/rateLimit'
 
 export const maxDuration = 15
 
@@ -75,6 +76,12 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     )
   }
+
+  // v121 / H3 — defensive cap. preview-all sends up to 200 keys per call,
+  // each running the prompt builder + token-bounded composition, so a
+  // looping client could consume serious CPU even without a model call.
+  const rl = await rateLimit(effectiveId, 'ai_metadata')
+  if (!rl.ok) return rateLimitResponse(rl)
 
   const body = await req.json().catch(() => null)
   const parsed = RequestSchema.safeParse(body)

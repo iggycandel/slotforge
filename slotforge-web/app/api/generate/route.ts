@@ -12,8 +12,10 @@ import { ASSET_TYPES }                   from '@/types/assets'
 import type { AssetType, ProjectMeta }   from '@/types/assets'
 import { getOrgPlan, canUseAI,
          getOrgCreditStatus,
-         consumeCredits }        from '@/lib/billing/subscription'
+         reserveCredits,
+         refundCredits }         from '@/lib/billing/subscription'
 import { assertProjectAccess, assertAssetAccess } from '@/lib/supabase/authz'
+import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 // ─── Vercel function timeout ─────────────────────────────────────────────────
 // 15 assets × ~25 s each (in batches of 3) ≈ 125 s.
@@ -82,6 +84,14 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     )
   }
+
+  // v121 / H3 — rate limit at start-of-batch granularity. The user's
+  // budget is per-batch (a 15-asset batch is a single 'ai_image' bucket
+  // entry from the limiter's perspective) — the per-asset reserveCredits
+  // inside the pipeline handles the credit accounting separately.
+  const rl = await rateLimit(effectiveId, 'ai_image')
+  if (!rl.ok) return rateLimitResponse(rl)
+
   // Credit gate — check remaining credits before starting a batch
   const credits = await getOrgCreditStatus(effectiveId)
   if (!credits.canGenerate) {
@@ -135,6 +145,13 @@ export async function POST(req: NextRequest) {
       try {
         emit('start', { total: TOTAL, theme, fillGaps: !!asset_types?.length })
 
+        // v121 / C2 — quota_hit tracker. The pipeline calls reserveCredit
+        // before each asset; when it returns false we throw 'quota_hit'
+        // to skip the rest. We surface a single SSE event here so the
+        // client can swap the UI to "out of credits, top up" instead of
+        // showing 5 generic failures in a row.
+        let quotaHitEmitted = false
+
         const pipelineResult = await generateSlotAssets(
           { theme, project_id, provider, style_id, project_meta: project_meta as ProjectMeta | undefined, asset_types: activeTypes, ratio, custom_prompts },
           {
@@ -146,15 +163,28 @@ export async function POST(req: NextRequest) {
             // instead of waiting for the full 'complete' event.
             onAssetComplete: (asset) => {
               emit('asset', asset)
-              // Consume 1 credit per successfully generated image.
-              // Callback is invoked synchronously by the pipeline, so we can't
-              // block on the promise here — but we MUST surface failures instead
-              // of silently granting free generations. Emit a stream event on
-              // error; the client shows a warning and support reconciles from logs.
-              consumeCredits(effectiveId, 1).catch(err => {
-                console.error('[generate] Failed to consume credit for', asset.type, err)
-                emit('credit_error', { assetType: asset.type, message: 'Credit tracking failed' })
-              })
+            },
+            // v121 / C2 — reserve atomically before each provider call.
+            // Returning false here causes the pipeline to throw
+            // 'quota_hit' for that asset; we batch-emit a single
+            // 'credits_exhausted' SSE event the first time we see it.
+            reserveCredit: async () => {
+              const r = await reserveCredits(effectiveId, 1)
+              if (!r.ok) {
+                if (!quotaHitEmitted && r.reason === 'insufficient') {
+                  quotaHitEmitted = true
+                  emit('credits_exhausted', {
+                    message: 'Out of credits — remaining assets in this batch were skipped.',
+                  })
+                }
+                return false
+              }
+              return true
+            },
+            // Refund on provider/upload failure so the user is only
+            // billed for assets that actually land.
+            refundCredit: async () => {
+              await refundCredits(effectiveId, 1)
             },
           }
         )

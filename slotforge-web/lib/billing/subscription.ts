@@ -129,32 +129,117 @@ export async function getOrgCreditStatus(orgId: string): Promise<CreditStatus> {
   }
 }
 
-/** Increment credit usage by `count` for the current month. */
-export async function consumeCredits(orgId: string, count = 1): Promise<void> {
+// ─── Reserve / refund (v121 / C2) ───────────────────────────────────────────
+//
+// The pre-v121 consumeCredits() did a SELECT-then-UPDATE with no atomicity
+// AND ran AFTER the OpenAI request — two compounding bugs:
+//
+//   1. Lost-update race. Two parallel calls both read `credits_used = N`,
+//      both wrote N+1, counter only advanced by 1 instead of 2.
+//   2. Consume-after-call. A user with 1 remaining credit could fire 10
+//      parallel requests, all pass the cheap gate, all generate, all
+//      "consume" 1 credit but only 1 increment landed (per #1). The other
+//      9 OpenAI calls were free.
+//
+// reserveCredits() closes both:
+//   • Calls the consume_credit RPC, which does a single atomic UPSERT
+//     guarded by `included` — overflow returns NULL.
+//   • Routes call it BEFORE hitting OpenAI. If the API call fails,
+//     refundCredits() puts the credit back. Net effect: budget is honest
+//     even under concurrency, and a depleted budget can't burn provider
+//     cost.
+//
+// We keep getOrgCreditStatus() unchanged for the read-only display path
+// (header, /api/credits) — it doesn't need to be atomic.
+
+// Flat shape rather than a discriminated union — tsconfig has strict:false
+// (legacy reasons), and TS doesn't narrow `if (!r.ok)` to the false-variant
+// without strictNullChecks. Optional fields keep call-site code compact:
+//   if (!r.ok) {
+//     if (r.reason === 'insufficient') return 402…
+//     if (r.reason === 'plan_disabled') return 403…
+//     return 500…
+//   }
+export interface ReserveResult {
+  ok:         boolean
+  reason?:    'plan_disabled' | 'insufficient' | 'error'
+  used?:      number
+  remaining?: number
+}
+
+/**
+ * Atomically reserve `count` credits for `orgId`. Returns ok:true with the
+ * new used/remaining figures on success. Returns ok:false:'insufficient'
+ * if the increment would exceed the included quota. Plan lookup happens
+ * inside this helper so callers don't have to compute `included` themselves.
+ */
+export async function reserveCredits(orgId: string, count = 1): Promise<ReserveResult> {
+  if (!orgId || count <= 0) return { ok: false, reason: 'error' }
+
+  const sub      = await getOrgSubscription(orgId)
+  const plan     = PLANS[sub.plan]
+  if (!plan.aiEnabled) return { ok: false, reason: 'plan_disabled' }
+
+  const included = plan.creditsPerSeat * Math.max(sub.seatCount, 1)
+
   try {
     const supabase = createAdminClient()
-    const month    = currentMonth()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sb = supabase as any
-
-    // Upsert: insert row or increment existing credits_used
-    const { data: existing } = await sb
-      .from('credit_usage')
-      .select('credits_used')
-      .eq('org_id', orgId)
-      .eq('month', month)
-      .maybeSingle()
-
-    if (existing) {
-      await sb.from('credit_usage')
-        .update({ credits_used: existing.credits_used + count, updated_at: new Date().toISOString() })
-        .eq('org_id', orgId)
-        .eq('month', month)
-    } else {
-      await sb.from('credit_usage')
-        .insert({ org_id: orgId, month, credits_used: count, updated_at: new Date().toISOString() })
+    const { data, error } = await (supabase as any).rpc('consume_credit', {
+      p_org_id:   orgId,
+      p_count:    count,
+      p_included: included,
+    })
+    if (error) {
+      console.error('[credits] reserveCredits RPC error:', error)
+      return { ok: false, reason: 'error' }
     }
+    // The RPC returns the new credits_used integer on success, or NULL when
+    // the increment would have overshot the quota. supabase-js surfaces
+    // NULL as `null` here.
+    if (data === null || data === undefined) {
+      return { ok: false, reason: 'insufficient' }
+    }
+    const used = Number(data) || 0
+    return { ok: true, used, remaining: Math.max(included - used, 0) }
   } catch (err) {
-    console.error('[credits] Failed to consume credits:', err)
+    console.error('[credits] reserveCredits threw:', err)
+    return { ok: false, reason: 'error' }
+  }
+}
+
+/**
+ * Refund `count` credits for `orgId` — used by failure paths after a
+ * successful reserveCredits but failed downstream call (OpenAI errored,
+ * Storage upload failed, etc). Best-effort: a failed refund is logged
+ * but doesn't surface as a route error since the user-visible failure
+ * is whatever caused the refund in the first place.
+ */
+export async function refundCredits(orgId: string, count = 1): Promise<void> {
+  if (!orgId || count <= 0) return
+  try {
+    const supabase = createAdminClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).rpc('refund_credit', {
+      p_org_id: orgId,
+      p_count:  count,
+    })
+    if (error) console.error('[credits] refundCredits RPC error:', error)
+  } catch (err) {
+    console.error('[credits] refundCredits threw:', err)
+  }
+}
+
+/**
+ * Legacy alias — kept so any caller that didn't migrate to reserve/refund
+ * still works, but it now goes through the atomic RPC. Returns silently
+ * on failure to preserve the old fire-and-forget contract.
+ *
+ * @deprecated Prefer reserveCredits + refundCredits in new code.
+ */
+export async function consumeCredits(orgId: string, count = 1): Promise<void> {
+  const r = await reserveCredits(orgId, count)
+  if (!r.ok) {
+    console.warn(`[credits] consumeCredits fell through: ${r.reason} (org=${orgId}, count=${count})`)
   }
 }

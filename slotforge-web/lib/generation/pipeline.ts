@@ -38,6 +38,17 @@ export interface PipelineOptions {
   onProgress?:      (completed: number, total: number, lastType: AssetType) => void
   /** Called immediately after each asset is generated AND uploaded — enables per-asset SSE streaming */
   onAssetComplete?: (asset: GeneratedAsset) => void
+  /** v121 / C2 — atomically reserve a credit BEFORE the provider call.
+   *  Returns true when reserved (caller proceeds), false when the user
+   *  hit their monthly quota (caller short-circuits with a `quota_hit`
+   *  failure entry). When omitted the pipeline behaves as before with
+   *  no reserve step — used by code paths that bill outside the loop. */
+  reserveCredit?:   () => Promise<boolean>
+  /** v121 / C2 — refund a previously-reserved credit when the provider
+   *  call or upload fails. Best-effort: pipeline doesn't await this in
+   *  hot paths because a refund DB hiccup shouldn't surface as the
+   *  user-visible failure. */
+  refundCredit?:    () => Promise<void>
 }
 
 export interface PipelineResult {
@@ -55,7 +66,7 @@ export async function generateSlotAssets(
   const { theme, project_id } = req
   const meta     = req.project_meta
   const provider = (req.provider ?? opts.provider ?? 'auto') as AIProvider
-  const { onProgress, onAssetComplete } = opts
+  const { onProgress, onAssetComplete, reserveCredit, refundCredit } = opts
 
   // Honour caller-specified subset (for "fill gaps" mode) or fall back to all types
   const typesToGenerate = req.asset_types?.length ? req.asset_types : ALL_TYPES
@@ -76,31 +87,49 @@ export async function generateSlotAssets(
 
     const results = await Promise.allSettled(
       batch.map(async type => {
-        // Per-slot override from the Review Prompts modal. v119: the
-        // override now carries a mode ({text, mode}) — append rides
-        // alongside the composed prompt as a context line, replace
-        // takes over the whole positive prompt. Pre-v119 callers
-        // could pass a bare string (= replace mode); we accept both
-        // here for back-compat with any in-flight requests.
-        const overrideRaw = req.custom_prompts?.[type]
-        let customPrompt: string | undefined
-        let customPromptMode: 'append' | 'replace' | undefined
-        if (typeof overrideRaw === 'string') {
-          const text = overrideRaw.trim()
-          if (text) { customPrompt = text; customPromptMode = 'replace' }
-        } else if (overrideRaw && typeof overrideRaw === 'object') {
-          const text = overrideRaw.text?.trim()
-          if (text) { customPrompt = text; customPromptMode = overrideRaw.mode ?? 'replace' }
+        // v121 / C2 — reserve a credit BEFORE the provider call. When the
+        // user has hit their quota mid-batch the rest of the batch is
+        // skipped via a sentinel "quota_hit" rejection so the route can
+        // surface a clean 402-equivalent stream event without burning
+        // more provider cost. reserveCredit is optional: tests and any
+        // future caller that bills outside the loop pass nothing here.
+        if (reserveCredit) {
+          const ok = await reserveCredit()
+          if (!ok) throw new Error('quota_hit')
         }
-        const built = buildPrompt(type, theme, req.style_id, meta, {
-          customPrompt,
-          customPromptMode,
-        })
-        // Apply the optional batch-wide ratio override. Per-asset defaults
-        // still kick in for any asset whose caller didn't pass a ratio —
-        // see DEFAULT_RATIO_FOR_ASSET in lib/ai/index.ts.
-        const result = await generateImage(type, built, provider, { ratio: req.ratio })
-        return { type, ...result, prompt: built.prompt }
+        try {
+          // Per-slot override from the Review Prompts modal. v119: the
+          // override now carries a mode ({text, mode}) — append rides
+          // alongside the composed prompt as a context line, replace
+          // takes over the whole positive prompt. Pre-v119 callers
+          // could pass a bare string (= replace mode); we accept both
+          // here for back-compat with any in-flight requests.
+          const overrideRaw = req.custom_prompts?.[type]
+          let customPrompt: string | undefined
+          let customPromptMode: 'append' | 'replace' | undefined
+          if (typeof overrideRaw === 'string') {
+            const text = overrideRaw.trim()
+            if (text) { customPrompt = text; customPromptMode = 'replace' }
+          } else if (overrideRaw && typeof overrideRaw === 'object') {
+            const text = overrideRaw.text?.trim()
+            if (text) { customPrompt = text; customPromptMode = overrideRaw.mode ?? 'replace' }
+          }
+          const built = buildPrompt(type, theme, req.style_id, meta, {
+            customPrompt,
+            customPromptMode,
+          })
+          // Apply the optional batch-wide ratio override. Per-asset defaults
+          // still kick in for any asset whose caller didn't pass a ratio —
+          // see DEFAULT_RATIO_FOR_ASSET in lib/ai/index.ts.
+          const result = await generateImage(type, built, provider, { ratio: req.ratio })
+          return { type, ...result, prompt: built.prompt }
+        } catch (e) {
+          // Provider failed AFTER we reserved — refund so the user isn't
+          // billed for an asset they never received. Don't await — the
+          // refund is best-effort.
+          if (refundCredit) refundCredit().catch(() => {})
+          throw e
+        }
       })
     )
 
@@ -136,6 +165,9 @@ export async function generateSlotAssets(
       for (const r of batchResults) {
         if ('error' in r) {
           failedStorage.push(r)
+          // Provider produced an image but Storage couldn't save it —
+          // user has nothing usable, refund the reserved credit.
+          if (refundCredit) refundCredit().catch(() => {})
         } else {
           assetMap.set(r.type, r)
           // Fire per-asset callback so the route can emit an SSE 'asset' event immediately

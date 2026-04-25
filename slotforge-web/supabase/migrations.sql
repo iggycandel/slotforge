@@ -322,3 +322,173 @@ ALTER TABLE credit_usage ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role can manage credit_usage"
 ON credit_usage FOR ALL TO service_role
 USING (true) WITH CHECK (true);
+
+
+-- ── 11. v121 / C1 — Storage RLS lockdown ──────────────────────────────────────
+-- Audit C1: the original storage policies (section 3) gated INSERT/UPDATE/
+-- DELETE on `bucket_id = 'project-assets'` only — meaning any authenticated
+-- user could write into ANY project folder, including someone else's. Our
+-- route handlers (e.g. /api/assets/upload) gate on assertProjectAccess and
+-- bypass RLS via the service-role key, so server traffic was safe — but a
+-- malicious client speaking directly to Supabase Storage with their own
+-- session JWT could still scribble over a victim's project assets.
+--
+-- Fix: replace the open policies with per-folder ownership checks. The
+-- first path segment of every object name is the project UUID
+-- (storage.foldername(name))[1]. We resolve that back to a project, then
+-- check that the requesting user (Clerk userId in the JWT 'sub' claim)
+-- owns the workspace that contains the project.
+--
+-- Public SELECT policy is intentionally kept — public CDN URLs are how
+-- the editor renders generated assets. Flipping the bucket private and
+-- migrating to signed URLs is tracked separately (v122+).
+
+DROP POLICY IF EXISTS "Authenticated users can upload project assets" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can update project assets" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can delete project assets" ON storage.objects;
+
+-- Helper: resolves the JWT 'sub' (Clerk userId) → workspace.clerk_org_id and
+-- checks ownership of the project folder. SECURITY DEFINER so the policy
+-- can read projects/workspaces without recursive RLS evaluation. Stable
+-- so Postgres can cache the result within a query.
+CREATE OR REPLACE FUNCTION public.user_owns_project_folder(p_id text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+      FROM projects p
+      JOIN workspaces w ON p.workspace_id = w.id
+     WHERE p.id::text     = p_id
+       AND w.clerk_org_id = (auth.jwt() ->> 'sub')
+  );
+$$;
+
+CREATE POLICY "Owners can upload to their project folder"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'project-assets'
+  AND public.user_owns_project_folder((storage.foldername(name))[1])
+);
+
+CREATE POLICY "Owners can update objects in their project folder"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (
+  bucket_id = 'project-assets'
+  AND public.user_owns_project_folder((storage.foldername(name))[1])
+)
+WITH CHECK (
+  bucket_id = 'project-assets'
+  AND public.user_owns_project_folder((storage.foldername(name))[1])
+);
+
+CREATE POLICY "Owners can delete objects in their project folder"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (
+  bucket_id = 'project-assets'
+  AND public.user_owns_project_folder((storage.foldername(name))[1])
+);
+
+
+-- ── 12. v121 / C2 — Atomic credit reserve / refund ───────────────────────────
+-- Audit C2: lib/billing/subscription.ts.consumeCredits did SELECT-then-UPDATE
+-- with no atomicity, so two parallel /api/ai-single calls from the same
+-- user could both read `credits_used = N`, both UPDATE to `N + 1`, and the
+-- counter would only advance by 1 instead of 2 (lost-update race). Combined
+-- with consume-AFTER-call ordering, a user with 1 remaining credit could
+-- fire 10 parallel requests, all pass the gate, all generate, and only 1
+-- of those would actually decrement the counter — the other 9 generations
+-- would be free.
+--
+-- These RPCs replace the unsafe pattern with:
+--   consume_credit  — atomic UPSERT that fails (returns NULL) when the
+--                     increment would push usage past the included quota.
+--                     Caller must pass `included` (computed from plan +
+--                     seat_count) so the quota check happens inside the
+--                     same transaction as the counter bump.
+--   refund_credit   — straight decrement, used by the failure paths
+--                     (OpenAI errored, upload failed) so we don't bill
+--                     the user for a generation that never produced an
+--                     asset.
+--
+-- Routes call reserveCredits() BEFORE the OpenAI request and refundCredits()
+-- on failure. Total cost is one extra round-trip per generation but it
+-- closes the lost-update race AND the "burn cost on a depleted budget"
+-- attack window.
+
+CREATE OR REPLACE FUNCTION public.consume_credit(
+  p_org_id   text,
+  p_count    int,
+  p_included int
+)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_month text := to_char(now(), 'YYYY-MM');
+  v_used  int;
+BEGIN
+  -- Reject negative / zero / overshooting reserves up-front. The CHECK
+  -- inside the ON CONFLICT branch handles the rolling-overflow case
+  -- (existing usage + count would exceed quota), but the INSERT branch
+  -- would happily insert `p_count` for a fresh month even if p_count
+  -- itself > p_included — guard explicitly.
+  IF p_count <= 0 OR p_count > p_included THEN
+    RETURN NULL;
+  END IF;
+
+  INSERT INTO credit_usage (org_id, month, credits_used, updated_at)
+    VALUES (p_org_id, v_month, p_count, now())
+    ON CONFLICT (org_id, month) DO UPDATE
+      SET credits_used = credit_usage.credits_used + EXCLUDED.credits_used,
+          updated_at   = now()
+      WHERE credit_usage.credits_used + EXCLUDED.credits_used <= p_included
+    RETURNING credits_used INTO v_used;
+
+  -- v_used is NULL when the ON CONFLICT WHERE clause skipped the UPDATE
+  -- (would have overflowed). Caller treats NULL as "insufficient credits".
+  RETURN v_used;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION public.refund_credit(
+  p_org_id text,
+  p_count  int
+)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_month text := to_char(now(), 'YYYY-MM');
+  v_used  int;
+BEGIN
+  IF p_count <= 0 THEN
+    RETURN NULL;
+  END IF;
+  UPDATE credit_usage
+    SET credits_used = GREATEST(0, credits_used - p_count),
+        updated_at   = now()
+    WHERE org_id = p_org_id AND month = v_month
+  RETURNING credits_used INTO v_used;
+  RETURN v_used;
+END
+$$;
+
+-- Service-role calls these via supabase.rpc(). Authenticated users never
+-- call them directly — the routes that wrap them already authenticate
+-- the user via Clerk before resolving plan + included credits. Keep the
+-- functions invokable by service_role only.
+REVOKE ALL ON FUNCTION public.consume_credit(text, int, int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.refund_credit(text, int)        FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.consume_credit(text, int, int) TO service_role;
+GRANT EXECUTE ON FUNCTION public.refund_credit(text, int)        TO service_role;

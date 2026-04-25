@@ -24,8 +24,10 @@ import { ASSET_TYPES } from '@/types/assets'
 import type { AssetType, ProjectMeta } from '@/types/assets'
 import { getOrgPlan, canUseAI,
          getOrgCreditStatus,
-         consumeCredits }       from '@/lib/billing/subscription'
+         reserveCredits,
+         refundCredits }        from '@/lib/billing/subscription'
 import { assertProjectAccess } from '@/lib/supabase/authz'
+import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 // Extend timeout for single-asset generation (~15-30 s)
 export const maxDuration = 60
@@ -108,6 +110,16 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     )
   }
+
+  // v121 / H3 — rate limit per (user, kind). Runs BEFORE the read-only
+  // credit gate so a burst client can't keep DB load high by hammering
+  // a depleted account. 429 responses surface a Retry-After header.
+  const rl = await rateLimit(effectiveId, 'ai_image')
+  if (!rl.ok) return rateLimitResponse(rl)
+
+  // Cheap pre-check on read-only counter for fast 402. The atomic reserve
+  // below is the source of truth; this just gives the user a clean
+  // upgrade-prompt response BEFORE we parse a 2 KB body.
   const credits = await getOrgCreditStatus(effectiveId)
   if (!credits.canGenerate) {
     return NextResponse.json(
@@ -130,6 +142,28 @@ export async function POST(req: NextRequest) {
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // v121 / C2 — reserve the credit BEFORE the OpenAI call so a parallel
+  // request can't consume a budget that's already on its way to depletion.
+  // refundCredits below restores the credit on any downstream failure
+  // (provider error, storage upload failure) so the user is only billed
+  // for assets that actually land.
+  const reserve = await reserveCredits(effectiveId, 1)
+  if (!reserve.ok) {
+    if (reserve.reason === 'insufficient') {
+      return NextResponse.json(
+        { error: 'credits_exhausted', remaining: 0, message: 'No AI credits remaining this month.' },
+        { status: 402 }
+      )
+    }
+    if (reserve.reason === 'plan_disabled') {
+      return NextResponse.json(
+        { error: 'upgrade_required', plan, message: 'AI generation requires a Freelancer or Studio plan.' },
+        { status: 403 }
+      )
+    }
+    return NextResponse.json({ error: 'credit_tracking_failed' }, { status: 500 })
   }
 
   try {
@@ -172,25 +206,17 @@ export async function POST(req: NextRequest) {
       generated.provider
     )
 
-    // Consume 1 credit for the successfully generated image.
-    // If this fails (DB outage etc.) we surface the error instead of silently
-    // granting a free generation — the asset is already created, so the user
-    // sees a 500 but support can reconcile from logs.
-    try {
-      await consumeCredits(effectiveId, 1)
-    } catch (err) {
-      console.error('[ai-single] Failed to consume credit after generation:', err)
-      return NextResponse.json(
-        { error: 'credit_tracking_failed', asset, message: 'Asset generated but credit tracking failed. Contact support.' },
-        { status: 500 }
-      )
-    }
-
     return NextResponse.json({ asset })
 
   } catch (err) {
+    // v121 / C2 — refund the reserved credit on any failure path. The user
+    // didn't get an asset; charging them is a billing bug. Refund is
+    // best-effort — if the DB is the failure we can't refund either, so
+    // we just log and leak the credit. Manageable: this only happens on
+    // downstream failure, which is rare.
+    await refundCredits(effectiveId, 1)
     const message = err instanceof Error ? err.message : 'Generation failed'
-    console.error(`[ai-single] ${asset_type} failed:`, message)
+    console.error(`[ai-single] ${asset_type} failed (credit refunded):`, message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

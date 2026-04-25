@@ -27,8 +27,10 @@ import { FONT_LIBRARY,
 import { getOrgPlan,
          canUseAI,
          getOrgCreditStatus,
-         consumeCredits }             from '@/lib/billing/subscription'
+         reserveCredits,
+         refundCredits }              from '@/lib/billing/subscription'
 import { assertProjectAccess }        from '@/lib/supabase/authz'
+import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import type { TypographySpec,
               TypographyLocale,
               PopupStyleKey }         from '@/types/typography'
@@ -348,7 +350,14 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Credit gate (1 credit per generation, consumed on success only)
+  // v121 / H3 — vision-call rate limit. 20/min covers a busy "tweak
+  // typography across screenshots" session without letting a script
+  // burn cost on accidental loops.
+  const rl = await rateLimit(effectiveId, 'ai_vision')
+  if (!rl.ok) return rateLimitResponse(rl)
+
+  // Cheap pre-check on read-only counter for fast 402 — the atomic reserve
+  // below is the source of truth. See ai-single for rationale.
   const credits = await getOrgCreditStatus(effectiveId)
   if (!credits.canGenerate) {
     return NextResponse.json(
@@ -374,6 +383,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  // v121 / C2 — reserve before the vision call. Refund on any failure
+  // path so a malformed model response or OpenAI error doesn't bill the
+  // user for a spec they never received.
+  const reserve = await reserveCredits(effectiveId, 1)
+  if (!reserve.ok) {
+    if (reserve.reason === 'insufficient') {
+      return NextResponse.json(
+        { error: 'credits_exhausted', remaining: 0,
+          message: 'No AI credits remaining this month.' },
+        { status: 402 },
+      )
+    }
+    if (reserve.reason === 'plan_disabled') {
+      return NextResponse.json(
+        { error: 'upgrade_required', plan,
+          message: 'Typography generation requires a Freelancer or Studio plan.' },
+        { status: 403 },
+      )
+    }
+    return NextResponse.json({ error: 'credit_tracking_failed' }, { status: 500 })
+  }
+
   // ── Call OpenAI vision ────────────────────────────────────────────────────
   try {
     const vision = await callOpenAIVision({
@@ -392,6 +423,8 @@ export async function POST(req: NextRequest) {
     try {
       raw = JSON.parse(vision.text) as Record<string, unknown>
     } catch {
+      // Refund — the user got nothing usable.
+      await refundCredits(effectiveId, 1)
       return NextResponse.json(
         { error: 'Model returned non-JSON',
           // Helps debugging without leaking the full transcript; the
@@ -402,19 +435,6 @@ export async function POST(req: NextRequest) {
     }
 
     const spec = normaliseSpec(raw, locales as TypographyLocale[])
-
-    // Consume 1 credit on success. Same error handling as /api/ai-single —
-    // return 500 if the DB write fails so support can reconcile from logs.
-    try {
-      await consumeCredits(effectiveId, 1)
-    } catch (err) {
-      console.error('[typography/generate] Failed to consume credit:', err)
-      return NextResponse.json(
-        { error: 'credit_tracking_failed', spec,
-          message: 'Spec generated but credit tracking failed. Contact support.' },
-        { status: 500 },
-      )
-    }
 
     return NextResponse.json({
       spec,
@@ -427,8 +447,10 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (err) {
+    // Refund the reserved credit — user didn't get a spec.
+    await refundCredits(effectiveId, 1)
     const message = err instanceof Error ? err.message : 'Typography generation failed'
-    console.error('[typography/generate] failed:', message)
+    console.error('[typography/generate] failed (credit refunded):', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
