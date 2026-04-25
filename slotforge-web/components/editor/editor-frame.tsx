@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { autosaveProject, createSnapshot, getSnapshots, restoreSnapshot } from '../../actions/editor'
+import { autosaveProject, createSnapshot, getSnapshots, restoreSnapshot, deleteSnapshot } from '../../actions/editor'
 import type { ProjectSnapshot, SaveState } from '../../types'
 import { RightPanel } from './RightPanel'
 import { AssetsWorkspace } from '../assets/AssetsWorkspace'
@@ -16,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v116'
+const EDITOR_VERSION = 'v117'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -194,6 +194,47 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     if (data) setSnapshots(data as ProjectSnapshot[])
   }
   useEffect(() => { loadSnapshots() }, [projectId])
+
+  // ─── Auto-snapshots ─────────────────────────────────────────────────────
+  // Manual ⌘S already snapshots, but a user working in long stretches
+  // without explicit saves had no rollback points beyond the last
+  // manual save (which might be hours back). v117: every 15 min, if
+  // we've autosaved at least once since the last snapshot, take one.
+  // Labels read "Auto · 14:32" so the UI can visually distinguish
+  // them from named manual saves. The check fires every 60 s; the
+  // 15-min gate is enforced by comparing to lastSnapshotAt below.
+  //
+  // Why client-side instead of a cron / DB trigger? The shell already
+  // has the live payloadRef.current — server-side would have to read
+  // it back from `projects.payload`, which is the same data minus
+  // any in-flight edits the autosave hadn't completed yet.
+  const lastSnapshotAt = useRef<number>(Date.now())
+  const dirtySinceSnap = useRef<boolean>(false)
+  // Mark dirty whenever an autosave or manual save lands. doSave
+  // updates payloadRef BEFORE the timer fires, so this flag captures
+  // "user has done work since the last snapshot".
+  useEffect(() => {
+    if (saveState.status === 'saved') dirtySinceSnap.current = true
+  }, [saveState.status])
+  useEffect(() => {
+    if (!projectId) return
+    const SNAPSHOT_GAP_MS = 15 * 60_000
+    const iv = setInterval(async () => {
+      if (!payloadRef.current) return
+      if (!dirtySinceSnap.current) return
+      if (Date.now() - lastSnapshotAt.current < SNAPSHOT_GAP_MS) return
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      try {
+        await createSnapshot(projectId, payloadRef.current, `Auto · ${time}`)
+        lastSnapshotAt.current = Date.now()
+        dirtySinceSnap.current = false
+        loadSnapshots()
+      } catch {
+        // Non-fatal — we'll retry next minute.
+      }
+    }, 60_000)
+    return () => clearInterval(iv)
+  }, [projectId])
 
   const doSave = useCallback(async (payload: Record<string, unknown>, isManual: boolean) => {
     if (isSavingRef.current) {
@@ -491,11 +532,46 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     iframeRef.current?.contentWindow?.postMessage({ type: 'SF_REQUEST_SAVE' }, window.location.origin)
   }
 
+  /** Restore a snapshot. v117: takes a SAFETY checkpoint of the live
+   *  payload first (labelled "Before restore: <old>") so the user
+   *  always has a one-click undo. Without this a misclick would
+   *  silently overwrite hours of work — the bare browser confirm()
+   *  was the only barrier. The checkpoint also surfaces in the
+   *  history list so it reads as "here's what you had right before
+   *  rolling back". */
   async function handleRestore(snap: ProjectSnapshot) {
-    if (!confirm('Restore this version?')) return
+    if (payloadRef.current) {
+      try {
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const oldLabel = (snap.label || 'snapshot').slice(0, 30)
+        await createSnapshot(
+          projectId, payloadRef.current,
+          `Before restore · ${oldLabel} · ${time}`,
+        )
+      } catch {
+        // Non-fatal — restore still proceeds. Log so support can
+        // reconcile if a user ever reports lost work.
+        console.warn('[snapshots] safety checkpoint failed; proceeding with restore')
+      }
+    }
     await restoreSnapshot(snap.id)
     iframeRef.current?.contentWindow?.postMessage({ type: 'SF_LOAD', payload: snap.payload }, window.location.origin)
     setSaveState({ status: 'saved', lastSaved: new Date() })
+    // Refresh so the new "Before restore" snapshot shows up in the list.
+    loadSnapshots()
+  }
+
+  async function handleDeleteSnapshot(snap: ProjectSnapshot) {
+    // Optimistic removal — the list rebuilds on the loadSnapshots
+    // call after the action; pulling it from local state immediately
+    // prevents a perceived delay.
+    setSnapshots(prev => prev.filter(s => s.id !== snap.id))
+    try {
+      await deleteSnapshot(snap.id)
+    } catch {
+      // Rollback on failure
+      loadSnapshots()
+    }
   }
 
   // Stable reference — AssetsWorkspace passes this into its own
@@ -761,24 +837,164 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
               {snapshots.length === 0
-                ? <div style={{ padding: 16, fontSize: 12, color: C.txMuted, textAlign: 'center' }}>
-                    No snapshots yet.<br /><br />Save with a label to create one.
+                ? <div style={{ padding: 16, fontSize: 12, color: C.txMuted, textAlign: 'center', lineHeight: 1.5 }}>
+                    No snapshots yet.
+                    <br /><br />
+                    They&rsquo;ll appear here automatically every 15 min while you work, or whenever you press <kbd style={{
+                      fontFamily: "'DM Mono',monospace", fontSize: 10,
+                      padding: '1px 4px', borderRadius: 3,
+                      background: C.surfHigh, border: `1px solid ${C.border}`,
+                      color: C.tx,
+                    }}>⌘S</kbd>.
                   </div>
                 : snapshots.map(snap => (
-                    <div
+                    <SnapshotTile
                       key={snap.id}
-                      onClick={() => handleRestore(snap)}
-                      style={{ padding: '9px 12px', borderRadius: 8, marginBottom: 4, background: C.surfHigh, cursor: 'pointer' }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 600, color: C.tx, marginBottom: 2 }}>{snap.label ?? 'Autosave'}</div>
-                      <div style={{ fontSize: 11, color: C.txMuted }}>{new Date(snap.created_at).toLocaleString()}</div>
-                    </div>
+                      snap={snap}
+                      onRestore={() => handleRestore(snap)}
+                      onDelete={() => handleDeleteSnapshot(snap)}
+                    />
                   ))
               }
             </div>
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── Snapshot tile ─────────────────────────────────────────────────────────
+// One row per snapshot in the version-history slide-in. Two-stage UI:
+//
+//   Idle  — label + timestamp + small kebab area; click anywhere on the
+//           row to begin a restore (transitions to Confirming).
+//   Confirming — replaces the row body with [Restore] / [Cancel] /
+//                [Delete] inline buttons. Avoids the bare browser
+//                confirm() dialog the previous version used (jarring,
+//                no styling, easy misclick).
+//
+// Visual cues:
+//   • Auto-generated snapshots ("Auto · 14:32") get a subtle gold
+//     "auto" pill so the user can tell them apart from manually-named
+//     versions at a glance.
+//   • Pre-restore safety checkpoints ("Before restore · …") get a
+//     red-tinted pill so they read as "this is your get-back-to-here
+//     point" — distinct from both auto and named saves.
+function SnapshotTile({
+  snap, onRestore, onDelete,
+}: {
+  snap:      ProjectSnapshot
+  onRestore: () => void | Promise<void>
+  onDelete:  () => void | Promise<void>
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy,       setBusy]       = useState(false)
+  const label = snap.label ?? 'Untitled save'
+  const isAuto    = label.startsWith('Auto · ')
+  const isUndo    = label.startsWith('Before restore')
+
+  // Pill colour + text per category. Stays compact (8 px) so the tile
+  // doesn't grow taller than the original.
+  const pill = isUndo
+    ? { text: 'undo point', bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.35)', color: '#f0a3a3' }
+    : isAuto
+    ? { text: 'auto',       bg: 'rgba(201,168,76,.10)',  border: 'rgba(201,168,76,.30)',  color: '#c9a84c' }
+    : null
+
+  const created = new Date(snap.created_at)
+  const dateStr = created.toLocaleString([], {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+
+  return (
+    <div
+      style={{
+        padding: '9px 12px', borderRadius: 8, marginBottom: 4,
+        background: confirming ? 'rgba(201,168,76,.06)' : C.surfHigh,
+        border:     `1px solid ${confirming ? 'rgba(201,168,76,.3)' : 'transparent'}`,
+        cursor:      confirming ? 'default' : 'pointer',
+        transition:  'background .12s, border-color .12s',
+      }}
+      onClick={() => { if (!confirming) setConfirming(true) }}
+    >
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        gap: 8, marginBottom: 2,
+      }}>
+        <div style={{ flex: 1, minWidth: 0,
+          fontSize: 12, fontWeight: 600, color: C.tx,
+          overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+        }}>
+          {label}
+        </div>
+        {pill && (
+          <span style={{
+            fontSize: 8, fontWeight: 700,
+            letterSpacing: '.06em', textTransform: 'uppercase',
+            background: pill.bg, border: `1px solid ${pill.border}`,
+            color: pill.color, borderRadius: 3, padding: '1px 5px',
+            flexShrink: 0,
+          }}>
+            {pill.text}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: C.txMuted }}>{dateStr}</div>
+
+      {/* Inline confirm — replaces the bare browser confirm() the
+          previous flow used. Three actions: Restore (gold, primary),
+          Cancel (back to idle), Delete (red, removes snapshot from
+          DB without restoring). */}
+      {confirming && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            marginTop: 8, display: 'flex', gap: 4,
+          }}
+        >
+          <button
+            disabled={busy}
+            onClick={async () => { setBusy(true); try { await onRestore() } finally { setBusy(false); setConfirming(false) } }}
+            style={{
+              flex: 1, padding: '5px 8px', borderRadius: 5,
+              background: 'rgba(201,168,76,.16)',
+              border: '1px solid rgba(201,168,76,.45)',
+              color: '#c9a84c', fontSize: 11, fontWeight: 600,
+              fontFamily: 'inherit', cursor: busy ? 'wait' : 'pointer',
+            }}
+          >
+            Restore
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => setConfirming(false)}
+            style={{
+              padding: '5px 8px', borderRadius: 5,
+              background: 'transparent', border: `1px solid ${C.border}`,
+              color: C.txMuted, fontSize: 11, fontWeight: 600,
+              fontFamily: 'inherit', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            disabled={busy}
+            onClick={async () => { setBusy(true); try { await onDelete() } finally { setBusy(false); setConfirming(false) } }}
+            title="Permanently delete this snapshot (cannot be undone)"
+            style={{
+              padding: '5px 8px', borderRadius: 5,
+              background: 'rgba(248,113,113,.08)',
+              border: '1px solid rgba(248,113,113,.3)',
+              color: '#f87171', fontSize: 11, fontWeight: 600,
+              fontFamily: 'inherit', cursor: busy ? 'wait' : 'pointer',
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   )
 }

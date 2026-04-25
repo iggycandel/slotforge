@@ -105,3 +105,18 @@ export async function restoreSnapshot(snapshotId: string) {
     .eq('id', snapshot.project_id)
   return { error }
 }
+
+/** Delete a single snapshot. Server-only — needs the auth check so a
+ *  user can't delete someone else's history through the public action.
+ *  Returns { error } so the caller can show inline feedback without a
+ *  toast / modal infra. */
+export async function deleteSnapshot(snapshotId: string) {
+  const { userId } = await auth()
+  if (!userId) return { error: 'Not authenticated' }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('project_snapshots')
+    .delete()
+    .eq('id', snapshotId)
+  return { error }
+}
