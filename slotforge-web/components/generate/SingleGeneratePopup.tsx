@@ -126,6 +126,24 @@ export function SingleGeneratePopup({
   const [error,       setError]       = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // ── Variants (v118) ──────────────────────────────────────────────────────
+  // gpt-image-1 has internal randomness — firing the same prompt twice
+  // produces two different images. The popup now lets the user opt into a
+  // 3-shot mode where we fire 3 parallel /api/ai-single calls with the
+  // EXACT same body and present the results as a grid the user picks
+  // from. The unselected variants stay in the per-asset history (every
+  // /api/ai-single call inserts a row into generated_assets server-side),
+  // so they're never lost — only "which one is active right now" is
+  // delegated to the click. Costs are linear: 1 / 3 credits.
+  const [variantCount, setVariantCount] = useState<1 | 3>(1)
+  interface VariantResult {
+    id:     string                 // local id for React keying
+    status: 'pending' | 'success' | 'failed'
+    asset?: GeneratedAsset
+    error?: string
+  }
+  const [variants, setVariants] = useState<VariantResult[]>([])
+
   // ── Symbol-only controls (Part B) ─────────────────────────────────────────
   // Whether to include a decorative frame (defaults to ON for symbols),
   // and which colour to weight toward. Default color selection now
@@ -184,6 +202,8 @@ export function SingleGeneratePopup({
     // override) default to append for best-of-both-worlds.
     setCustomPromptMode(savedOverride ? 'replace' : 'append')
     setRefImages([])
+    setVariantCount(1)
+    setVariants([])
     setError(null)
     // Symbol defaults reset per slot. Frame on. Colour falls back to the
     // tier default only when the project palette is empty; otherwise we
@@ -351,76 +371,122 @@ export function SingleGeneratePopup({
     setRefImages(prev => prev.filter((_, idx) => idx !== i))
   }
 
+  /** Build the JSON body once — every variant fetches with identical
+   *  inputs. gpt-image-1 has internal randomness so 3 identical bodies
+   *  produce 3 different images naturally; we don't need explicit
+   *  jitter (and any jitter we'd inject would be guesswork that
+   *  fights the rest of the prompt stack). */
+  function buildGenerateBody() {
+    return {
+      asset_type:    slotKey,
+      theme,
+      project_id:    projectId,
+      provider:      'auto',
+      style_id:      styleId || undefined,
+      project_meta:  projectMeta,
+      ratio,
+      quality,
+      custom_prompt:      customPrompt.trim() || undefined,
+      custom_prompt_mode: customPrompt.trim() ? customPromptMode : undefined,
+      symbol_frame: tier.isSymbol ? symbolFrame : undefined,
+      symbol_color: tier.isSymbol && symbolColor ? symbolColor : undefined,
+      symbol_label: isLabelSymbol && symbolLabel.trim() ? symbolLabel.trim() : undefined,
+      reference_descriptions: refImages
+        .filter(r => r.description && !r.describing)
+        .map(r => r.description),
+    }
+  }
+
+  /** One variant's fetch — wraps /api/ai-single with rich error parsing
+   *  so a non-JSON response (Vercel HTML 404, crashed edge runtime)
+   *  produces something the user can act on instead of a generic
+   *  "Generation failed (status)". Kept here because both single and
+   *  variant flows call it. */
+  async function fireOneGenerate(): Promise<GeneratedAsset> {
+    const res = await fetch('/api/ai-single', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(buildGenerateBody()),
+    })
+    const raw = await res.text()
+    type ZodDetails = { fieldErrors?: Record<string, string[]>; formErrors?: string[] }
+    let data: { error?: string; details?: ZodDetails; asset?: GeneratedAsset; url?: string } = {}
+    try { data = raw ? JSON.parse(raw) : {} } catch { /* non-JSON body */ }
+    if (!res.ok || data?.error) {
+      const fieldLines = Object.entries(data?.details?.fieldErrors ?? {})
+        .map(([k, msgs]) => `${k}: ${(msgs ?? []).join('; ')}`)
+      const formLines = data?.details?.formErrors ?? []
+      const detailSuffix = [...fieldLines, ...formLines]
+        .filter(Boolean).join(' · ')
+      const rawSnippet = raw
+        .replace(/<[^>]+>/g, '')
+        .split('\n').map(l => l.trim()).filter(Boolean).slice(0, 1).join(' ')
+        .slice(0, 180)
+      const base = data?.error || rawSnippet || `Generation failed (${res.status})`
+      throw new Error(detailSuffix ? `${base} — ${detailSuffix}` : base)
+    }
+    const asset = data?.asset as GeneratedAsset | undefined
+    if (!asset?.url) throw new Error('Generation returned no URL')
+    return asset
+  }
+
   async function handleGenerate() {
     if (generating) return
     setGenerating(true)
     setError(null)
-    try {
-      const res = await fetch('/api/ai-single', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          asset_type:    slotKey,
-          theme,
-          project_id:    projectId,
-          provider:      'auto',
-          style_id:      styleId || undefined,
-          project_meta:  projectMeta,
-          ratio,
-          quality,
-          custom_prompt:      customPrompt.trim() || undefined,
-          custom_prompt_mode: customPrompt.trim() ? customPromptMode : undefined,
-          // Symbol-only hints forwarded to /api/ai-single → buildPrompt.
-          // Server ignores them for non-symbol asset types.
-          symbol_frame: tier.isSymbol ? symbolFrame : undefined,
-          symbol_color: tier.isSymbol && symbolColor ? symbolColor : undefined,
-          // Label rendering on wild / scatter / specials only. Server
-          // double-checks the category, but we gate here too so a stray
-          // label state can't leak onto a high/low symbol.
-          symbol_label: isLabelSymbol && symbolLabel.trim() ? symbolLabel.trim() : undefined,
-          // Per-asset references — only ones whose describe succeeded.
-          // In-flight / errored refs are dropped silently so an API hiccup
-          // doesn't block generation.
-          reference_descriptions: refImages
-            .filter(r => r.description && !r.describing)
-            .map(r => r.description),
-        }),
-      })
-      // Read the body as text first, then try JSON. A non-JSON response
-      // (e.g. Vercel CDN serving an HTML 404 page, a plain-text 500 from
-      // a crashed edge runtime) previously collapsed into the generic
-      // "Generation failed (<status>)" message and hid the actual cause.
-      const raw = await res.text()
-      type ZodDetails = { fieldErrors?: Record<string, string[]>; formErrors?: string[] }
-      let data: { error?: string; details?: ZodDetails; asset?: GeneratedAsset; url?: string } = {}
-      try { data = raw ? JSON.parse(raw) : {} } catch { /* non-JSON body, fall through */ }
-      if (!res.ok || data?.error) {
-        // For Zod validation failures, append the per-field details so the
-        // user sees *which* field failed (e.g. "asset_type: Unknown
-        // asset_type") instead of just the top-level "Invalid request".
-        const fieldLines = Object.entries(data?.details?.fieldErrors ?? {})
-          .map(([k, msgs]) => `${k}: ${(msgs ?? []).join('; ')}`)
-        const formLines = data?.details?.formErrors ?? []
-        const detailSuffix = [...fieldLines, ...formLines]
-          .filter(Boolean).join(' · ')
-        const rawSnippet = raw
-          .replace(/<[^>]+>/g, '')    // strip HTML tags
-          .split('\n').map(l => l.trim()).filter(Boolean).slice(0, 1).join(' ')
-          .slice(0, 180)
-        const base = data?.error || rawSnippet || `Generation failed (${res.status})`
-        const msg = detailSuffix ? `${base} — ${detailSuffix}` : base
-        throw new Error(msg)
+
+    // ── Single variant — original flow, closes the popup on success ──────
+    if (variantCount === 1) {
+      try {
+        const asset = await fireOneGenerate()
+        onGenerated(slotKey, asset)
+        onReloadAssets?.()
+        onClose()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Generation failed')
+      } finally {
+        setGenerating(false)
       }
-      const asset = data?.asset as GeneratedAsset | undefined
-      if (!asset?.url) throw new Error('Generation returned no URL')
-      onGenerated(slotKey, asset)
-      onReloadAssets?.()
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Generation failed')
-    } finally {
-      setGenerating(false)
+      return
     }
+
+    // ── 3-variant flow — fan out, settle independently, await pick ───────
+    // Each row updates as its own promise resolves so the user sees them
+    // arrive one-by-one instead of waiting for the slowest of three.
+    // unselected variants remain in the asset's per-type history (server
+    // already inserted them via uploadGeneratedAsset), so passing on a
+    // variant doesn't lose it — the user can revisit via the Inspector
+    // history strip.
+    const seeded: VariantResult[] = Array.from({ length: variantCount }, (_, i) => ({
+      id:     `v-${Date.now()}-${i}`,
+      status: 'pending' as const,
+    }))
+    setVariants(seeded)
+    await Promise.all(seeded.map(async (v, idx) => {
+      try {
+        const asset = await fireOneGenerate()
+        onReloadAssets?.()
+        setVariants(prev => prev.map((x, i) => i === idx ? { ...x, status: 'success', asset } : x))
+      } catch (err) {
+        setVariants(prev => prev.map((x, i) => i === idx
+          ? { ...x, status: 'failed', error: err instanceof Error ? err.message : 'Generation failed' }
+          : x
+        ))
+      }
+    }))
+    setGenerating(false)
+  }
+
+  function handlePickVariant(asset: GeneratedAsset) {
+    onGenerated(slotKey, asset)
+    onReloadAssets?.()
+    onClose()
+  }
+
+  function handleClearVariants() {
+    // User decides not to pick — keep all in history, just close the
+    // results panel so they can re-run with different inputs.
+    setVariants([])
   }
 
   return (
@@ -483,8 +549,82 @@ export function SingleGeneratePopup({
           </button>
         </div>
 
-        {/* ── Preview strip ──────────────────────────────────────────────── */}
-        {currentUrl && (
+        {/* ── Variant results panel (v118) ──────────────────────────────
+            Appears once the user fires a 3-variant batch. Replaces the
+            other configuration sections visually so the picking decision
+            is the only thing on screen. The unselected variants stay in
+            the per-asset history (server-side insert is unconditional) —
+            "Done" without picking just leaves the active asset where it
+            was. */}
+        {variants.length > 0 && (
+          <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border}` }}>
+            <div style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              marginBottom: 8,
+            }}>
+              <div style={{
+                fontSize: 11, color: T.textPrimary, fontWeight: 700,
+                letterSpacing: '.06em', textTransform: 'uppercase',
+              }}>
+                Pick a variant
+              </div>
+              <div style={{ fontSize: 10, color: T.textMuted }}>
+                Unselected variants stay in this asset&rsquo;s version history
+              </div>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${variants.length}, 1fr)`,
+              gap: 8,
+            }}>
+              {variants.map(v => (
+                <VariantTile
+                  key={v.id}
+                  variant={v}
+                  onPick={() => v.asset && handlePickVariant(v.asset)}
+                />
+              ))}
+            </div>
+            {!generating && variants.every(v => v.status === 'failed') && (
+              <div style={{
+                marginTop: 10, padding: '8px 10px',
+                background: 'rgba(248,113,113,.08)',
+                border: '1px solid rgba(248,113,113,.3)',
+                borderRadius: 6,
+                fontSize: 11, color: T.red,
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+              }}>
+                <span>All {variants.length} variants failed.</span>
+                <button
+                  onClick={handleClearVariants}
+                  style={{
+                    padding: '3px 8px', borderRadius: 4,
+                    background: 'rgba(248,113,113,.12)',
+                    border: '1px solid rgba(248,113,113,.4)',
+                    color: T.red, fontSize: 11, fontWeight: 600,
+                    fontFamily: T.font, cursor: 'pointer',
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+            {!generating && variants.some(v => v.status === 'success') &&
+                            variants.some(v => v.status === 'failed') && (
+              <div style={{
+                marginTop: 8, fontSize: 10, color: T.red,
+                opacity: 0.85,
+              }}>
+                {variants.filter(v => v.status === 'failed').length} of {variants.length} failed — pick from what came back, or hit Done to retry.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Preview strip — hidden while variants are showing so the
+            user isn't comparing the new takes against the old one
+            (which just adds noise to the picking decision). ─── */}
+        {currentUrl && variants.length === 0 && (
           <div style={{ padding: '14px 18px', borderBottom: `1px solid ${T.border}` }}>
             <div style={{ fontSize: 10, color: T.textMuted, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 6 }}>
               Current
@@ -498,6 +638,13 @@ export function SingleGeneratePopup({
             </div>
           </div>
         )}
+
+        {/* All inputs (Ratio / Style / Quality / Symbol / References /
+            Prompt composition / Custom prompt) are hidden once a variant
+            batch has fired so the picking decision has the full popup
+            real estate. The user can still hit Done to dismiss without
+            picking — every variant is in the asset's history regardless. */}
+        {variants.length === 0 && <>
 
         {/* ── Ratio selector ────────────────────────────────────────────── */}
         <Section title="Aspect ratio">
@@ -1076,6 +1223,8 @@ export function SingleGeneratePopup({
           )}
         </Section>
 
+        </>}
+
         {/* ── Error ──────────────────────────────────────────────────────── */}
         {error && (
           <div style={{
@@ -1096,8 +1245,48 @@ export function SingleGeneratePopup({
           padding: '14px 18px',
           borderTop: `1px solid ${T.border}`,
           display: 'flex', gap: 8, justifyContent: 'flex-end',
+          alignItems: 'center', flexWrap: 'wrap',
           background: T.bg,
         }}>
+          {/* Variant-count toggle. Lets the user opt into a 3-shot batch
+              for the same prompt — gpt-image-1's natural randomness gives
+              3 different takes, and the user picks the best after they
+              all return. Hidden while a batch is in flight; the segmented
+              control would be confusing to flip mid-run. The unselected
+              variants stay in the asset's per-type history for later
+              recall (server-side insertion is unconditional). */}
+          {!generating && variants.length === 0 && (
+            <div style={{
+              display: 'flex', gap: 2, padding: 2,
+              background: T.surfaceHigh,
+              border: `1px solid ${T.border}`,
+              borderRadius: 6,
+              marginRight: 'auto',
+            }}>
+              {([1, 3] as const).map(n => {
+                const active = variantCount === n
+                return (
+                  <button
+                    key={n}
+                    onClick={() => setVariantCount(n)}
+                    title={n === 1
+                      ? 'Generate one image (1 credit)'
+                      : 'Generate three variants of the same prompt and pick the best (3 credits)'}
+                    style={{
+                      padding: '5px 10px', borderRadius: 4,
+                      background: active ? T.surface : 'transparent',
+                      border: 'none',
+                      color: active ? T.textPrimary : T.textMuted,
+                      fontSize: 11, fontWeight: 600, fontFamily: T.font,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {n === 1 ? '1 image' : '3 variants'}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           <button
             onClick={onClose}
             disabled={generating}
@@ -1112,32 +1301,38 @@ export function SingleGeneratePopup({
               cursor: generating ? 'wait' : 'pointer',
             }}
           >
-            Cancel
+            {variants.length > 0 ? 'Done' : 'Cancel'}
           </button>
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            style={{
-              padding: '8px 14px',
-              background: generating ? 'rgba(201,168,76,.20)' : 'rgba(201,168,76,.12)',
-              border: `1px solid rgba(201,168,76,.4)`,
-              borderRadius: 6,
-              color: T.gold,
-              fontSize: 12,
-              fontWeight: 600,
-              fontFamily: T.font,
-              cursor: generating ? 'wait' : 'pointer',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            {generating
-              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</>
-              : <><Sparkles size={12} /> Generate (1 credit)</>}
-          </button>
+          {variants.length === 0 && (
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              style={{
+                padding: '8px 14px',
+                background: generating ? 'rgba(201,168,76,.20)' : 'rgba(201,168,76,.12)',
+                border: `1px solid rgba(201,168,76,.4)`,
+                borderRadius: 6,
+                color: T.gold,
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: T.font,
+                cursor: generating ? 'wait' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              {generating
+                ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</>
+                : <><Sparkles size={12} /> Generate ({variantCount} credit{variantCount === 1 ? '' : 's'})</>}
+            </button>
+          )}
         </div>
       </div>
 
-      <style>{`@keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
+        .sf-variant-tile:hover { border-color: ${T.gold} !important; }
+        .sf-variant-tile:hover .sf-variant-overlay { opacity: 1 !important; }
+      `}</style>
     </div>
   )
 }
@@ -1236,6 +1431,115 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 }
 
 // ─── Ratio card (visualizes the aspect with a thumbnail shape) ───────────────
+// ─── Variant tile (v118) ────────────────────────────────────────────────────
+// One per variant in the 3-shot results grid. Three states:
+//   pending — shimmer placeholder + spinner overlay.
+//   success — full image, hover overlay reveals "Pick" + "View" actions
+//             (Pick wins the popup and closes; click anywhere on the
+//             image is a shortcut for Pick).
+//   failed  — red-tinted card with the error message tooltip.
+//
+// Tooltips give the full error / preview the asset URL on hover so the
+// user can copy-link without picking. Aspect ratio matches the source —
+// we let the image's natural ratio drive the tile, since clamping
+// portraits / landscapes into a fixed square misrepresents the result.
+function VariantTile({
+  variant, onPick,
+}: {
+  variant: { id: string; status: 'pending' | 'success' | 'failed'; asset?: GeneratedAsset; error?: string }
+  onPick:  () => void
+}) {
+  if (variant.status === 'pending') {
+    return (
+      <div style={{
+        position: 'relative', aspectRatio: '1 / 1',
+        borderRadius: 6, overflow: 'hidden',
+        background: T.surfaceHigh,
+        border: `1px solid ${T.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Loader2 size={20} style={{ color: T.gold, animation: 'spin 1s linear infinite' }} />
+      </div>
+    )
+  }
+  if (variant.status === 'failed') {
+    return (
+      <div
+        title={variant.error ?? 'Generation failed'}
+        style={{
+          position: 'relative', aspectRatio: '1 / 1',
+          borderRadius: 6, overflow: 'hidden',
+          background: 'rgba(248,113,113,.06)',
+          border: '1px solid rgba(248,113,113,.3)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 4, padding: '0 8px', textAlign: 'center',
+        }}
+      >
+        <X size={20} style={{ color: T.red, opacity: 0.7 }} />
+        <span style={{ fontSize: 9, color: T.red, fontWeight: 600 }}>
+          Failed
+        </span>
+        {variant.error && (
+          <span style={{
+            fontSize: 8, color: T.red, opacity: 0.7,
+            fontFamily: "'DM Mono',monospace",
+            maxHeight: 30, overflow: 'hidden', lineHeight: 1.3,
+          }}>
+            {variant.error.slice(0, 50)}{variant.error.length > 50 ? '…' : ''}
+          </span>
+        )}
+      </div>
+    )
+  }
+  const url = variant.asset?.url
+  return (
+    <button
+      onClick={onPick}
+      title="Click to pick this variant"
+      style={{
+        position: 'relative', aspectRatio: '1 / 1',
+        borderRadius: 6, overflow: 'hidden',
+        background: T.surfaceHigh,
+        border: `1px solid ${T.border}`,
+        cursor: 'pointer', padding: 0,
+        fontFamily: 'inherit',
+      }}
+      className="sf-variant-tile"
+    >
+      {url && (
+        <img
+          src={url}
+          alt="variant"
+          style={{
+            width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+          }}
+        />
+      )}
+      {/* Hover overlay — fades the image and surfaces a "Pick this"
+          affordance so the click target is unambiguous. CSS-only via
+          the .sf-variant-tile class, defined in the popup's style
+          tag below. */}
+      <div className="sf-variant-overlay" style={{
+        position: 'absolute', inset: 0,
+        background: 'rgba(6,6,10,.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        opacity: 0, transition: 'opacity .15s',
+        pointerEvents: 'none',
+      }}>
+        <span style={{
+          padding: '6px 14px', borderRadius: 6,
+          background: T.gold, color: '#06060a',
+          fontSize: 11, fontWeight: 700, letterSpacing: '.04em',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <Sparkles size={12} /> Pick
+        </span>
+      </div>
+    </button>
+  )
+}
+
 function RatioCard({
   ratio, label, hint, active, onClick,
 }: { ratio: AspectRatio; label: string; hint: string; active: boolean; onClick: () => void }) {
