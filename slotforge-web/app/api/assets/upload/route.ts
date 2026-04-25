@@ -41,6 +41,49 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ files })
 }
 
+// Maximum upload size — 5 MB. v120 / H2: route handlers don't honour
+// next.config.js's serverActions.bodySizeLimit, so without an explicit
+// check a large blob could still be POSTed and burn Storage credit
+// before failing on Supabase's own 50 MB cap. AI-generated assets at
+// 1024x1024 PNG land in the 0.5–2 MB range; user uploads (logos,
+// references) are typically smaller. 5 MB leaves headroom for the
+// occasional high-res reference image without becoming a vector for
+// abuse.
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+/** Sniff magic bytes to determine the actual file type. The Browser-
+ *  supplied file.type is trivially spoofable — claiming "image/png"
+ *  while shipping an .exe lets us write arbitrary content into a
+ *  public Supabase bucket. Returns the verified extension or null
+ *  when bytes don't match any supported image format.
+ *  Refs:
+ *    PNG  — first 8 bytes: 89 50 4E 47 0D 0A 1A 0A
+ *    JPEG — first 3 bytes: FF D8 FF (JFIF / Exif both start this way)
+ *    WebP — bytes 0-3: 52 49 46 46 ('RIFF'); bytes 8-11: 57 45 42 50 ('WEBP')
+ *    GIF  — first 6 bytes: 47 49 46 38 (37|39) 61 ('GIF87a' / 'GIF89a') */
+function detectImageType(buffer: Buffer): 'png' | 'jpg' | 'webp' | 'gif' | null {
+  if (buffer.length < 12) return null
+  // PNG
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47
+   && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) return 'png'
+  // JPEG
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return 'jpg'
+  // WebP — RIFF....WEBP
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+   && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'webp'
+  // GIF — GIF87a or GIF89a
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38
+   && (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61) return 'gif'
+  return null
+}
+
+const EXT_TO_MIME: Record<'png' | 'jpg' | 'webp' | 'gif', string> = {
+  png:  'image/png',
+  jpg:  'image/jpeg',
+  webp: 'image/webp',
+  gif:  'image/gif',
+}
+
 // ── POST /api/assets/upload ───────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
@@ -53,6 +96,14 @@ export async function POST(req: NextRequest) {
 
   if (!file || !projectId || !assetKey) {
     return NextResponse.json({ error: 'Missing file, projectId or assetKey' }, { status: 400 })
+  }
+
+  // v120 / H2: enforce size cap BEFORE reading the body into memory.
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: 'File too large', message: `Upload exceeds ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.` },
+      { status: 413 },
+    )
   }
 
   // Reject path-traversal attempts. assetKey may contain dots (feature slot
@@ -69,19 +120,33 @@ export async function POST(req: NextRequest) {
   // bonuspick.bg → bonuspick_bg.png on disk). The DB record below preserves
   // the ORIGINAL assetKey so the editor can look it up by namespaced key.
   const safeName = assetKey.replace(/[^a-zA-Z0-9_\-]/g, '_')
-  const ext = file.type === 'image/webp' ? 'webp'
-    : file.type === 'image/jpeg' ? 'jpg'
-    : file.type === 'image/gif' ? 'gif'
-    : 'png'
-  const storagePath = `${projectId}/${safeName}.${ext}`
 
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
 
+  // v120 / H2: sniff actual file bytes — file.type comes from the browser
+  // and is trivially spoofable. Reject anything that isn't a recognised
+  // image format. This stops the "I'll claim image/png and ship anything"
+  // attack vector that combined with the public bucket would let an
+  // attacker host arbitrary content under the *.supabase.co domain.
+  const sniffed = detectImageType(buffer)
+  if (!sniffed) {
+    return NextResponse.json(
+      { error: 'Unsupported file type', message: 'Only PNG, JPEG, WebP, and GIF images are accepted.' },
+      { status: 415 },
+    )
+  }
+  const ext         = sniffed
+  const contentType = EXT_TO_MIME[sniffed]
+  const storagePath = `${projectId}/${safeName}.${ext}`
+
   const { error } = await supabaseAdmin.storage
     .from('project-assets')
     .upload(storagePath, buffer, {
-      contentType: file.type || 'image/png',
+      // Force the SNIFFED content type, not the browser-supplied one,
+      // so storage serves the file with a header that matches its
+      // actual bytes.
+      contentType,
       upsert: true,
     })
 
