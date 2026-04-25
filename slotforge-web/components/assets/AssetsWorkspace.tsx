@@ -347,8 +347,12 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     setOverrideCount(Object.values(overrides).filter(v => v && v.trim()).length)
   }, [projectId])
 
-  // Failed asset tracking — populated after each batch, cleared on next run
-  const [failedTypes, setFailedTypes] = useState<Set<AssetType>>(new Set())
+  // Failed asset tracking — populated after each batch, cleared on next
+  // run.  v116: changed from Set<AssetType> → Map<AssetType, string> so
+  // per-failure error messages from the pipeline reach the UI (tile
+  // tooltip + retry banner). Map preserves the .has() API the existing
+  // call sites use, so the change is mostly invisible elsewhere.
+  const [failedTypes, setFailedTypes] = useState<Map<AssetType, string>>(new Map())
 
   // (asset tab removed — all assets shown in one unified grid)
 
@@ -498,7 +502,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     setBatchRunning(true)
     setBatchProgress({ completed: 0, total: targetTypes.length })
     setBatchLogs([])
-    setFailedTypes(new Set())       // clear previous failures before each run
+    setFailedTypes(new Map())       // clear previous failures before each run
     saveContext(theme, styleId, provider)
     addLog(fillGaps
       ? `Filling ${targetTypes.length} missing asset(s) for theme: "${theme || '(from project settings)'}"`
@@ -590,15 +594,25 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
               break
             }
 
-            case 'complete':
-              if (data.failed?.length) {
-                addLog(`⚠ ${data.failed.length} asset(s) failed`)
-                setFailedTypes(new Set(
-                  (data.failed as Array<{ type: AssetType }>).map(f => f.type)
+            case 'complete': {
+              const failedList = (data.failed as Array<{ type: AssetType; error?: string }> | undefined) ?? []
+              const succeededN = (data.assets as Array<unknown> | undefined)?.length ?? 0
+              if (failedList.length) {
+                // Stash the per-type error so the failed-tile tooltip
+                // and the retry banner can show what actually went
+                // wrong (rate limit / content policy / network blip
+                // each have very different "should I retry" answers).
+                setFailedTypes(new Map(
+                  failedList.map(f => [f.type, f.error || 'Unknown error'])
                 ))
+                // Honest summary line — old text claimed "N assets
+                // ready" even when half failed.
+                addLog(`⚠ ${succeededN} ready, ${failedList.length} failed — see tiles below`)
+              } else {
+                addLog(`✓ Generation complete — ${succeededN} asset${succeededN === 1 ? '' : 's'} ready`)
               }
-              addLog(`✓ Generation complete — ${data.assets?.length ?? 0} assets ready`)
               break
+            }
 
             case 'error':
               addLog(`Error: ${data.message}`)
@@ -1224,6 +1238,24 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             onJumpToNames={() => setSidebarMode('inputs')}
           />
 
+          {/* Failed-batch banner — surfaces partial failures from the
+              last run with a one-click "retry all" that re-fires only
+              the failed types (not the whole batch). Persists until
+              the user retries / dismisses, OR until every failed type
+              gets re-generated and clears its own entry. */}
+          {failedTypes.size > 0 && (
+            <BatchFailureBanner
+              failedTypes={failedTypes}
+              shortLabels={shortLabels}
+              onRetryAll={() => {
+                const types = Array.from(failedTypes.keys())
+                runBatchGenerate(false, types)
+              }}
+              onDismiss={() => setFailedTypes(new Map())}
+              disabled={batchRunning}
+            />
+          )}
+
           {/* SSE Progress Bar */}
           {batchRunning && (
             <BatchProgressBar
@@ -1350,7 +1382,7 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
             const at = key as AssetType
             setAssets(prev => ({ ...prev, [at]: asset }))
             setAssetHistory(prev => ({ ...prev, [at]: [asset, ...(prev[at] ?? [])] }))
-            setFailedTypes(prev => { const s = new Set(prev); s.delete(at); return s })
+            setFailedTypes(prev => { const m = new Map(prev); m.delete(at); return m })
             setRightTab('inspector')
           }
           // Push the new URL into the editor iframe so EL_ASSETS stays in
@@ -1675,6 +1707,142 @@ function SidebarTabSwitcher({
 // low / special) and surfaces a single-click jump to the Inputs panel's
 // Symbols section. Hidden when every tier is named OR when the project has
 // zero symbol slots configured.
+// ─── Batch failure banner ─────────────────────────────────────────────────
+// Sits above the asset grid when the last run had partial failures.
+// One-click "retry all" re-fires only the failed types (runBatchGenerate
+// already supports a scoped explicitTypes list — same path the per-group
+// buttons use). The dropdown reveal lets the user inspect what failed
+// and why before deciding whether to retry — a content-policy reject
+// won't succeed by retrying, but a rate-limit blip will.
+function BatchFailureBanner({
+  failedTypes, shortLabels, onRetryAll, onDismiss, disabled,
+}: {
+  failedTypes: Map<AssetType, string>
+  shortLabels: Partial<Record<AssetType, string>>
+  onRetryAll:  () => void
+  onDismiss:   () => void
+  disabled:    boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const entries = Array.from(failedTypes.entries())
+  const count   = entries.length
+
+  return (
+    <div style={{
+      borderBottom: `1px solid rgba(248,113,113,.25)`,
+      background:   'rgba(248,113,113,.05)',
+      fontFamily:   C.font,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 14px',
+      }}>
+        <XCircle size={12} style={{ color: C.red, flexShrink: 0 }} />
+        <span style={{
+          fontSize: 9, fontWeight: 700, color: C.red,
+          background: 'rgba(248,113,113,.15)',
+          border: '1px solid rgba(248,113,113,.4)',
+          borderRadius: 3, padding: '2px 6px', letterSpacing: '.04em',
+          flexShrink: 0,
+        }}>
+          {count} failed
+        </span>
+        <span style={{ color: '#f0a3a3', fontSize: 11, flex: 1, minWidth: 0 }}>
+          Last batch had {count} failure{count === 1 ? '' : 's'}.
+          {' '}
+          <button
+            onClick={() => setExpanded(v => !v)}
+            style={{
+              background: 'transparent', border: 'none', padding: 0,
+              color: '#f0a3a3', cursor: 'pointer', fontSize: 11,
+              fontFamily: 'inherit', textDecoration: 'underline',
+              textDecorationStyle: 'dotted', textUnderlineOffset: 2,
+            }}
+          >
+            {expanded ? 'Hide details' : 'Show what failed'}
+          </button>
+        </span>
+        <button
+          onClick={onRetryAll}
+          disabled={disabled}
+          title={disabled
+            ? 'A batch is already running'
+            : `Retry only the ${count} failed asset${count === 1 ? '' : 's'}`}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '5px 10px', borderRadius: 5,
+            background: disabled ? C.surfHigh : 'rgba(248,113,113,.16)',
+            border: '1px solid rgba(248,113,113,.5)',
+            color: disabled ? C.txFaint : C.red,
+            fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          <RefreshCw size={10} />
+          Retry failed
+        </button>
+        <button
+          onClick={onDismiss}
+          title="Dismiss the banner — failed tiles still show their red state until re-generated."
+          style={{
+            padding: '3px 5px', borderRadius: 4,
+            background: 'transparent', border: 'none',
+            color: '#c87070', fontSize: 11, cursor: 'pointer',
+            fontFamily: 'inherit', flexShrink: 0,
+          }}
+        >
+          <X size={11} />
+        </button>
+      </div>
+
+      {/* Per-failure detail — collapsed by default to keep the banner
+          tight, expanded shows the asset label + truncated reason for
+          each failure so the user can spot patterns (all rate-limit?
+          worth retrying. all content-policy? prompt needs editing). */}
+      {expanded && (
+        <div style={{
+          padding: '0 14px 10px',
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          {entries.map(([type, msg]) => {
+            const label = shortLabels[type] ?? ASSET_LABELS[type] ?? type
+            return (
+              <div
+                key={type}
+                title={msg}
+                style={{
+                  display: 'flex', gap: 8, alignItems: 'baseline',
+                  padding: '4px 8px',
+                  background: 'rgba(248,113,113,.04)',
+                  border: '1px solid rgba(248,113,113,.15)',
+                  borderRadius: 4,
+                  fontSize: 10,
+                }}
+              >
+                <span style={{
+                  color: C.red, fontWeight: 700, fontFamily: "'DM Mono',monospace",
+                  flexShrink: 0, minWidth: 80,
+                }}>
+                  {label}
+                </span>
+                <span style={{
+                  color: '#d49595', flex: 1, minWidth: 0,
+                  whiteSpace: 'nowrap', overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  fontFamily: "'DM Mono','JetBrains Mono',monospace",
+                }}>
+                  {msg}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SymbolNameNag({
   meta, onJumpToNames,
 }: { meta: PromptInputsMeta; onJumpToNames: () => void }) {
@@ -2042,7 +2210,10 @@ function BatchProgressBar({ completed, total }: { completed: number; total: numb
 interface AssetGroupSectionProps {
   group:           AssetGroup
   assets:          Partial<Record<AssetType, GeneratedAsset>>
-  failedTypes:     Set<AssetType>
+  /** v116: now carries per-type error message, not just a presence Set.
+   *  AssetTile reads .get(type) for the tooltip text; the truthy/falsy
+   *  check `.has(type)` keeps behaving the same. */
+  failedTypes:     Map<AssetType, string>
   assetHistory:    Partial<Record<AssetType, GeneratedAsset[]>>
   /** Widened to string so feature-slot selections don't un-highlight on type mismatch. */
   selectedType:    string | null
@@ -2154,6 +2325,7 @@ function AssetGroupSection({
             isSelected={selectedType === type}
             isRegenerating={regenTarget === type}
             isFailed={failedTypes.has(type)}
+            failureMessage={failedTypes.get(type)}
             aspectRatio={group.aspectRatio}
             onSelect={() => onSelect(type)}
             onRegen={() => onRegen(type)}
@@ -2179,6 +2351,11 @@ interface AssetTileProps {
   isSelected:      boolean
   isRegenerating:  boolean
   isFailed?:       boolean
+  /** v116: optional human-readable error from the pipeline (rate
+   *  limit, content policy, network, etc.). Surfaced as the tile's
+   *  hover tooltip and the FailedTilePlaceholder caption so the user
+   *  can decide whether retry is worth a credit. */
+  failureMessage?: string
   aspectRatio:     '16/9' | '1/1'
   onSelect:        () => void
   onRegen:         () => void
@@ -2189,7 +2366,8 @@ interface AssetTileProps {
 }
 
 function AssetTile({
-  assetType, asset, history, isSelected, isRegenerating, isFailed, aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, label: labelProp,
+  assetType, asset, history, isSelected, isRegenerating, isFailed, failureMessage,
+  aspectRatio, onSelect, onRegen, onOpenPromptTab, onUpload, onRevert, label: labelProp,
 }: AssetTileProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const [showHistory, setShowHistory] = useState(false)
@@ -2224,7 +2402,11 @@ function AssetTile({
       {isRegenerating ? (
         <GeneratingTilePlaceholder label={label} />
       ) : isFailed && !asset?.url ? (
-        <FailedTilePlaceholder label={label} onRetry={e => { e.stopPropagation(); onRegen() }} />
+        <FailedTilePlaceholder
+          label={label}
+          message={failureMessage}
+          onRetry={e => { e.stopPropagation(); onRegen() }}
+        />
       ) : asset?.url ? (
         <img
           // key on URL so the bounce-pop keyframe replays whenever a
@@ -2599,22 +2781,49 @@ function GeneratingTilePlaceholder({ label }: { label: string }) {
   )
 }
 
-function FailedTilePlaceholder({ label, onRetry }: { label: string; onRetry: (e: React.MouseEvent) => void }) {
+function FailedTilePlaceholder({
+  label, message, onRetry,
+}: {
+  label:    string
+  message?: string
+  onRetry:  (e: React.MouseEvent) => void
+}) {
+  // Truncate aggressively in the tile body — full text rides in the
+  // title attribute and is also surfaced by the parent tile's title
+  // tooltip. Failed tiles are tiny; an overflowing error message looks
+  // like noise.
+  const short = message
+    ? (message.length > 60 ? message.slice(0, 60).trim() + '…' : message)
+    : ''
   return (
-    <div style={{
-      width:          '100%',
-      height:         '100%',
-      display:        'flex',
-      flexDirection:  'column',
-      alignItems:     'center',
-      justifyContent: 'center',
-      gap:            6,
-      background:     'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(248,113,113,.025) 6px, rgba(248,113,113,.025) 12px)',
-    }}>
+    <div
+      title={message ? `${label}: ${message}` : label}
+      style={{
+        width:          '100%',
+        height:         '100%',
+        display:        'flex',
+        flexDirection:  'column',
+        alignItems:     'center',
+        justifyContent: 'center',
+        gap:            6,
+        padding:        '0 6px',
+        background:     'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(248,113,113,.025) 6px, rgba(248,113,113,.025) 12px)',
+      }}
+    >
       <XCircle size={16} style={{ color: C.red, opacity: .7 }} />
-      <span style={{ fontSize: 9, fontWeight: 600, color: C.red, opacity: .8, letterSpacing: '.04em', textAlign: 'center', padding: '0 6px' }}>
+      <span style={{ fontSize: 9, fontWeight: 600, color: C.red, opacity: .8, letterSpacing: '.04em', textAlign: 'center' }}>
         {label}
       </span>
+      {short && (
+        <span style={{
+          fontSize: 8, color: C.red, opacity: 0.65,
+          textAlign: 'center', lineHeight: 1.3,
+          fontFamily: "'DM Mono','JetBrains Mono',monospace",
+          maxHeight: 24, overflow: 'hidden',
+        }}>
+          {short}
+        </span>
+      )}
       <button
         onClick={onRetry}
         style={{
