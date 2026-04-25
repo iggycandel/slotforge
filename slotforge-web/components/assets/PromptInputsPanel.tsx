@@ -26,9 +26,9 @@
 // in the References section is hidden until that lands.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronRight, Info,
-         Upload, X, Loader2, Image as ImageIcon } from 'lucide-react'
+         Upload, X, Loader2, Image as ImageIcon, Sparkles } from 'lucide-react'
 import { GRAPHIC_STYLES }                     from '@/lib/ai/styles'
 import { StyleIcon }                           from '@/components/generate/StyleIcon'
 
@@ -90,6 +90,14 @@ export interface PromptInputsMeta {
    *  See types/assets.ts → ProjectMeta.artRefImages for the source-of-truth
    *  definition. Capped at 3 slots in the UI. */
   artRefImages?:        Array<{ id: string; url: string; description: string }>
+  /** Project's locked-in visual signature ("art bible"). One per project.
+   *  Source-of-truth shape lives in types/assets.ts → ProjectMeta.artBible. */
+  artBible?: {
+    anchorAssetKey?: string
+    anchorUrl?:      string
+    description:    string
+    generatedAt:    string
+  }
 }
 
 interface Props {
@@ -103,6 +111,17 @@ interface Props {
   onAddReference?:    (file: File) => Promise<void>
   /** Remove a reference by id. Parent emits onChange with the filtered array. */
   onRemoveReference?: (id: string) => void
+  /** Existing project assets the user could select as the art-bible
+   *  anchor.  Each entry: { key (asset_type), label, url }. Empty when
+   *  no generations have happened yet — the UI shows an "upload custom
+   *  anchor" path in that case. */
+  availableAnchors?:  Array<{ key: string; label: string; url: string }>
+  /** Generate the art bible from the chosen anchor. Parent runs
+   *  /api/references/describe with kind:'art_bible' and patches
+   *  meta.artBible. Returns a promise so the panel can show a spinner. */
+  onGenerateArtBible?: (anchor: { assetKey: string; url: string }) => Promise<void>
+  /** Clear the bible (sets it to null). */
+  onClearArtBible?:    () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,12 +130,14 @@ interface Props {
 
 export function PromptInputsPanel({
   meta, onChange, onAddReference, onRemoveReference,
+  availableAnchors, onGenerateArtBible, onClearArtBible,
 }: Props) {
   // All sections default open — the panel is meant to be a survey of what
   // the model will see, not a click-through.  User can collapse any to
   // save vertical space.
   const [open, setOpen] = useState({
     identity: true,
+    bible:    true,
     style:    true,
     palette:  true,
     world:    true,
@@ -254,6 +275,30 @@ export function PromptInputsPanel({
             style={inputStyle}
           />
         </Labelled>
+      </Section>
+
+      {/* ── Art Bible ──────────────────────────────────────────────── */}
+      <Section
+        label="Art bible"
+        hint="One-paragraph visual signature injected into every generation for cross-asset cohesion"
+        open={open.bible}
+        onToggle={() => setOpen(o => ({ ...o, bible: !o.bible }))}
+      >
+        <ArtBibleSection
+          bible={meta.artBible}
+          availableAnchors={availableAnchors ?? []}
+          onGenerate={onGenerateArtBible}
+          onClear={onClearArtBible}
+          onEditDescription={(description) => {
+            // Editing the description without regenerating is fine —
+            // patch in place. generatedAt stays the same since the user
+            // is fine-tuning, not re-running the model.
+            if (!meta.artBible) return
+            onChange({
+              artBible: { ...meta.artBible, description },
+            } as Partial<PromptInputsMeta>)
+          }}
+        />
       </Section>
 
       {/* ── Style ───────────────────────────────────────────────────── */}
@@ -711,6 +756,287 @@ function SymbolGroup({
 //   - describing: thumbnail + spinner + "Analysing style…"
 //   - done: thumbnail + first ~90 chars of description, hover full text
 // Up to 3 slots; add-slot hidden when full.
+
+// ─── Art Bible section ──────────────────────────────────────────────────────
+// Three states:
+//   • Empty — show an "anchor picker" (dropdown of generated assets +
+//     a Generate button). Empty when projects has no generated assets
+//     yet — the section explains why and points the user at the asset
+//     grid above.
+//   • Generating — spinner + "Analysing visual signature…".
+//   • Locked — anchor thumbnail + role tag + editable description
+//     textarea + regen + clear actions.
+
+function ArtBibleSection({
+  bible, availableAnchors,
+  onGenerate, onClear, onEditDescription,
+}: {
+  bible:           PromptInputsMeta['artBible']
+  availableAnchors: Array<{ key: string; label: string; url: string }>
+  onGenerate?:     (anchor: { assetKey: string; url: string }) => Promise<void>
+  onClear?:        () => void
+  onEditDescription?: (description: string) => void
+}) {
+  const [generating, setGenerating] = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+  // Default anchor selection: prefer logo (most representative of brand
+  // identity), then character, then background_base. Fall back to first
+  // available. The user can flip via the dropdown before generating.
+  const preferredOrder = ['logo', 'character', 'background_base', 'background_bonus']
+  const defaultAnchorKey = preferredOrder.find(k => availableAnchors.some(a => a.key === k))
+                        ?? availableAnchors[0]?.key
+                        ?? ''
+  const [anchorKey, setAnchorKey] = useState<string>(defaultAnchorKey)
+  // Re-sync the dropdown's default when the available list changes
+  // (e.g. user generates a logo for the first time while the section
+  // is open). Without this the dropdown stays empty until interacted with.
+  useEffect(() => {
+    if (!anchorKey && defaultAnchorKey) setAnchorKey(defaultAnchorKey)
+  }, [defaultAnchorKey, anchorKey])
+
+  const handleGenerate = useCallback(async () => {
+    const anchor = availableAnchors.find(a => a.key === anchorKey)
+    if (!anchor || !onGenerate) return
+    setGenerating(true)
+    setError(null)
+    try {
+      await onGenerate({ assetKey: anchor.key, url: anchor.url })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Art bible generation failed')
+    } finally {
+      setGenerating(false)
+    }
+  }, [anchorKey, availableAnchors, onGenerate])
+
+  // ─── Locked state — bible is set ──────────────────────────────────────
+  if (bible?.description) {
+    const ageMs   = Date.now() - new Date(bible.generatedAt || Date.now()).getTime()
+    const ageMin  = Math.max(0, Math.floor(ageMs / 60_000))
+    const ageStr  = ageMin < 1   ? 'just now'
+                  : ageMin < 60  ? `${ageMin}m ago`
+                  : ageMin < 24*60 ? `${Math.floor(ageMin/60)}h ago`
+                  : `${Math.floor(ageMin/(24*60))}d ago`
+    const anchorLabel = bible.anchorAssetKey
+      ? availableAnchors.find(a => a.key === bible.anchorAssetKey)?.label
+        ?? bible.anchorAssetKey
+      : 'custom'
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'flex-start',
+          padding: 8, background: C.surfHigh,
+          border: `1px solid ${C.goldLine}`, borderRadius: 6,
+        }}>
+          {bible.anchorUrl && (
+            <div style={{
+              width: 44, height: 44, flexShrink: 0,
+              borderRadius: 4, overflow: 'hidden', background: C.surfInp,
+            }}>
+              <img src={bible.anchorUrl} alt="anchor" style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+              }}/>
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, color: C.gold,
+              letterSpacing: '.06em', textTransform: 'uppercase',
+              marginBottom: 2,
+            }}>
+              Locked visual signature
+            </div>
+            <div style={{ fontSize: 10, color: C.txMuted }}>
+              From <span style={{ color: C.tx, fontFamily: "'DM Mono',monospace" }}>{anchorLabel}</span> · {ageStr}
+            </div>
+          </div>
+        </div>
+
+        <textarea
+          value={bible.description}
+          onChange={e => onEditDescription?.(e.target.value)}
+          rows={6}
+          maxLength={1200}
+          style={{
+            ...inputStyle,
+            minHeight: 110, lineHeight: 1.55, resize: 'vertical',
+            fontSize: 11,
+          }}
+          spellCheck={false}
+        />
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Regenerate from a different anchor — same picker as the
+              empty state, inline. */}
+          <select
+            value={anchorKey}
+            onChange={e => setAnchorKey(e.target.value)}
+            disabled={availableAnchors.length === 0}
+            style={{
+              ...inputStyle,
+              padding: '5px 8px', fontSize: 10,
+              flex: 1, minWidth: 0,
+            }}
+          >
+            {availableAnchors.length === 0 ? (
+              <option value="">no anchors yet</option>
+            ) : (
+              availableAnchors.map(a => (
+                <option key={a.key} value={a.key}>{a.label}</option>
+              ))
+            )}
+          </select>
+          <button
+            onClick={handleGenerate}
+            disabled={generating || !anchorKey || availableAnchors.length === 0}
+            title="Re-run vision-describe on the chosen anchor and overwrite the description"
+            style={{
+              padding: '5px 9px', borderRadius: 5,
+              background: 'rgba(201,168,76,.08)',
+              border: `1px solid ${C.goldLine}`,
+              color: generating ? C.txFaint : C.gold,
+              fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
+              cursor: generating ? 'wait' : 'pointer',
+              flexShrink: 0,
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            {generating
+              ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
+              : <Sparkles size={10} />}
+            Re-generate
+          </button>
+          <button
+            onClick={onClear}
+            title="Remove the art bible — generations stop using it"
+            style={{
+              padding: '5px 9px', borderRadius: 5,
+              background: 'transparent',
+              border: `1px solid ${C.border}`,
+              color: C.txMuted,
+              fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            Clear
+          </button>
+        </div>
+
+        {error && (
+          <div style={{
+            fontSize: 10, color: C.red,
+            background: 'rgba(248,113,113,.08)',
+            border: '1px solid rgba(248,113,113,.3)',
+            borderRadius: 5, padding: '6px 8px',
+          }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{
+          fontSize: 10, color: C.txFaint, lineHeight: 1.5,
+          display: 'flex', alignItems: 'flex-start', gap: 6,
+        }}>
+          <Info size={10} style={{ flexShrink: 0, marginTop: 1 }}/>
+          <span>
+            This paragraph is injected first in every generation's context
+            layer. Edit freely — even small tweaks (e.g. adding "warm golden
+            rim lighting from upper-right") propagate to the next render.
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Empty state — no bible yet ──────────────────────────────────────
+  const hasAnchors = availableAnchors.length > 0
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{
+        padding: '10px 12px',
+        background: C.surfInp,
+        border: `1px dashed ${C.borderMed}`,
+        borderRadius: 6,
+        fontSize: 11, color: C.txMid, lineHeight: 1.5,
+      }}>
+        Lock in your project's visual signature. Pick an asset you're
+        happy with — its palette, material, and lighting language become
+        the contract every other asset will match.
+      </div>
+
+      {hasAnchors ? (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select
+            value={anchorKey}
+            onChange={e => setAnchorKey(e.target.value)}
+            style={{
+              ...inputStyle,
+              flex: 1, minWidth: 0,
+              padding: '7px 9px', fontSize: 11,
+            }}
+          >
+            {availableAnchors.map(a => (
+              <option key={a.key} value={a.key}>{a.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleGenerate}
+            disabled={generating || !anchorKey}
+            style={{
+              padding: '7px 12px', borderRadius: 5,
+              background: generating ? C.surfHigh : C.goldDim,
+              border: `1px solid ${C.goldLine}`,
+              color: generating ? C.txFaint : C.gold,
+              fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+              cursor: generating ? 'wait' : 'pointer',
+              flexShrink: 0,
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            {generating
+              ? <><Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> Analysing…</>
+              : <><Sparkles size={11} /> Generate art bible</>}
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          fontSize: 10, color: C.txMuted, lineHeight: 1.5,
+          display: 'flex', alignItems: 'flex-start', gap: 6,
+        }}>
+          <AlertTriangle size={10} style={{ flexShrink: 0, marginTop: 1, color: C.amber }}/>
+          <span>
+            No assets generated yet — produce a logo, character, or
+            background first, then come back here to lock the look.
+          </span>
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          fontSize: 10, color: C.red,
+          background: 'rgba(248,113,113,.08)',
+          border: '1px solid rgba(248,113,113,.3)',
+          borderRadius: 5, padding: '6px 8px',
+        }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{
+        fontSize: 10, color: C.txFaint, lineHeight: 1.5,
+        display: 'flex', alignItems: 'flex-start', gap: 6,
+      }}>
+        <Info size={10} style={{ flexShrink: 0, marginTop: 1 }}/>
+        <span>
+          1 credit per generation. Editable afterwards — small tweaks
+          propagate to the next render. Solves the cross-asset drift you
+          see when separate generations don't quite match.
+        </span>
+      </div>
+    </div>
+  )
+}
 
 function ReferenceList({
   refs, onAdd, onRemove,

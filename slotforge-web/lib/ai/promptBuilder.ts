@@ -482,6 +482,20 @@ function buildAssetContext(type: AssetType | string, category: PromptCategory, m
 
   const parts: string[] = []
 
+  // Art Bible — the project's locked-in visual signature. Goes FIRST in
+  // the context layer because it's the highest-priority "this is the
+  // visual contract this project committed to" cue. Wrapped in
+  // <user-supplied> as a belt-and-braces guard against injection in the
+  // (rare) case a user hand-edited the description with hostile content.
+  // Capped at 600 chars to leave room for the rest of the context lines
+  // — the typical describe-pass output is ~500 chars / ~120 words.
+  if (meta.artBible?.description) {
+    const bible = sanitizeUserText(meta.artBible.description, 600)
+    if (bible) {
+      parts.push(`established project visual signature: ${wrapUserValue(bible)}`)
+    }
+  }
+
   // Mood / Tone — all assets
   if (meta.mood) parts.push(`${meta.mood.toLowerCase()} atmosphere`)
 

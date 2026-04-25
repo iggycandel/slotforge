@@ -44,9 +44,32 @@ const RequestSchema = z.object({
    *  palette / depth / detail-density appropriate to that kind of asset.
    *  Free text, capped to 80 chars server-side to limit injection surface. */
   hint:       z.string().max(80).optional(),
+  /** Which describe-pass tuning to use. 'reference' is the original
+   *  per-image style-snapshot used for moodboard refs (focus on a single
+   *  image's properties). 'art_bible' tunes the prompt for a project's
+   *  ANCHOR asset — the description should read as "this is the visual
+   *  contract every other asset must match", which calls for slightly
+   *  more authoritative + comprehensive language. */
+  kind:       z.enum(['reference', 'art_bible']).optional(),
 })
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(kind: 'reference' | 'art_bible'): string {
+  if (kind === 'art_bible') {
+    return (
+      `You are an expert art director writing a one-paragraph "art bible" ` +
+      `for a multi-asset slot game project. The image you are given is the ` +
+      `ANCHOR asset — every other asset in the project needs to match it. ` +
+      `Your description becomes the visual contract: it is injected into ` +
+      `every subsequent image-generation prompt for this project, so it ` +
+      `must capture the project's signature visual language with enough ` +
+      `specificity that a different artist could reproduce the look without ` +
+      `seeing this image. ` +
+      `DO NOT describe the subject matter, characters, props, or narrative ` +
+      `of the anchor image. Focus strictly on TRANSFERABLE aesthetic ` +
+      `qualities: palette, material response, lighting language, detail ` +
+      `density, edge / line treatment, rendering technique, and mood.`
+    )
+  }
   return (
     `You are an expert art director analysing a reference image to extract its ` +
     `STYLISTIC properties only. Your output is a short concrete description ` +
@@ -59,11 +82,20 @@ function buildSystemPrompt(): string {
   )
 }
 
-function buildUserPrompt(hint?: string): string {
-  return (
-`Analyse the attached reference image and return ONE paragraph (70–110 words)
+function buildUserPrompt(kind: 'reference' | 'art_bible', hint?: string): string {
+  const isBible = kind === 'art_bible'
+  const lengthHint = isBible ? '90–130 words' : '70–110 words'
+  const opener    = isBible
+    ? `Write a one-paragraph "art bible" (${lengthHint}) capturing the visual
+language of the attached anchor image. This will be injected verbatim into
+every subsequent image-generation prompt for this project — so it needs to
+be self-contained, transferable, and concrete enough that another artist
+working blind could reproduce the look.`
+    : `Analyse the attached reference image and return ONE paragraph (${lengthHint})
 describing its STYLE only. No subject matter, no character names, no
-narrative — only aesthetic properties a different artist could copy.
+narrative — only aesthetic properties a different artist could copy.`
+  return (
+`${opener}
 
 Cover these dimensions with concrete, specific language:
   • Palette — dominant hues, temperature, saturation range, accent colours.
@@ -79,7 +111,7 @@ Cover these dimensions with concrete, specific language:
   • Composition + mood — framing conventions, negative space, overall tone
     (opulent / gritty / whimsical / cinematic / etc).
 
-${hint ? `CONTEXT: the caller will use this description when generating: ${hint}.` : ''}
+${hint ? `CONTEXT: ${hint}.` : ''}
 
 Return PLAIN PROSE. No bullets, no markdown, no JSON. Start with a colour
 or material observation — do not begin with "This image shows…".`)
@@ -118,7 +150,8 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
   }
-  const { project_id, image, hint } = parsed.data
+  const { project_id, image, hint, kind: rawKind } = parsed.data
+  const kind = rawKind ?? 'reference'
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -131,10 +164,13 @@ export async function POST(req: NextRequest) {
       // on a detail:low input image) so the cost stays close to
       // gpt-4o-mini at typography-spec volumes.
       model:    'gpt-4o',
-      system:   buildSystemPrompt(),
-      prompt:   buildUserPrompt(hint),
+      system:   buildSystemPrompt(kind),
+      prompt:   buildUserPrompt(kind, hint),
       images:   [{ url: image, detail: 'low' }],
-      maxTokens: 260,
+      // art_bible runs slightly longer (90-130 words vs 70-110). 320
+      // tokens is comfortable headroom for the longer flavour without
+      // letting the reference flavour drift over budget.
+      maxTokens: kind === 'art_bible' ? 320 : 260,
       // Plain prose output — JSON mode would force the model to wrap the
       // paragraph in a useless object. Keep it flat.
       jsonMode: false,

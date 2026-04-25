@@ -10547,6 +10547,10 @@ function collectMeta(){
     // PromptInputsPanel. Pass through as-is; promptBuilder iterates the
     // array and injects one "style reference: …" context line per entry.
     artRefImages:    Array.isArray(P.artRefImages) ? JSON.parse(JSON.stringify(P.artRefImages)) : [],
+    // Art bible — same story. P.artBible is null when unset, an object
+    // { anchorAssetKey, anchorUrl, description, generatedAt } when set.
+    // promptBuilder injects description as the first context line.
+    artBible:        (P.artBible && typeof P.artBible === 'object') ? JSON.parse(JSON.stringify(P.artBible)) : null,
     artNotes:        g('game-art-notes'),
     colorPrimary:    P.colors?.c1 || '',
     colorBg:         P.colors?.c2 || '',
@@ -12099,6 +12103,19 @@ window._sfApplyPayload = function(payload){
     if (Array.isArray(m.artRefImages)) {
       P.artRefImages = m.artRefImages.filter(function(r){ return r && typeof r === 'object' && typeof r.url === 'string'; });
     }
+    // Art bible — same restore-from-meta pattern as artRefImages. Only
+    // assign when the saved value has a non-empty description string;
+    // a payload with `artBible: null` correctly resets here too.
+    if (m.artBible === null) {
+      P.artBible = null;
+    } else if (m.artBible && typeof m.artBible === 'object' && typeof m.artBible.description === 'string' && m.artBible.description.trim()) {
+      P.artBible = {
+        anchorAssetKey: typeof m.artBible.anchorAssetKey === 'string' ? m.artBible.anchorAssetKey : '',
+        anchorUrl:      typeof m.artBible.anchorUrl      === 'string' ? m.artBible.anchorUrl      : '',
+        description:    m.artBible.description,
+        generatedAt:    typeof m.artBible.generatedAt    === 'string' ? m.artBible.generatedAt    : new Date().toISOString(),
+      };
+    }
   } catch(e){ console.warn('[_sfApplyPayload] meta restore failed:', e); }
 
   // ── Restore Colour Palette UI from P.colors ──────────────────────────────
@@ -12773,6 +12790,24 @@ window._sfBridge = (function(){
               description: typeof r.description === 'string' ? r.description : '',
             };
           }).filter(function(r){ return r && r.url; });
+        }
+        // Art bible — the project's locked-in visual signature. The
+        // panel sends either a populated object on generation / edit, or
+        // explicit null when the user clears it.  Treat both as
+        // explicit-write paths so a missing key in `patch` never
+        // accidentally clobbers the bible.
+        if('artBible' in patch){
+          if(patch.artBible && typeof patch.artBible === 'object' &&
+             typeof patch.artBible.description === 'string'){
+            P.artBible = {
+              anchorAssetKey: typeof patch.artBible.anchorAssetKey === 'string' ? patch.artBible.anchorAssetKey : '',
+              anchorUrl:      typeof patch.artBible.anchorUrl      === 'string' ? patch.artBible.anchorUrl      : '',
+              description:    patch.artBible.description,
+              generatedAt:    typeof patch.artBible.generatedAt    === 'string' ? patch.artBible.generatedAt    : new Date().toISOString(),
+            };
+          } else {
+            P.artBible = null;
+          }
         }
 
         if(typeof markDirty === 'function') markDirty();

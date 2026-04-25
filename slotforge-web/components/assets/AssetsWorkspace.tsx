@@ -1121,6 +1121,67 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
                 const next     = existing.filter(r => r.id !== id)
                 onUpdateMeta?.({ artRefImages: next } as unknown as Partial<PromptInputsMeta>)
               }}
+              // Anchors for the art bible — generated assets the user
+              // could lock as "this is the visual signature". We surface
+              // the few that actually represent the project's identity
+              // (logo, character, two backgrounds) so the dropdown stays
+              // short. Only assets with URLs are eligible — un-generated
+              // slots are filtered out before the panel sees the list.
+              availableAnchors={(() => {
+                const candidates: Array<{ key: AssetType; label: string }> = [
+                  { key: 'logo',             label: 'Logo' },
+                  { key: 'character',        label: 'Character' },
+                  { key: 'background_base',  label: 'Background — Base' },
+                  { key: 'background_bonus', label: 'Background — Bonus' },
+                ]
+                return candidates
+                  .map(c => ({
+                    key: c.key as string,
+                    label: c.label,
+                    url: assets[c.key]?.url ?? '',
+                  }))
+                  .filter(a => !!a.url)
+              })()}
+              onGenerateArtBible={async ({ assetKey, url }) => {
+                // Same /api/references/describe endpoint as the
+                // moodboard refs, but with kind:'art_bible' which
+                // triggers the longer, more authoritative prompt
+                // tuning (see app/api/references/describe/route.ts).
+                const res = await fetch('/api/references/describe', {
+                  method:  'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body:    JSON.stringify({
+                    project_id: projectId,
+                    image:      url,
+                    kind:       'art_bible',
+                    hint:       `anchor asset: ${assetKey}`,
+                  }),
+                })
+                const json = await res.json().catch(() => ({}))
+                if (!res.ok || !json.description) {
+                  throw new Error(json.error || `Art bible generation failed (${res.status})`)
+                }
+                const description = json.description as string
+                // Patch meta with the full bible object — id-less
+                // (only one bible per project), so SF_UPDATE_META
+                // overwrites whatever was there.
+                onUpdateMeta?.({
+                  artBible: {
+                    anchorAssetKey: assetKey,
+                    anchorUrl:      url,
+                    description,
+                    generatedAt:    new Date().toISOString(),
+                  },
+                } as unknown as Partial<PromptInputsMeta>)
+                addLog(`✓ Art bible generated from ${assetKey} — ${description.length} chars`)
+              }}
+              onClearArtBible={() => {
+                // Send an explicit `null` (not just `undefined`) so the
+                // editor.js SF_UPDATE_META handler clears P.artBible
+                // instead of leaving the previous value untouched.
+                onUpdateMeta?.({ artBible: null } as unknown as Partial<PromptInputsMeta>)
+                addLog('Art bible cleared')
+              }}
             />
           )}
         </aside>

@@ -16,7 +16,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v114'
+const EDITOR_VERSION = 'v115'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -174,6 +174,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       artRef:            m.artRef,
       artNotes:          m.artNotes,
       artRefImages:      m.artRefImages,
+      artBible:          m.artBible,
       colorPrimary:      m.colorPrimary,
       colorBg:           m.colorBg,
       colorAccent:       m.colorAccent,
@@ -336,6 +337,7 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           artRef:            plMeta.artRef,
           artNotes:          plMeta.artNotes,
           artRefImages:      plMeta.artRefImages,
+          artBible:          plMeta.artBible,
           colorPrimary:      plMeta.colorPrimary ?? plColors.c1,
           colorBg:           plMeta.colorBg      ?? plColors.c2,
           colorAccent:       plMeta.colorAccent  ?? plColors.c3,
