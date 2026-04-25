@@ -76,12 +76,26 @@ export async function generateSlotAssets(
 
     const results = await Promise.allSettled(
       batch.map(async type => {
-        const built = buildPrompt(type, theme, req.style_id, meta)
-        // Per-slot override from the Review Prompts modal — substitute
-        // before calling the provider so bulk runs honour the user's
-        // hand-edited prompts (previously only the Single popup path did).
-        const override = req.custom_prompts?.[type]
-        if (override && override.trim()) built.prompt = override
+        // Per-slot override from the Review Prompts modal. v119: the
+        // override now carries a mode ({text, mode}) — append rides
+        // alongside the composed prompt as a context line, replace
+        // takes over the whole positive prompt. Pre-v119 callers
+        // could pass a bare string (= replace mode); we accept both
+        // here for back-compat with any in-flight requests.
+        const overrideRaw = req.custom_prompts?.[type]
+        let customPrompt: string | undefined
+        let customPromptMode: 'append' | 'replace' | undefined
+        if (typeof overrideRaw === 'string') {
+          const text = overrideRaw.trim()
+          if (text) { customPrompt = text; customPromptMode = 'replace' }
+        } else if (overrideRaw && typeof overrideRaw === 'object') {
+          const text = overrideRaw.text?.trim()
+          if (text) { customPrompt = text; customPromptMode = overrideRaw.mode ?? 'replace' }
+        }
+        const built = buildPrompt(type, theme, req.style_id, meta, {
+          customPrompt,
+          customPromptMode,
+        })
         // Apply the optional batch-wide ratio override. Per-asset defaults
         // still kick in for any asset whose caller didn't pass a ratio —
         // see DEFAULT_RATIO_FOR_ASSET in lib/ai/index.ts.

@@ -344,7 +344,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   const [overrideCount,   setOverrideCount]   = useState(0)
   useEffect(() => {
     const overrides = readPromptOverrides(projectId)
-    setOverrideCount(Object.values(overrides).filter(v => v && v.trim()).length)
+    // v119: overrides are now { text, mode } objects; count entries with
+    // a non-empty text.
+    setOverrideCount(Object.values(overrides).filter(v => v?.text && v.text.trim()).length)
   }, [projectId])
 
   // Failed asset tracking — populated after each batch, cleared on next
@@ -513,9 +515,13 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     // modal. Previously only the Single popup path honoured these — the
     // bulk path silently discarded them, destroying user trust. Now we
     // forward them to /api/generate which feeds them into pipeline.ts.
+    // v119: each override carries a mode ({text, mode}) — pipeline.ts
+    // honours append vs replace via BuildPromptOptions.
     const savedOverrides = readPromptOverrides(projectId)
     const activeOverrides = Object.fromEntries(
-      Object.entries(savedOverrides).filter(([k, v]) => targetTypes.includes(k as AssetType) && v && v.trim())
+      Object.entries(savedOverrides).filter(([k, v]) =>
+        targetTypes.includes(k as AssetType) && v?.text && v.text.trim()
+      )
     )
     const overrideKeys = Object.keys(activeOverrides)
     if (overrideKeys.length) {
@@ -1410,7 +1416,9 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       projectMeta={effectiveMeta as Record<string, unknown>}
       slots={reviewSlots}
       onOverridesChanged={(next) => {
-        setOverrideCount(Object.values(next).filter(v => v && v.trim()).length)
+        // v119 shape: { text, mode } per slot. Count entries with
+        // a non-empty text; mode is informational, doesn't affect count.
+        setOverrideCount(Object.values(next).filter(v => v?.text && v.text.trim()).length)
       }}
     />
     </>

@@ -193,14 +193,13 @@ export function SingleGeneratePopup({
     setQuality('medium')
     // If the user previously saved a prompt override for this slot from the
     // Review Prompts modal, pre-fill the Custom Prompt textarea with it so
-    // regenerations automatically use the override. Empty string means no
-    // override saved — the server composes from scratch.
-    const savedOverride = readPromptOverride(projectId, slotKey) ?? ''
-    setCustomPrompt(savedOverride)
-    // Review-Prompts overrides are complete composed prompts the user
-    // hand-edited — use replace. Fresh custom prompts (no saved
-    // override) default to append for best-of-both-worlds.
-    setCustomPromptMode(savedOverride ? 'replace' : 'append')
+    // regenerations automatically use the override. v119: the override now
+    // carries its mode ({ text, mode }) — apply both so the popup reflects
+    // exactly what the modal saved. Legacy string-only overrides upgrade
+    // to mode:'replace' inside readPromptOverride.
+    const savedOverride = readPromptOverride(projectId, slotKey)
+    setCustomPrompt(savedOverride?.text ?? '')
+    setCustomPromptMode(savedOverride?.mode ?? 'append')
     setRefImages([])
     setVariantCount(1)
     setVariants([])
@@ -1150,7 +1149,7 @@ export function SingleGeneratePopup({
         <Section
           title="Custom prompt"
           subtitle={
-            customPrompt && customPrompt === readPromptOverride(projectId, slotKey)
+            customPrompt && customPrompt === readPromptOverride(projectId, slotKey)?.text
               ? 'override loaded from Review Prompts · edit or clear to use default'
               : 'Leave blank to use the default composed prompt; or load it above and edit'
           }

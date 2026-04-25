@@ -233,10 +233,14 @@ export interface GenerateRequest {
    *  asset unless the asset type has its own default. */
   ratio?:       AspectRatio
   /** Per-slot prompt overrides (keyed on asset_type / feature slot key).
-   *  When a type has an entry here, the pipeline substitutes the value
-   *  for the composed prompt before calling the provider. Empty / missing
-   *  entries fall through to normal composition. */
-  custom_prompts?: Record<string, string>
+   *  Each entry is either a bare string (legacy v107 shape — treated as
+   *  mode:'replace') or `{ text, mode }` where mode is 'append' (rides
+   *  alongside the composed prompt as an extra context line) or
+   *  'replace' (legacy semantics — composed layers 1-5 are dropped,
+   *  negatives still fire). v119: pipeline.ts threads this into
+   *  buildPrompt's BuildPromptOptions. Empty / missing entries fall
+   *  through to normal composition. */
+  custom_prompts?: Record<string, string | { text?: string; mode?: 'append' | 'replace' }>
 }
 
 export interface GenerateResponse {

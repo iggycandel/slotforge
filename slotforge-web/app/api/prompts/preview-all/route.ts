@@ -39,12 +39,28 @@ export const maxDuration = 15
 
 const VALID_ASSET_TYPE_SET = new Set<string>(ASSET_TYPES as readonly string[])
 
+// Per-slot custom-prompt override entry. v119 unified shape; legacy
+// callers can still pass a bare string per key (treated as mode='replace').
+const OverrideEntrySchema = z.union([
+  z.string().max(2000),
+  z.object({
+    text: z.string().max(2000),
+    mode: z.enum(['append', 'replace']).optional(),
+  }),
+])
+
 const RequestSchema = z.object({
   project_id:   z.string().uuid(),
   asset_keys:   z.array(z.string()).min(1).max(200),
   theme:        z.string().max(200).trim().default(''),
   style_id:     z.string().optional(),
   project_meta: z.record(z.unknown()).optional(),
+  /** Per-slot custom-prompt overrides. When present, the preview applies
+   *  the override at compose time (replace-mode replaces, append-mode
+   *  rides as a context line) so the modal shows the FINAL prompt that
+   *  will fire — not the composed-without-override that the v107 modal
+   *  silently displayed. */
+  custom_prompts: z.record(OverrideEntrySchema).optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -69,13 +85,31 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { project_id, asset_keys, theme, style_id, project_meta } = parsed.data
+  const { project_id, asset_keys, theme, style_id, project_meta, custom_prompts } = parsed.data
 
   if (!(await assertProjectAccess(userId, project_id))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   const meta = project_meta as ProjectMeta | undefined
+
+  /** Normalise the per-slot override into the BuildPromptOptions
+   *  fields the prompt builder honours. Returns undefined when the
+   *  slot has no override or when the text is empty. */
+  function optsForKey(key: string): { customPrompt?: string; customPromptMode?: 'append' | 'replace' } | undefined {
+    const entry = custom_prompts?.[key]
+    if (!entry) return undefined
+    if (typeof entry === 'string') {
+      const text = entry.trim()
+      // Legacy string entries → replace mode (matches the pre-v119
+      // pipeline behaviour so old saved overrides keep firing the
+      // way they used to).
+      return text ? { customPrompt: text, customPromptMode: 'replace' } : undefined
+    }
+    const text = entry.text?.trim()
+    if (!text) return undefined
+    return { customPrompt: text, customPromptMode: entry.mode ?? 'append' }
+  }
 
   // Compose sequentially (not parallel) — we're CPU-bound on simple string
   // concatenation, no I/O, so parallelism buys nothing and keeps the log
@@ -84,15 +118,16 @@ export async function POST(req: NextRequest) {
   const prompts: Record<string, unknown> = {}
   for (const key of asset_keys) {
     try {
+      const opts = optsForKey(key)
       if (isFeatureSlotKey(key)) {
-        const built = buildFeatureSlotPrompt(key, theme, style_id, meta)
+        const built = buildFeatureSlotPrompt(key, theme, style_id, meta, opts)
         prompts[key] = {
           prompt:         built.prompt,
           negativePrompt: built.negativePrompt,
           sections:       built.sections ?? null,
         }
       } else if (VALID_ASSET_TYPE_SET.has(key)) {
-        const built = buildPrompt(key as AssetType, theme, style_id, meta)
+        const built = buildPrompt(key as AssetType, theme, style_id, meta, opts)
         prompts[key] = {
           prompt:         built.prompt,
           negativePrompt: built.negativePrompt,

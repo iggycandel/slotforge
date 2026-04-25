@@ -37,10 +37,23 @@ const RequestSchema = z.object({
   ratio:        z.enum(RATIO_VALUES).optional(),
   /** Per-slot prompt overrides from the Review Prompts modal
    *  (localStorage on the client). Keys are asset slot keys (legacy
-   *  AssetType or feature slot), values are the full composed prompt
-   *  the user hand-edited. When a type has an entry here, the pipeline
-   *  substitutes it into built.prompt before calling the provider. */
-  custom_prompts: z.record(z.string().max(2000)).optional(),
+   *  AssetType or feature slot). v119: each value is either a bare
+   *  string (legacy shape — treated as mode:'replace') or
+   *  { text, mode } where mode controls how the override merges with
+   *  the composed prompt:
+   *    'replace' — the override IS the prompt (layers 1-5 dropped,
+   *                 negatives still apply). Legacy default.
+   *    'append'  — the override rides as an extra context line so
+   *                 project style + template + tier + negatives all
+   *                 still fire. Default for new edits in v119.
+   *  pipeline.ts threads this into buildPrompt's BuildPromptOptions. */
+  custom_prompts: z.record(z.union([
+    z.string().max(2000),
+    z.object({
+      text: z.string().max(2000),
+      mode: z.enum(['append', 'replace']).optional(),
+    }),
+  ])).optional(),
 })
 
 // ─── SSE helper ─────────────────────────────────────────────────────────────
