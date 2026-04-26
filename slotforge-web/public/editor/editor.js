@@ -14025,31 +14025,42 @@ setTimeout(() => {
   function buildOverlay(){
     if(document.getElementById(OVERLAY_ID)) return;
     ensureStyles();
+
+    // Build the body as nested array-joins so JS doesn't trip on the
+    // leading-`+` continuation pattern inside callback function bodies
+    // (an earlier rewrite broke the whole file with a parse error
+    // exactly here — the outer `+` continuation isn't valid in a
+    // statement-position return).
+    var sectionsHtml = SECTIONS.map(function(s){
+      var rows = s.shortcuts.map(function(r){
+        var keys = r.keys.map(function(k){
+          return '<span class="kbd-key">' + k + '</span>';
+        }).join('+ ');
+        return ''
+          + '<div class="kbd-row">'
+          +   '<span>' + r.desc + '</span>'
+          +   '<span class="kbd-keys">' + keys + '</span>'
+          + '</div>';
+      }).join('');
+      return ''
+        + '<div>'
+        +   '<div class="kbd-section-title">' + s.title + '</div>'
+        +   rows
+        + '</div>';
+    }).join('');
+
+    var subText = IS_MAC ? '⌘ for command, ⇧ for shift' : 'Ctrl for control';
     var html = ''
       + '<div id="' + OVERLAY_ID + '">'
       +   '<div class="kbd-card">'
       +     '<div class="kbd-head">'
       +       '<div>'
       +         '<div class="kbd-title">Keyboard shortcuts</div>'
-      +         '<div class="kbd-sub">' + (IS_MAC ? '⌘ for command, ⇧ for shift' : 'Ctrl for control') + '</div>'
+      +         '<div class="kbd-sub">' + subText + '</div>'
       +       '</div>'
       +       '<button class="kbd-close" id="kbd-close" title="Close (Esc)">×</button>'
       +     '</div>'
-      +     '<div class="kbd-body">'
-      +       SECTIONS.map(function(s){
-      +         return '<div>'
-      +           + '<div class="kbd-section-title">' + s.title + '</div>'
-      +           + s.shortcuts.map(function(r){
-      +               return '<div class="kbd-row">'
-      +                 + '<span>' + r.desc + '</span>'
-      +                 + '<span class="kbd-keys">'
-      +                 + r.keys.map(function(k){ return '<span class="kbd-key">' + k + '</span>'; }).join('+ ')
-      +                 + '</span>'
-      +               + '</div>';
-      +           }).join('')
-      +         + '</div>';
-      +       }).join('')
-      +     '</div>'
+      +     '<div class="kbd-body">' + sectionsHtml + '</div>'
       +   '</div>'
       + '</div>';
     document.body.insertAdjacentHTML('beforeend', html);
