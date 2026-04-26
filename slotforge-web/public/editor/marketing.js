@@ -296,6 +296,14 @@
     // Build the form body fresh on every open so a template change
     // doesn't leak inputs between sessions.
     var body = document.getElementById('mkt-modal-form');
+
+    // Character toggle — only meaningful if the project has a character
+    // asset. The readiness probe ran on first /kits load; we re-use it
+    // here so the control hides for projects that don't have one
+    // (avoids a confusing UX where toggling does nothing).
+    var hasChar  = !!(state.readiness && state.readiness.hasCharacter);
+    var charOn   = (typeof vars.includeCharacter === 'boolean') ? vars.includeCharacter : true;
+
     body.innerHTML = ''
       + formField('gameName',      'Game name',      'text',
           pickStr(vars.gameName, ''))
@@ -316,7 +324,9 @@
           pickStr(vars.colorMode, schema.colorMode ? schema.colorMode.default : 'auto'))
       + formSelect('layoutVariant','Layout variant',
           (schema.layoutVariant && schema.layoutVariant.options) || ['A'],
-          pickStr(vars.layoutVariant, schema.layoutVariant ? schema.layoutVariant.default : 'A'));
+          pickStr(vars.layoutVariant, schema.layoutVariant ? schema.layoutVariant.default : 'A'))
+      + (hasChar ? formCheckbox('includeCharacter', 'Include character', charOn,
+          'Hides the hero figure when a tighter layout reads better.') : '');
 
     // Size checkboxes — default all selected.
     var sizesHtml = '<div class="mkt-form-label">Sizes</div><div class="mkt-form-sizes">';
@@ -425,6 +435,20 @@
       + '</div>';
   }
 
+  /** Inline-style checkbox row. Read back as a boolean by readModalVars
+   *  via the data-bool attribute (input.value on a checkbox is always
+   *  "on" / "" — useless; need .checked). */
+  function formCheckbox(name, label, value, hint){
+    return ''
+      + '<div class="mkt-form-row">'
+      +   '<label class="mkt-form-checkbox">'
+      +     '<input type="checkbox" name="'+name+'" data-bool="1"'+(value ? ' checked' : '')+'>'
+      +     '<span>'+escapeHtml(label)+'</span>'
+      +   '</label>'
+      +   (hint ? '<div class="mkt-form-hint">'+escapeHtml(hint)+'</div>' : '')
+      + '</div>';
+  }
+
   function readModalVars(){
     var form = document.getElementById('mkt-modal-form');
     if(!form) return {};
@@ -432,7 +456,14 @@
     var inputs = form.querySelectorAll('input[name], select[name]');
     for(var i = 0; i < inputs.length; i++){
       var el = inputs[i];
-      out[el.name] = el.value;
+      // Booleans (checkboxes) need .checked; everything else uses .value.
+      // Skipped: the per-size checkboxes inside .mkt-form-sizes — those
+      // have data-size, not name, so the name-selector ignores them.
+      if(el.getAttribute('data-bool') === '1'){
+        out[el.name] = !!el.checked;
+      } else {
+        out[el.name] = el.value;
+      }
     }
     return out;
   }
@@ -771,6 +802,9 @@
     + '.mkt-form-size{display:inline-flex;align-items:center;gap:6px;background:#0a0a10;border:1px solid #2a2a3a;border-radius:5px;padding:6px 10px;font-size:11px;color:#e0deda;cursor:pointer;font-family:"DM Mono",monospace}'
     + '.mkt-form-size:hover{border-color:#3a3a4f}'
     + '.mkt-form-size input{accent-color:#c9a84c}'
+    + '.mkt-form-checkbox{display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:#0a0a10;border:1px solid #2a2a3a;border-radius:5px;font-size:12px;color:#e0deda}'
+    + '.mkt-form-checkbox:hover{border-color:#3a3a4f}'
+    + '.mkt-form-checkbox input{accent-color:#c9a84c;cursor:pointer}'
     + '#mkt-modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #2a2a3a}'
     + '#mkt-modal-actions .mkt-tile-btn{flex:1;padding:9px 14px;font-size:12px}'
     + '#mkt-modal-preview{background:#0a0a10;border:1px solid #2a2a3a;border-radius:6px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden}'

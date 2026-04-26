@@ -58,6 +58,13 @@ export function resolveVars(
   const colorMode: ColorMode = pickEnum(v.colorMode,     template.vars.colorMode.options,     template.vars.colorMode.default)
   const variant: LayoutVariant = pickEnum(v.layoutVariant, template.vars.layoutVariant.options, template.vars.layoutVariant.default)
 
+  // Character toggle. Defaults to true so existing kits keep rendering
+  // hero-shot tiles. The modal only shows the control when the project
+  // actually has a character asset; if no character exists the value
+  // doesn't matter (engine skips the layer for the unrelated reason
+  // that the asset slot is null).
+  const includeCharacter = typeof v.includeCharacter === 'boolean' ? v.includeCharacter : true
+
   return {
     gameName,
     headline,
@@ -72,6 +79,7 @@ export function resolveVars(
     colorMode,
     layoutVariant: variant,
     resolvedColors: resolvePalette(project, colorMode),
+    includeCharacter,
   }
 }
 

@@ -227,6 +227,12 @@ export interface ResolvedVars {
   colorMode: ColorMode
   layoutVariant: LayoutVariant
   resolvedColors: { primary: string; accent: string; bg: string }
+  /** When false, AssetLayers whose slot resolves to a character variant
+   *  are skipped at render time. Lets a user opt out of overlapping
+   *  hero shots when the layout doesn't suit their character art. The
+   *  modal hides this control entirely when the project has no
+   *  character asset; defaults to true otherwise. */
+  includeCharacter: boolean
 }
 
 // ─── Asset resolution ───────────────────────────────────────────────────────

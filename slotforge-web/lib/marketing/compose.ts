@@ -159,7 +159,15 @@ async function drawLayer(
   size:   TemplateSize,
 ): Promise<void> {
   switch (layer.type) {
-    case 'asset':    return drawAssetLayer(ctx, layer, assets, size)
+    case 'asset':
+      // Honour the user's "include character" toggle. Both
+      // `character` and `character.transparent` slots are skipped when
+      // the toggle is off — same template can therefore render with-
+      // or without- a hero figure without authoring two layer stacks.
+      if (!vars.includeCharacter && (layer.slot === 'character' || layer.slot === 'character.transparent')) {
+        return
+      }
+      return drawAssetLayer(ctx, layer, assets, size)
     case 'gradient': return drawGradientLayer(ctx, layer, vars, size)
     case 'shape':    return drawShapeLayer(ctx, layer, vars, size)
     case 'text':     return drawTextLayer(ctx, layer, vars, size)

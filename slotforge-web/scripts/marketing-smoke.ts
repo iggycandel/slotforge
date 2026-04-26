@@ -60,6 +60,7 @@ async function main() {
       accent:  '#e84d3a',
       bg:      '#06060a',
     },
+    includeCharacter: true,
   }, assets)
 
   const out = '/tmp/marketing-smoke.png'
