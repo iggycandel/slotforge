@@ -37,10 +37,15 @@ export async function getOrgSubscription(orgId: string): Promise<OrgSubscription
 
   try {
     const supabase = createAdminClient()
+    // v122 / H4 — also return stripe_customer_id so /api/billing/checkout
+    // can reuse an existing Stripe customer instead of creating a new one
+    // every time. Pre-v122 this column was never returned, so the customer-
+    // reuse branch (`if (!customerId)`) always evaluated as true and every
+    // checkout attempt minted a fresh Stripe customer.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
       .from('workspaces')
-      .select('plan')
+      .select('plan, stripe_customer_id')
       .eq('clerk_org_id', orgId)
       .maybeSingle()
 
@@ -48,7 +53,8 @@ export async function getOrgSubscription(orgId: string): Promise<OrgSubscription
 
     return {
       ...FREE_SUB,
-      plan: (data.plan as Plan) ?? 'free',
+      plan:             (data.plan as Plan) ?? 'free',
+      stripeCustomerId: (data.stripe_customer_id as string | null) ?? undefined,
     }
   } catch {
     return FREE_SUB

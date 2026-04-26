@@ -29,11 +29,27 @@ declare global {
 }
 
 export default function StripePricingTable({ orgId, email }: Props) {
-  // Fallback to hardcoded values so the table renders even if env vars are missing
-  const tableId  = process.env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID  ?? 'prctbl_1TNITLRxNNF46RtxUm5XOJGy'
-  const pubKey   = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY   ?? 'pk_live_51TNE5BRxNNF46RtxTOJczIGT1Di0vCWRHKDqerBFO6Pu3uFBRSm6yPppf1re5lkM4QEUaIG4eRvwUMVO7HMaBCwp00sLVBXkXB'
+  // v122 / M2 — env-var audit. The pre-v122 version of this file pinned a
+  // production Stripe publishable key + pricing table id as fallback
+  // values. The keys themselves are by-design public (Stripe ships them
+  // to every browser via their JS SDK), so leakage is not the concern;
+  // the concerns are (a) test/dev environments accidentally rendering the
+  // live pricing table when env vars aren't wired, (b) painful key
+  // rotation because the fallback is stale source. Fail loudly on
+  // missing env: the null-guard below renders nothing rather than
+  // silently routing to prod Stripe.
+  const tableId = process.env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID
+  const pubKey  = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
-  if (!tableId || !pubKey) return null
+  if (!tableId || !pubKey) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[StripePricingTable] NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID or ' +
+        'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY missing — pricing table not rendered.'
+      )
+    }
+    return null
+  }
 
   return (
     <>

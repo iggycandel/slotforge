@@ -4,14 +4,37 @@
 // authoritative `workspaces.plan` column in sync.
 //
 // Events handled:
-//   checkout.session.completed         → create/update subscription row
-//   customer.subscription.updated      → update plan/status/seat_count
-//   customer.subscription.deleted      → mark as canceled, flip workspace to free
+//   checkout.session.completed         → create subscription row, backfill
+//                                        Stripe-side metadata so future
+//                                        events for this sub always carry
+//                                        orgId (works for Pricing-Table
+//                                        flow which can't set
+//                                        subscription_data.metadata at
+//                                        creation time).
+//   customer.subscription.updated      → update plan / status / seat_count
+//   customer.subscription.deleted      → mark canceled, flip workspace → free
 //
-// orgId resolution order (what Stripe calls client_reference_id / metadata):
-//   1. session.client_reference_id  (set by Stripe Pricing Table)
-//   2. session.metadata.orgId       (set by custom checkout API)
-//   3. subscription.metadata.orgId  (fallback for sub events)
+// v122 / H4: orgId resolution chain.
+//   The pre-v122 webhook bailed out the moment `sub.metadata.orgId` was
+//   missing. That meant subs created via Stripe's Pricing Table widget
+//   (which only carries `client_reference_id`, not subscription metadata)
+//   never had their plan changes / cancellations propagate. Plus the
+//   "is the user still paying?" decision at runtime would silently lag
+//   reality.
+//
+//   New chain, tried in order:
+//     1. sub.metadata.orgId         — set by either checkout path now
+//                                     (custom checkout sets via
+//                                     subscription_data.metadata; Pricing
+//                                     Table flow gets it backfilled in
+//                                     checkout.session.completed below)
+//     2. Stripe customer.metadata   — set by /api/billing/checkout when
+//                                     the Stripe customer is first
+//                                     created (or backfilled by us)
+//     3. local subscriptions row    — last resort: look up by
+//                                     stripe_sub_id, get workspace_id
+//                                     directly. Robust against any
+//                                     missing-metadata edge case.
 //
 // The ID Stripe carries is the Clerk principal — either the userId (this
 // app) or a Clerk orgId. The subscriptions table itself keys on the Supabase
@@ -42,6 +65,62 @@ async function resolveWorkspaceId(clerkOrgId: string): Promise<string | null> {
     return null
   }
   return data?.id ?? null
+}
+
+// ─── Subscription → workspace_id, via the local subscriptions table ─────────
+// Last-resort fallback when neither sub.metadata nor customer.metadata
+// carry an orgId. The local row was written by checkout.session.completed
+// at sub creation time; if THAT was missing too the user's checkout never
+// actually completed and we have no business updating their plan now.
+async function resolveWorkspaceIdFromLocalSub(
+  stripeSubId: string,
+): Promise<string | null> {
+  const supabase = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase as any)
+    .from('subscriptions')
+    .select('workspace_id')
+    .eq('stripe_sub_id', stripeSubId)
+    .maybeSingle()
+  return data?.workspace_id ?? null
+}
+
+// ─── orgId fallback chain — used by sub.updated / sub.deleted ───────────────
+// Order matters: cheapest checks first, Stripe API calls last.
+async function resolveOrgIdForSub(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sub: any,
+): Promise<{ workspaceId: string | null; clerkOrgId: string | null }> {
+  // 1. Subscription-level metadata (set by subscription_data.metadata at
+  //    checkout, or by our backfill in checkout.session.completed)
+  const fromSub = sub.metadata?.orgId as string | undefined
+  if (fromSub) {
+    const wid = await resolveWorkspaceId(fromSub)
+    if (wid) return { workspaceId: wid, clerkOrgId: fromSub }
+  }
+
+  // 2. Customer-level metadata (set when the Stripe customer was created
+  //    by /api/billing/checkout, or backfilled below)
+  const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id
+  if (customerId) {
+    try {
+      const customer = await stripe.customers.retrieve(customerId)
+      // Stripe.Customer | DeletedCustomer — .metadata exists on both shapes
+      // but TS narrows it away. Cast to any since we only read.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fromCustomer = (customer as any).metadata?.orgId as string | undefined
+      if (fromCustomer) {
+        const wid = await resolveWorkspaceId(fromCustomer)
+        if (wid) return { workspaceId: wid, clerkOrgId: fromCustomer }
+      }
+    } catch (err) {
+      console.error('[webhook] customer lookup failed:', customerId, err)
+    }
+  }
+
+  // 3. Local subscriptions table — last resort
+  const wid = await resolveWorkspaceIdFromLocalSub(sub.id as string)
+  return { workspaceId: wid, clerkOrgId: null }
 }
 
 // ─── Upsert one subscription row + mirror plan onto the workspace ────────────
@@ -81,18 +160,20 @@ async function upsertSubscription(params: {
     throw upsertErr
   }
 
-  // Mirror the plan into workspaces.plan — this is the column the plan gate
-  // reads (lib/billing/subscription.ts getOrgSubscription). Without this
-  // mirror, paid subscribers would stay "free" in the app even after Stripe
-  // confirmed their subscription.
+  // Mirror plan + stripe_customer_id into workspaces — this is the row the
+  // plan gate reads (lib/billing/subscription.ts getOrgSubscription).
+  // Without the plan mirror, paid subscribers would stay "free" in the app
+  // even after Stripe confirmed their subscription. Mirroring the customer
+  // id lets /api/billing/checkout reuse the existing customer on a repeat
+  // upgrade attempt instead of creating a new Stripe customer every time.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error: wsErr } = await (supabase as any)
     .from('workspaces')
-    .update({ plan })
+    .update({ plan, stripe_customer_id: params.stripeCustomerId })
     .eq('id', params.workspaceId)
 
   if (wsErr) {
-    console.error('[webhook] workspaces.plan mirror failed:', wsErr)
+    console.error('[webhook] workspaces mirror failed:', wsErr)
     throw wsErr
   }
 }
@@ -142,6 +223,23 @@ export async function POST(req: NextRequest) {
         const item      = sub.items.data[0] as any
         const priceId   = item.price.id as string
         const seatCount = item.quantity ?? 1
+        const plan      = planFromPriceId(priceId) ?? 'free'
+
+        // v122 / H4 — backfill orgId onto the Stripe-side records. Custom
+        // checkout already sets subscription_data.metadata, but the Stripe
+        // Pricing Table widget can't pass that at creation time. Without
+        // this, future customer.subscription.updated events for Pricing-
+        // Table subs arrive with empty metadata and the handler bails out.
+        // We update both the subscription AND the customer so the
+        // resolveOrgIdForSub fallback chain has redundant sources.
+        await Promise.all([
+          stripe.subscriptions.update(sub.id, {
+            metadata: { orgId: clerkOrgId, plan },
+          }).catch(err => console.error('[webhook] sub metadata backfill failed:', err)),
+          stripe.customers.update(session.customer as string, {
+            metadata: { orgId: clerkOrgId },
+          }).catch(err => console.error('[webhook] customer metadata backfill failed:', err)),
+        ])
 
         await upsertSubscription({
           workspaceId,
@@ -160,12 +258,18 @@ export async function POST(req: NextRequest) {
 
       case 'customer.subscription.updated': {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sub        = event.data.object as any
-        const clerkOrgId = sub.metadata?.orgId as string | undefined
-        if (!clerkOrgId) break
+        const sub = event.data.object as any
 
-        const workspaceId = await resolveWorkspaceId(clerkOrgId)
-        if (!workspaceId) { console.error('[webhook] No workspace for', clerkOrgId); break }
+        // v122 / H4 — fallback chain: sub.metadata → customer.metadata →
+        // local subscriptions table. Pre-v122 the handler bailed out the
+        // moment sub.metadata.orgId was missing, silently dropping plan
+        // changes / cancellations for any sub that didn't have metadata
+        // at creation time (everything from the Pricing Table widget).
+        const { workspaceId } = await resolveOrgIdForSub(sub)
+        if (!workspaceId) {
+          console.error('[webhook] sub.updated: could not resolve workspace for sub', sub.id)
+          break
+        }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const item      = sub.items.data[0] as any
@@ -174,7 +278,7 @@ export async function POST(req: NextRequest) {
 
         await upsertSubscription({
           workspaceId,
-          stripeCustomerId:   sub.customer as string,
+          stripeCustomerId:   typeof sub.customer === 'string' ? sub.customer : sub.customer?.id,
           stripeSubId:        sub.id,
           priceId,
           seatCount,
@@ -187,12 +291,17 @@ export async function POST(req: NextRequest) {
 
       case 'customer.subscription.deleted': {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sub        = event.data.object as any
-        const clerkOrgId = sub.metadata?.orgId as string | undefined
-        if (!clerkOrgId) break
+        const sub = event.data.object as any
 
-        const workspaceId = await resolveWorkspaceId(clerkOrgId)
-        if (!workspaceId) { console.error('[webhook] No workspace for', clerkOrgId); break }
+        // Same fallback chain. The local-subscriptions-table fallback is
+        // particularly important here because a cancellation can land
+        // months after the original checkout, when in-memory metadata
+        // assumptions are most likely to have drifted.
+        const { workspaceId } = await resolveOrgIdForSub(sub)
+        if (!workspaceId) {
+          console.error('[webhook] sub.deleted: could not resolve workspace for sub', sub.id)
+          break
+        }
 
         const supabase = createAdminClient()
         // Mark the subscription row as canceled (keep for audit) and flip
