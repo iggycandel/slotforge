@@ -99,14 +99,26 @@ export async function GET(req: NextRequest) {
       console.error('[marketing/kits] renders lookup failed:', rErr.message)
       // Non-fatal: ship kits without renders so the grid still loads.
     } else {
-      // Sign each unique storage_path once. Renders within the same kit
-      // share the bucket so signing is the only per-row cost — the
-      // returned promises run in parallel.
-      const rows = (rendersData ?? []) as Array<{
+      // Dedupe by (kit_id, size_label, format) — every var-change spawns
+      // a new marketing_renders row keyed on vars_hash, but the modal
+      // only wants to show ONE entry per shipped size. The query is
+      // ordered created_at desc, so the first row we see for any
+      // (kit, size, format) triple is the most recent. Subsequent
+      // rows are older variants we keep on disk for cache reuse but
+      // hide from the user.
+      const allRows = (rendersData ?? []) as Array<{
         kit_id: string; size_label: string; format: string;
         storage_path: string; bytes: number; created_at: string
       }>
-      const signed = await Promise.all(rows.map(async r => ({
+      const seenKey = new Set<string>()
+      const latestRows = allRows.filter(r => {
+        const key = `${r.kit_id}::${r.size_label}::${r.format}`
+        if (seenKey.has(key)) return false
+        seenKey.add(key)
+        return true
+      })
+      // Sign each surviving storage_path once. Promises run in parallel.
+      const signed = await Promise.all(latestRows.map(async r => ({
         ...r,
         url: await signRenderUrl(r.storage_path).catch(() => ''),
       })))

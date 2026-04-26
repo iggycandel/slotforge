@@ -650,7 +650,11 @@
     // cached list rather than firing another request.
     var preview = document.getElementById('mkt-modal-preview');
     var results = document.getElementById('mkt-modal-results');
-    var existing = (kit && kit.renders) || [];
+    // Dedupe defensively in case an older /kits response still has
+    // multiple rows per (size, format) — same logic the server now
+    // applies, mirrored client-side so a stale cache doesn't show
+    // 9 entries for a 3-size template.
+    var existing = dedupeRenders((kit && kit.renders) || []);
     if(existing.length > 0){
       // Show the biggest as the live preview
       var biggest = pickBiggestExisting(existing, template);
@@ -689,6 +693,24 @@
       if(a > bestArea){ bestArea = a; best = renders[i]; }
     }
     return best || renders[0];
+  }
+
+  /** Keep only the most recent render per (size_label, format). The
+   *  /kits endpoint already dedupes server-side; this is belt-and-
+   *  braces against a stale older response or any future caller that
+   *  forgets. Assumes input is roughly recent-first; falls back
+   *  cleanly otherwise (a duplicate keeps whichever showed up first). */
+  function dedupeRenders(renders){
+    var seen = {};
+    var out  = [];
+    for(var i = 0; i < renders.length; i++){
+      var r = renders[i];
+      var key = r.size_label + '::' + r.format;
+      if(seen[key]) continue;
+      seen[key] = 1;
+      out.push(r);
+    }
+    return out;
   }
 
   function closeCustomiseModal(){
