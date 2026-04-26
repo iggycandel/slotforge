@@ -10632,6 +10632,15 @@ function updateWorkspaceUI(){
     const tb = document.getElementById('topbar-' + ws);
     if(tb) tb.style.display = (activeWorkspace === ws) ? 'flex' : 'none';
   });
+  // v2 UX: status bar (Screen / Layer / resolution / Balance / Bet) is
+  // runtime game info — only relevant on the canvas (Flow) and the
+  // logic node graph. Hide it everywhere else; it was visual noise on
+  // forms-heavy workspaces (Project, Marketing, Features list).
+  const sb = document.getElementById('statusbar');
+  if(sb){
+    const showStatus = (activeWorkspace === 'canvas' || activeWorkspace === 'flow');
+    sb.style.display = showStatus ? 'flex' : 'none';
+  }
   // Viewport picker only relevant in Canvas
   const vpItem = document.getElementById('vp-menu-item');
   if(vpItem) vpItem.style.display = isCanvas ? '' : 'none';
@@ -12478,7 +12487,11 @@ window._sfBridge = (function(){
     setTimeout(function(){ _sfApplyPayload(payload); }, 300);
     setTimeout(function(){
       try { document.getElementById('ov-props-panel')?.classList.remove('show'); } catch(e){}
-      try { if(typeof openProjectSettings === 'function') openProjectSettings(); } catch(e){}
+      // v2 UX: do NOT auto-open Project Settings on load. The earlier
+      // version landed every user on a form full of empty tabs — bad
+      // first impression. Users now open straight into Flow (the
+      // canvas), where their game's composed state is the first thing
+      // they see. Project Settings is reachable via the top nav.
     }, 900);
     // Final re-sync of toggle UI states at 1100ms — runs after both _sfApplyPayload (300ms)
     // and switchScreen (900ms) have fully settled, ensuring char/ante toggles reflect P state.

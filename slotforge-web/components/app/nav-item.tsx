@@ -25,7 +25,8 @@ export function NavItem({ href, icon: Icon, label, exact, collapsed }: NavItemPr
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 10,
+        flexDirection: collapsed ? 'column' : 'row',
+        gap: collapsed ? 4 : 10,
         padding: collapsed ? '8px 0' : '7px 12px',
         justifyContent: collapsed ? 'center' : 'flex-start',
         borderRadius: 10,
@@ -47,7 +48,25 @@ export function NavItem({ href, icon: Icon, label, exact, collapsed }: NavItemPr
           color: active ? '#d7a84f' : 'rgba(255,255,255,0.3)',
         }}
       />
-      {!collapsed && label}
+      {/* In the collapsed rail we still show a tiny caption under each
+       *  icon — much faster orientation for new users than relying on
+       *  a delayed-hover native title. Stays visually quiet via tighter
+       *  letter-spacing and lower opacity. */}
+      {collapsed ? (
+        <span style={{
+          fontSize:       9,
+          letterSpacing:  '0.04em',
+          textTransform:  'uppercase',
+          opacity:        active ? 0.95 : 0.5,
+          color:          active ? '#d7a84f' : 'rgba(255,255,255,0.6)',
+          lineHeight:     1,
+          marginTop:      1,
+        }}>
+          {label}
+        </span>
+      ) : (
+        label
+      )}
     </Link>
   )
 }

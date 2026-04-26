@@ -21,19 +21,22 @@
   <!-- ── Workspace Switcher ── -->
   <!-- data-ws values are internal workspace keys — DO NOT rename (routing,
        postMessage contracts and the Assets integration use them). Only the
-       visible labels changed: Assets→Art, Canvas→Flow, Flow→Logic. -->
+       visible labels changed: Assets→Art, Canvas→Flow, Flow→Logic.
+       v2 UX: order is canvas-first per the UX critique:
+         Flow · Art · Features · Logic · Project · Marketing
+       Typography moved out of the top nav (it's a sub-step of Art —
+       takes screenshots from generated assets and derives a font spec).
+       Phase 2 folds it into the Art workspace as a third panel tab. -->
   <div id="ws-switcher">
-    <button class="ws-tab" data-ws="project">Project</button>
-    <div class="ws-sep"></div>
-    <button class="ws-tab" data-ws="features">Features</button>
+    <button class="ws-tab ws-active" data-ws="canvas">Flow</button>
     <div class="ws-sep"></div>
     <button class="ws-tab ws-tab--assets" data-ws="assets" title="Open Art workspace">Art</button>
     <div class="ws-sep"></div>
-    <button class="ws-tab" data-ws="typography" title="Typography spec from game art">Typography</button>
-    <div class="ws-sep"></div>
-    <button class="ws-tab ws-active" data-ws="canvas">Flow</button>
+    <button class="ws-tab" data-ws="features">Features</button>
     <div class="ws-sep"></div>
     <button class="ws-tab" data-ws="flow">Logic</button>
+    <div class="ws-sep"></div>
+    <button class="ws-tab" data-ws="project">Project</button>
     <div class="ws-sep"></div>
     <button class="ws-tab" data-ws="marketing">Marketing</button>
   </div>
