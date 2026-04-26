@@ -30,7 +30,7 @@ import { auth }                         from '@clerk/nextjs/server'
 import { NextRequest, NextResponse }    from 'next/server'
 import { z }                            from 'zod'
 
-import { getOrgPlan, canUseAI }         from '@/lib/billing/subscription'
+import { getOrgPlan, canUseMarketing }         from '@/lib/billing/subscription'
 import { assertProjectAccess }          from '@/lib/supabase/authz'
 import { rateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
   // Plan gate — same flag as AI generation for v1; lib/billing/plans.ts
   // gets a marketingEnabled boolean in Day 10 polish.
   const plan = await getOrgPlan(effectiveId)
-  if (!canUseAI(plan)) {
+  if (!canUseMarketing(plan)) {
     return NextResponse.json(
       { error: 'upgrade_required', plan,
         message: 'Marketing kit requires a Freelancer or Studio plan.' },

@@ -71,6 +71,7 @@
     if(state.loading) return;
     state.loading = true;
     state.error   = null;
+    state.upgradeRequired = false;
     renderLoading();
 
     Promise.all([
@@ -90,8 +91,15 @@
       ensureCharacterCutout();
     }).catch(function(err){
       state.loading = false;
-      state.error   = err && err.message ? err.message : 'Load failed';
-      renderError(state.error);
+      // Surface the upgrade card for plan-gated 403s; treat anything
+      // else as a generic error.
+      if(err && err.code === 'upgrade_required'){
+        state.upgradeRequired = true;
+        renderUpgradeRequired(err.plan);
+      } else {
+        state.error = err && err.message ? err.message : 'Load failed';
+        renderError(state.error);
+      }
     });
   }
 
@@ -344,6 +352,42 @@
     el.innerHTML = '<div style="padding:24px;color:#c97a7a;font-size:12px">'+escapeHtml(msg)+'</div>';
   }
 
+  /** Plan-gate upsell. Shows the locked feature, the two unlocking
+   *  tiers, and a CTA that takes the user to billing. We render this
+   *  inside the iframe rather than redirecting the parent because the
+   *  user might want to tab back without losing canvas state. */
+  function renderUpgradeRequired(currentPlan){
+    var el = grid();
+    if(!el) return;
+    var planLabel = (currentPlan ? String(currentPlan) : 'Free').replace(/^\w/, function(c){ return c.toUpperCase(); });
+    el.innerHTML = ''
+      + '<div class="mkt-upgrade">'
+      +   '<div class="mkt-upgrade-eyebrow">Marketing Workspace</div>'
+      +   '<div class="mkt-upgrade-title">Unlock the marketing kit</div>'
+      +   '<div class="mkt-upgrade-sub">Generate ~32 ready-to-ship marketing creatives from your existing game art — lobby tiles, social posts, store creatives, press one-pager. No additional credits charged; everything composes from your already-generated assets.</div>'
+      +   '<div class="mkt-upgrade-current">You\'re on <b>'+escapeHtml(planLabel)+'</b>. Upgrade to <b>Freelancer</b> or <b>Studio</b> to enable.</div>'
+      +   '<div class="mkt-upgrade-actions">'
+      +     '<a class="mkt-tile-btn primary" href="javascript:void(0)" onclick="if(window.parent)window.parent.location.href=\'/settings/billing\'">View plans →</a>'
+      +     '<button class="mkt-tile-btn" type="button" onclick="if(typeof switchWorkspace===\'function\')switchWorkspace(\'canvas\')">Back to canvas</button>'
+      +   '</div>'
+      + '</div>';
+
+    // Inject upgrade-card styles once.
+    if(!document.getElementById('_sf_marketing_upgrade_css')){
+      var s = document.createElement('style');
+      s.id = '_sf_marketing_upgrade_css';
+      s.textContent = ''
+        + '.mkt-upgrade{padding:48px;max-width:560px}'
+        + '.mkt-upgrade-eyebrow{font-size:10px;color:#7a7a94;font-family:"DM Mono",monospace;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px}'
+        + '.mkt-upgrade-title{font-size:24px;color:#e8e6e2;font-weight:600;margin-bottom:14px;letter-spacing:-0.01em}'
+        + '.mkt-upgrade-sub{font-size:13px;color:#a0a0b0;line-height:1.6;margin-bottom:18px}'
+        + '.mkt-upgrade-current{font-size:12px;color:#c9a84c;background:#1a1a24;border:1px solid #2a2a3a;border-radius:6px;padding:10px 14px;margin-bottom:20px}'
+        + '.mkt-upgrade-actions{display:flex;gap:8px;flex-wrap:wrap}'
+        + '.mkt-upgrade-actions .mkt-tile-btn{flex:0 0 auto;padding:9px 18px}';
+      document.head.appendChild(s);
+    }
+  }
+
   function render(){
     var el = grid();
     if(!el) return;
@@ -374,6 +418,27 @@
     }
 
     var html = '';
+
+    // First-visit welcome hint — when the kit is unlocked + assets are
+    // ready but the user has never rendered anything. Disappears as
+    // soon as a single kit lands. We check kits.length AND that none
+    // of them have renders, so a returning user with stale empty kit
+    // rows still sees the hint.
+    var hasAnyRender = false;
+    for(var ki = 0; ki < (state.kits||[]).length; ki++){
+      if(((state.kits[ki].renders) || []).length > 0){ hasAnyRender = true; break; }
+    }
+    if(!hasAnyRender){
+      html += ''
+        + '<div class="mkt-welcome">'
+        +   '<div class="mkt-welcome-icon">✨</div>'
+        +   '<div>'
+        +     '<div class="mkt-welcome-title">Your kit is ready to render</div>'
+        +     '<div class="mkt-welcome-sub">Click <b>Render</b> on any tile to compose it from your project assets, or <b>Export all kit</b> in the topbar to ship the full set in one zip.</div>'
+        +   '</div>'
+        + '</div>';
+    }
+
     var order = ['promo','social','store','press'];
     for(var j = 0; j < order.length; j++){
       var k = order[j];
@@ -1394,11 +1459,17 @@
     return fetch(url, { credentials: 'same-origin' }).then(function(res){
       // Plan-gate (403) and missing project (404) get bubbled with the
       // error body's message so the empty-state can reflect them
-      // honestly instead of a generic "load failed".
+      // honestly instead of a generic "load failed". The thrown Error
+      // carries the structured error code + plan so renderUpgradeRequired
+      // can branch on it without parsing the message.
       if(!res.ok){
         return res.json().catch(function(){ return {}; }).then(function(body){
           var msg = (body && body.message) || (body && body.error) || ('HTTP ' + res.status);
-          throw new Error(msg);
+          var err = new Error(msg);
+          err.code = body && body.error;
+          err.plan = body && body.plan;
+          err.status = res.status;
+          throw err;
         });
       }
       return res.json();
@@ -1519,5 +1590,11 @@
     +   'background:rgba(10,10,16,0.45);'
     +   'color:#c9a84c;font-size:11px;font-family:"DM Mono",monospace;letter-spacing:0.05em;'
     + '}'
-    + '@keyframes mktShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}';
+    + '@keyframes mktShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}'
+    // Welcome / first-visit hint banner shown above the grid until the
+    // first render lands.
+    + '.mkt-welcome{display:flex;gap:14px;align-items:flex-start;background:#1a1a24;border:1px solid #2a2a3a;border-left:3px solid #c9a84c;border-radius:6px;padding:14px 18px;margin:18px 22px 0}'
+    + '.mkt-welcome-icon{font-size:18px;line-height:1.2;flex:0 0 auto}'
+    + '.mkt-welcome-title{font-size:13px;color:#e8e6e2;font-weight:600;margin-bottom:3px}'
+    + '.mkt-welcome-sub{font-size:11px;color:#a0a0b0;line-height:1.5}';
 })();

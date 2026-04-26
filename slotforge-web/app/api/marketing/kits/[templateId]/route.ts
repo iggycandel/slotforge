@@ -14,7 +14,7 @@ import { auth }                       from '@clerk/nextjs/server'
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
 
-import { getOrgPlan, canUseAI }       from '@/lib/billing/subscription'
+import { getOrgPlan, canUseMarketing }       from '@/lib/billing/subscription'
 import { assertProjectAccess }        from '@/lib/supabase/authz'
 import { getTemplate }                from '@/lib/marketing/registry'
 import { updateKitVars }              from '@/lib/marketing/kits'
@@ -33,7 +33,7 @@ export async function PUT(
   const effectiveId = orgId ?? userId
 
   const plan = await getOrgPlan(effectiveId)
-  if (!canUseAI(plan)) {
+  if (!canUseMarketing(plan)) {
     return NextResponse.json(
       { error: 'upgrade_required', plan,
         message: 'Marketing kit requires a Freelancer or Studio plan.' },

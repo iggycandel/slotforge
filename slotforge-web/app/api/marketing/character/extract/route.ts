@@ -24,7 +24,7 @@ import { auth }                       from '@clerk/nextjs/server'
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
 
-import { getOrgPlan, canUseAI }       from '@/lib/billing/subscription'
+import { getOrgPlan, canUseMarketing }       from '@/lib/billing/subscription'
 import { assertProjectAccess }        from '@/lib/supabase/authz'
 import { createAdminClient }          from '@/lib/supabase/admin'
 import { uploadGeneratedAsset }       from '@/lib/storage/assets'
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   // Plan gate
   const plan = await getOrgPlan(effectiveId)
-  if (!canUseAI(plan)) {
+  if (!canUseMarketing(plan)) {
     return NextResponse.json(
       { error: 'upgrade_required', plan,
         message: 'Marketing kit requires a Freelancer or Studio plan.' },

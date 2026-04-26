@@ -27,7 +27,7 @@ import { Readable }                   from 'stream'
 
 import { createAdminClient }          from '@/lib/supabase/admin'
 import { assertProjectAccess }        from '@/lib/supabase/authz'
-import { getOrgPlan, canUseAI }       from '@/lib/billing/subscription'
+import { getOrgPlan, canUseMarketing }       from '@/lib/billing/subscription'
 import { downloadRender }             from '@/lib/marketing/storage'
 import { loadMarketingProject }       from '@/lib/marketing/project'
 
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   const effectiveId = orgId ?? userId
 
   const plan = await getOrgPlan(effectiveId)
-  if (!canUseAI(plan)) {
+  if (!canUseMarketing(plan)) {
     return NextResponse.json(
       { error: 'upgrade_required', plan,
         message: 'Marketing kit requires a Freelancer or Studio plan.' },

@@ -72,6 +72,15 @@ export function canUseAI(plan: Plan): boolean {
   return PLANS[plan].aiEnabled
 }
 
+/** Returns true if the plan unlocks the Marketing workspace. Today
+ *  this mirrors canUseAI — marketing is gated to the same tiers.
+ *  Kept as a separate helper so a future "Marketing add-on" can be
+ *  threaded through without untangling the shared aiEnabled check
+ *  from every AI route. */
+export function canUseMarketing(plan: Plan): boolean {
+  return PLANS[plan].marketingEnabled
+}
+
 /** Returns true if the plan allows exports. */
 export function canExport(plan: Plan): boolean {
   return PLANS[plan].exportsEnabled

@@ -33,7 +33,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient }        from '@/lib/supabase/admin'
 import { assertProjectAccess }      from '@/lib/supabase/authz'
-import { getOrgPlan, canUseAI }     from '@/lib/billing/subscription'
+import { getOrgPlan, canUseMarketing }     from '@/lib/billing/subscription'
 import { loadMarketingAssets }      from '@/lib/marketing/assets'
 import { signRenderUrl }            from '@/lib/marketing/storage'
 
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   // Plan gate
   const effectiveId = orgId ?? userId
   const plan = await getOrgPlan(effectiveId)
-  if (!canUseAI(plan)) {
+  if (!canUseMarketing(plan)) {
     return NextResponse.json(
       { error: 'upgrade_required', plan,
         message: 'Marketing kit requires a Freelancer or Studio plan.' },

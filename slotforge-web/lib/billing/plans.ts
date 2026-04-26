@@ -14,6 +14,12 @@ export interface PlanLimits {
   aiEnabled:         boolean
   /** Asset download / export allowed */
   exportsEnabled:    boolean
+  /** Marketing workspace allowed. Today this mirrors `aiEnabled` —
+   *  marketing is gated to the same tiers as AI generation. The flag
+   *  exists separately so a future plan tweak (e.g. a "Marketing Kit
+   *  add-on" for Free) can be expressed without untangling the
+   *  shared aiEnabled flag from every AI route. */
+  marketingEnabled:  boolean
   /** Included AI credits per seat per month */
   creditsPerSeat:    number
   /** Stripe price IDs — used when creating checkout sessions */
@@ -28,40 +34,43 @@ export const PLANS: Record<Plan, PlanLimits & {
   highlight?:   boolean
 }> = {
   free: {
-    name:           'Free',
-    price:          '€0',
-    description:    'Explore the canvas and manage projects — no card required.',
-    maxProjects:    2,
-    maxMembers:     1,
-    aiEnabled:      false,
-    exportsEnabled: false,
-    creditsPerSeat: 0,
+    name:             'Free',
+    price:            '€0',
+    description:      'Explore the canvas and manage projects — no card required.',
+    maxProjects:      2,
+    maxMembers:       1,
+    aiEnabled:        false,
+    exportsEnabled:   false,
+    marketingEnabled: false,
+    creditsPerSeat:   0,
   },
   freelancer: {
-    name:           'Freelancer',
-    price:          '€29',
-    period:         '/seat/mo',
-    description:    'Full AI generation for solo art directors and indie designers.',
-    highlight:      false,
-    maxProjects:    null,
-    maxMembers:     1,
-    aiEnabled:      true,
-    exportsEnabled: true,
-    creditsPerSeat: 50,
-    stripePriceId:  process.env.STRIPE_FREELANCER_PRICE_ID,
+    name:             'Freelancer',
+    price:            '€29',
+    period:           '/seat/mo',
+    description:      'Full AI generation for solo art directors and indie designers.',
+    highlight:        false,
+    maxProjects:      null,
+    maxMembers:       1,
+    aiEnabled:        true,
+    exportsEnabled:   true,
+    marketingEnabled: true,
+    creditsPerSeat:   50,
+    stripePriceId:    process.env.STRIPE_FREELANCER_PRICE_ID,
   },
   studio: {
-    name:           'Studio',
-    price:          '€49',
-    period:         '/seat/mo',
-    description:    'AI generation + team collaboration for growing studios.',
-    highlight:      true,
-    maxProjects:    null,
-    maxMembers:     null,   // unlimited seats, pay per seat
-    aiEnabled:      true,
-    exportsEnabled: true,
-    creditsPerSeat: 100,
-    stripePriceId:  process.env.STRIPE_STUDIO_PRICE_ID,
+    name:             'Studio',
+    price:            '€49',
+    period:           '/seat/mo',
+    description:      'AI generation + team collaboration for growing studios.',
+    highlight:        true,
+    maxProjects:      null,
+    maxMembers:       null,   // unlimited seats, pay per seat
+    aiEnabled:        true,
+    exportsEnabled:   true,
+    marketingEnabled: true,
+    creditsPerSeat:   100,
+    stripePriceId:    process.env.STRIPE_STUDIO_PRICE_ID,
   },
 }
 

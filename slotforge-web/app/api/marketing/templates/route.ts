@@ -19,7 +19,7 @@
 
 import { NextResponse }              from 'next/server'
 import { auth }                      from '@clerk/nextjs/server'
-import { getOrgPlan, canUseAI }      from '@/lib/billing/subscription'
+import { getOrgPlan, canUseMarketing }      from '@/lib/billing/subscription'
 import { listTemplateSummaries }     from '@/lib/marketing/registry'
 
 export async function GET() {
@@ -30,11 +30,10 @@ export async function GET() {
   // always runs — same pattern as every other AI/feature route.
   const effectiveId = orgId ?? userId
   const plan = await getOrgPlan(effectiveId)
-  if (!canUseAI(plan)) {
-    // We reuse the same plan flag as AI generation for v1 — the marketing
-    // workspace is gated to the same tiers (Freelancer + Studio). Day 10
-    // will swap this for a dedicated canUseMarketing(plan) once
-    // lib/billing/plans.ts grows the field.
+  if (!canUseMarketing(plan)) {
+    // Day 10: dedicated marketingEnabled flag lives in lib/billing/plans.ts;
+    // the route delegates to canUseMarketing so a future "Marketing add-on"
+    // tier can be expressed without touching this handler.
     return NextResponse.json(
       { error: 'upgrade_required', plan,
         message: 'Marketing kit requires a Freelancer or Studio plan.' },
