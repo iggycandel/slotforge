@@ -45,6 +45,10 @@
     init:           initOnce,
     refresh:        refresh,
     openExportMenu: openExportMenu,
+    // "Render all" — same pipeline as the export menu but skips the
+    // zip download. Use case: user wants to fill every tile to scan
+    // their kit, without committing to a download yet.
+    renderAll:      function(){ runExportAll(null, /*skipZip*/ true) },
   };
   window._sfMarketing = api;
 
@@ -256,14 +260,17 @@
   }
 
   /** Fire the render-all SSE, surface progress as toast updates, then
-   *  trigger a zip download once the stream completes. The render-all
-   *  stream events update tile thumbnails as they land — same pipeline
-   *  as single-template Render. */
-  function runExportAll(categories){
+   *  optionally trigger a zip download once the stream completes. The
+   *  render-all stream events update tile thumbnails as they land —
+   *  same pipeline as single-template Render.
+   *
+   *  skipZip=true: just populate the tiles, no download. Used by the
+   *  topbar "Render all" button — fastest path to "show me my kit". */
+  function runExportAll(categories, skipZip){
     var pid = projectId();
     if(!pid) return;
 
-    if(typeof showToast === 'function') showToast('Rendering kit…');
+    if(typeof showToast === 'function') showToast(skipZip ? 'Rendering all tiles…' : 'Rendering kit…');
 
     fetch('/api/marketing/render-all', {
       method:      'POST',
@@ -307,7 +314,11 @@
                 showToast('Rendering ' + done + ' / ' + total + '…');
               }
             } else if(ev.event === 'complete'){
-              if(typeof showToast === 'function') showToast('Rendered ' + done + ' / ' + total + ' — packaging zip…');
+              if(typeof showToast === 'function'){
+                showToast(skipZip
+                  ? ('Rendered ' + done + ' / ' + total + ' — done')
+                  : ('Rendered ' + done + ' / ' + total + ' — packaging zip…'));
+              }
               // Refresh the kit list so the modal sees fresh renders
               // next time it opens. Best-effort; non-blocking.
               fetchJSON('/api/marketing/kits?project_id=' + encodeURIComponent(pid))
@@ -315,14 +326,16 @@
                   state.kits      = (r && r.kits)      || state.kits;
                   state.readiness = (r && r.readiness) || state.readiness;
                 }).catch(function(){});
-              // Trigger the zip download via an invisible anchor.
-              var a = document.createElement('a');
-              var qs = 'project_id=' + encodeURIComponent(pid);
-              a.href     = '/api/marketing/zip?' + qs;
-              a.download = '';
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
+              if(!skipZip){
+                // Trigger the zip download via an invisible anchor.
+                var a = document.createElement('a');
+                var qs = 'project_id=' + encodeURIComponent(pid);
+                a.href     = '/api/marketing/zip?' + qs;
+                a.download = '';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }
             } else if(ev.event === 'error'){
               if(typeof showToast === 'function') showToast(ev.data.message || 'Render error');
             }
@@ -1319,6 +1332,9 @@
       overlay.innerHTML = '<div class="mkt-preview-hint">Render once to enable drag-to-position</div>';
       return;
     }
+    // Affirmative hint: this overlay accepts drag.
+    overlay.insertAdjacentHTML('beforeend',
+      '<div class="mkt-preview-hint">↔ Drag any asset to reposition</div>');
     var dispW = img.clientWidth;
     var dispH = img.clientHeight;
     if(!dispW || !dispH) return;
@@ -1572,12 +1588,16 @@
     + '.mkt-preview-wrap{position:relative;width:100%}'
     + '.mkt-preview-img{width:100%;display:block;border-radius:6px;user-select:none;-webkit-user-drag:none}'
     + '.mkt-preview-overlay{position:absolute;inset:0;pointer-events:none}'
-    + '.mkt-preview-handle{position:absolute;border:1.5px dashed rgba(201,168,76,0.0);border-radius:4px;cursor:move;pointer-events:auto;transition:border-color .15s,background-color .15s}'
-    + '.mkt-preview-handle:hover{border-color:rgba(201,168,76,0.8);background:rgba(201,168,76,0.08)}'
-    + '.mkt-preview-handle.is-dragging{border-color:#c9a84c;background:rgba(201,168,76,0.16)}'
-    + '.mkt-preview-handle-label{position:absolute;top:6px;left:6px;background:rgba(10,10,16,0.85);color:#c9a84c;font-size:10px;padding:2px 6px;border-radius:3px;font-family:"DM Mono",monospace;letter-spacing:0.04em;opacity:0;transition:opacity .15s;pointer-events:none}'
+    // Handles: always-visible faint outline so users know they can drag.
+    // Hover brightens; drag locks the gold accent.
+    + '.mkt-preview-handle{position:absolute;border:1px dashed rgba(201,168,76,0.45);border-radius:4px;cursor:move;pointer-events:auto;transition:border-color .15s,background-color .15s,box-shadow .15s}'
+    + '.mkt-preview-handle:hover{border-color:rgba(201,168,76,1);background:rgba(201,168,76,0.10);box-shadow:0 0 0 1px rgba(201,168,76,0.25)}'
+    + '.mkt-preview-handle.is-dragging{border-color:#c9a84c;border-style:solid;background:rgba(201,168,76,0.18)}'
+    // Always-visible badge so the user can SEE which slot is which
+    // (small chip in the top-left corner of each handle).
+    + '.mkt-preview-handle-label{position:absolute;top:6px;left:6px;background:rgba(10,10,16,0.85);color:#c9a84c;font-size:10px;padding:2px 6px;border-radius:3px;font-family:"DM Mono",monospace;letter-spacing:0.04em;opacity:0.9;transition:opacity .15s;pointer-events:none}'
     + '.mkt-preview-handle:hover .mkt-preview-handle-label,.mkt-preview-handle.is-dragging .mkt-preview-handle-label{opacity:1}'
-    + '.mkt-preview-hint{position:absolute;bottom:8px;left:8px;background:rgba(10,10,16,0.85);color:#7a7a94;font-size:10px;padding:4px 8px;border-radius:3px;pointer-events:none}'
+    + '.mkt-preview-hint{position:absolute;bottom:8px;left:8px;background:rgba(10,10,16,0.85);color:#c9a84c;font-size:10px;padding:5px 10px;border-radius:3px;pointer-events:none;font-family:"DM Mono",monospace;letter-spacing:0.04em}'
     + '#mkt-modal-progress{font-size:11px;color:#a0a0b0;font-family:"DM Mono",monospace;min-height:14px}'
     + '#mkt-modal-results{display:flex;flex-direction:column;gap:6px}'
     + '.mkt-result-row{display:flex;align-items:center;gap:10px;background:#1a1a24;border:1px solid #2a2a3a;border-radius:5px;padding:8px 12px;font-size:11px}'

@@ -10659,7 +10659,7 @@ function _activateMarketingWorkspace(){
   if(document.getElementById('_sf_marketing_js')) return;
   var s = document.createElement('script');
   s.id  = '_sf_marketing_js';
-  s.src = '/editor/marketing.js?v=v133';
+  s.src = '/editor/marketing.js?v=v134';
   s.onload  = function(){
     if(window._sfMarketing && typeof window._sfMarketing.init === 'function'){
       window._sfMarketing.init();
@@ -11543,6 +11543,16 @@ function buildAssetChecklist(){
       window._sfMarketing.openExportMenu();
     } else {
       showToast('Export menu not ready — switch to the Marketing tab first');
+    }
+  });
+  // "Render all" — populates every tile without the zip download. Same
+  // SSE pipeline as the export menu, just skips the final archive step.
+  const mktRenderAll = document.getElementById('mkt-render-all-btn');
+  if(mktRenderAll) mktRenderAll.addEventListener('click', () => {
+    if(window._sfMarketing && typeof window._sfMarketing.renderAll === 'function'){
+      window._sfMarketing.renderAll();
+    } else {
+      showToast('Marketing not ready — switch to the Marketing tab first');
     }
   });
 })();
