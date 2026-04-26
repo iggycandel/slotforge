@@ -744,7 +744,11 @@ svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:non
 #ws-marketing{display:none;flex:1;overflow:hidden;flex-direction:column}
 #ws-marketing.ws-visible{display:flex}
 #mkt-header{padding:24px 32px 16px;flex-shrink:0;border-bottom:1px solid #2a2a3a;background:#1a1a26}
-#mkt-body{flex:1;overflow-y:auto;padding:28px 32px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;align-content:start}
+/* v1 marketing replaced the legacy 6-card grid with sectioned content
+ * (Promo / Social / Store / Press), each section managing its own
+ * inner grid. This container just needs vertical flow + scroll — the
+ * sections handle their own layout. */
+#mkt-body{flex:1;overflow-y:auto;display:block}
 .mkt-card{background:#1e1e2a;border:1px solid #2a2a3a;border-radius:14px;overflow:hidden;transition:border-color .15s,transform .15s;cursor:pointer}
 .mkt-card:hover{border-color:#3a3a52;transform:translateY(-2px)}
 .mkt-card-banner{height:120px;display:flex;align-items:center;justify-content:center;font-size:32px;background:linear-gradient(135deg,#1a1a2e,#22223a)}
