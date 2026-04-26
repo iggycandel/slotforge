@@ -4,11 +4,25 @@ let LIB_CAT='All'; // active library category filter
 let LIB_TAB='uploads'; // 'uploads' or 'placeholders'
 
 // Viewport: cx/cy = crop offset inside 2000x2000 canvas, cw/ch = display size
+// v2 UX (centering migration): portrait viewport is now SYMMETRIC
+// within the 2000×2000 canvas. Old definition was cx:441,cw:984 →
+// 441px off-canvas left, 575px off-canvas right (asymmetric by 67px).
+// New definition centres the visible viewport: cx:508,cw:984 →
+// 508px off-canvas on each side. Element x coords from before this
+// migration are shifted +67 on payload load (see PORTRAIT_X_SHIFT_V2
+// + the elVPCoordV stamp). PSD defaults below already reflect the new
+// symmetric layout.
 const VP={
-  portrait:  {label:'Portrait 9:16',   cx:441,cy:0,   cw:984, ch:2000},
+  portrait:  {label:'Portrait 9:16',   cx:508,cy:0,   cw:984, ch:2000},
   landscape: {label:'Landscape 16:9',  cx:0,  cy:0,   cw:2000,ch:1125},
   desktop:   {label:'Desktop 16:9',    cx:0,  cy:0,   cw:2000,ch:1125}
 };
+
+// Shift constant used by the old-→-new payload migration (every
+// portrait x coord moves +67 to preserve visual position relative to
+// the now-centered viewport).
+const PORTRAIT_X_SHIFT_V2 = 508 - 441;
+const EL_VP_COORD_VERSION = 2;
 
 // Positions measured from reference screenshots (Fruity Thrills) and scaled to 2000×2000 canvas.
 // Portrait display: canvas crops x:441–1425 (w:984) at full 2000px height.
@@ -22,27 +36,32 @@ const PSD={
   bg:{label:'Background',type:'template',locked:true,z:1,
     portrait: {x:0,   y:0,    w:2000, h:2000},
     landscape:{x:0,   y:0,    w:2000, h:1125}},
+  // v2 UX centering migration: every PSD `portrait.x` shifted +67 so
+  // the viewport-relative visual position is preserved under the new
+  // symmetric viewport (cx:508). Old visual positions had been
+  // calibrated against cx:441; adding +67 places elements at the
+  // identical pixel offset within the visible viewport.
   jpRow:{label:'Jackpot Bar Row',type:'template',locked:false,z:5,
-    portrait: {x:479,y:540,w:908,h:50},
+    portrait: {x:546,y:540,w:908,h:50},
     landscape:{x:546,y:99, w:1088,h:46}},
   // All other elements are computed by computeLayout() at render time
   // and injected via EL_COMPUTED. PSD entries here are fallback only.
-  reelArea: {label:'Reel Area',     type:'template',locked:false,z:3,portrait:{x:499,y:680,w:868,h:544},landscape:{x:566,y:286,w:868,h:544}},
-  reelFrame:{label:'Reel Frame',    type:'template',locked:false,z:2,portrait:{x:479,y:660,w:908,h:584},landscape:{x:546,y:266,w:908,h:584}},
-  jpGrand:  {label:'Grand Jackpot', type:'template',locked:false,z:5,portrait:{x:479,y:540,w:226,h:110},landscape:{x:546,y:166,w:226,h:90}},
-  jpMajor:  {label:'Major Jackpot', type:'template',locked:false,z:5,portrait:{x:706,y:540,w:226,h:110},landscape:{x:773,y:166,w:226,h:90}},
-  jpMinor:  {label:'Minor Jackpot', type:'template',locked:false,z:5,portrait:{x:933,y:540,w:226,h:110},landscape:{x:1000,y:166,w:226,h:90}},
-  jpMini:   {label:'Mini Jackpot',  type:'template',locked:false,z:5,portrait:{x:1160,y:540,w:226,h:110},landscape:{x:1227,y:166,w:226,h:90}},
-  logo:     {label:'Logo',          type:'ai',       locked:false,z:6,portrait:{x:580,y:280,w:702,h:240},landscape:{x:56,y:266,w:240,h:400}},
-  char:     {label:'Character',     type:'ai',       locked:false,z:6,portrait:{x:500,y:200,w:300,h:520},landscape:{x:56,y:56,w:220,h:800}},
-  settings: {label:'Settings',      type:'template', locked:false,z:7,portrait:{x:1310,y:1370,w:90,h:90},landscape:{x:1910,y:50,w:70,h:70}},
-  bannerBet:{label:'Bet Button',    type:'template', locked:false,z:7,portrait:{x:1100,y:1280,w:278,h:220},landscape:{x:1540,y:77,w:280,h:330}},
-  bannerBuy:{label:'Buy Bonus',     type:'template', locked:false,z:7,portrait:{x:479,y:1280,w:240,h:220},landscape:{x:1540,y:430,w:280,h:280}},
-  bannerAnte:{label:'Ante Bet',      type:'template', locked:false,z:7,portrait:{x:479,y:1280,w:240,h:220},landscape:{x:1540,y:430,w:280,h:280}},
-  spinBtn:  {label:'Spin Button',   type:'template', locked:false,z:7,portrait:{x:800,y:1290,w:260,h:260},landscape:{x:1743,y:810,w:166,h:166}},
-  autoBtn:  {label:'Auto Spin',     type:'template', locked:false,z:7,portrait:{x:660,y:1335,w:130,h:130},landscape:{x:1540,y:838,w:128,h:128}},
-  turboBtn: {label:'Turbo Spin',    type:'template', locked:false,z:7,portrait:{x:1070,y:1335,w:130,h:130},landscape:{x:1875,y:838,w:128,h:128}},
-  msgLabel: {label:'Message Label', type:'template', locked:false,z:7,portrait:{x:441,y:1600,w:984,h:52},landscape:{x:0,y:1072,w:2000,h:45}},
+  reelArea: {label:'Reel Area',     type:'template',locked:false,z:3,portrait:{x:566,y:680,w:868,h:544},landscape:{x:566,y:286,w:868,h:544}},
+  reelFrame:{label:'Reel Frame',    type:'template',locked:false,z:2,portrait:{x:546,y:660,w:908,h:584},landscape:{x:546,y:266,w:908,h:584}},
+  jpGrand:  {label:'Grand Jackpot', type:'template',locked:false,z:5,portrait:{x:546,y:540,w:226,h:110},landscape:{x:546,y:166,w:226,h:90}},
+  jpMajor:  {label:'Major Jackpot', type:'template',locked:false,z:5,portrait:{x:773,y:540,w:226,h:110},landscape:{x:773,y:166,w:226,h:90}},
+  jpMinor:  {label:'Minor Jackpot', type:'template',locked:false,z:5,portrait:{x:1000,y:540,w:226,h:110},landscape:{x:1000,y:166,w:226,h:90}},
+  jpMini:   {label:'Mini Jackpot',  type:'template',locked:false,z:5,portrait:{x:1227,y:540,w:226,h:110},landscape:{x:1227,y:166,w:226,h:90}},
+  logo:     {label:'Logo',          type:'ai',       locked:false,z:6,portrait:{x:647,y:280,w:702,h:240},landscape:{x:56,y:266,w:240,h:400}},
+  char:     {label:'Character',     type:'ai',       locked:false,z:6,portrait:{x:567,y:200,w:300,h:520},landscape:{x:56,y:56,w:220,h:800}},
+  settings: {label:'Settings',      type:'template', locked:false,z:7,portrait:{x:1377,y:1370,w:90,h:90},landscape:{x:1910,y:50,w:70,h:70}},
+  bannerBet:{label:'Bet Button',    type:'template', locked:false,z:7,portrait:{x:1167,y:1280,w:278,h:220},landscape:{x:1540,y:77,w:280,h:330}},
+  bannerBuy:{label:'Buy Bonus',     type:'template', locked:false,z:7,portrait:{x:546,y:1280,w:240,h:220},landscape:{x:1540,y:430,w:280,h:280}},
+  bannerAnte:{label:'Ante Bet',      type:'template', locked:false,z:7,portrait:{x:546,y:1280,w:240,h:220},landscape:{x:1540,y:430,w:280,h:280}},
+  spinBtn:  {label:'Spin Button',   type:'template', locked:false,z:7,portrait:{x:867,y:1290,w:260,h:260},landscape:{x:1743,y:810,w:166,h:166}},
+  autoBtn:  {label:'Auto Spin',     type:'template', locked:false,z:7,portrait:{x:727,y:1335,w:130,h:130},landscape:{x:1540,y:838,w:128,h:128}},
+  turboBtn: {label:'Turbo Spin',    type:'template', locked:false,z:7,portrait:{x:1137,y:1335,w:130,h:130},landscape:{x:1875,y:838,w:128,h:128}},
+  msgLabel: {label:'Message Label', type:'template', locked:false,z:7,portrait:{x:508,y:1600,w:984,h:52},landscape:{x:0,y:1072,w:2000,h:45}},
 };
 
 // ── DYNAMIC LAYOUT ENGINE ──
@@ -84,9 +103,12 @@ function computeLayout(){
   const frameW_P = reelW_P + FRAME*2;
   const frameH_P = reelH_P + FRAME*2;
 
-  // Centre the reel frame within the 984px portrait crop window
-  // Canvas portrait crop starts at x:441, width 984 → centre = 441+492 = 933
-  const frameCX_P = 933;
+  // Centre the reel frame within the portrait crop window. Reads from
+  // VP.portrait so the viewport symmetry change (cx:508 in v2) flows
+  // through automatically — no more hard-coded 933 magic number.
+  const VP_P_LEFT  = VP.portrait.cx;
+  const VP_P_RIGHT = VP.portrait.cx + VP.portrait.cw;
+  const frameCX_P  = VP_P_LEFT + VP.portrait.cw / 2;
   const frameX_P = Math.round(frameCX_P - frameW_P/2);
   const reelX_P  = frameX_P + FRAME;
 
@@ -112,7 +134,7 @@ function computeLayout(){
 
   // settings circle: top-right of crop
   const settingsSize = 80;
-  const settingsX = 441 + 984 - settingsSize - 20;
+  const settingsX = VP_P_RIGHT - settingsSize - 20;
   const settingsY = MSG_H_P + 20;
 
   // Logo: large centred box — fills the full space between msg strip and JP bar row
@@ -128,8 +150,8 @@ function computeLayout(){
   const uiStripBot = uiStripTop + UI_BOTTOM_P; // bottom of UI area (where balance bar begins)
   const uiY_P = uiStripTop + Math.round(UI_BOTTOM_P * 0.42); // spin cluster centre Y
 
-  // Spread AUTO–SPIN–TURBO across the full 984px portrait crop width
-  const cropL = 441, cropR = 1425;
+  // Spread AUTO–SPIN–TURBO across the full portrait crop width
+  const cropL = VP_P_LEFT, cropR = VP_P_RIGHT;
   const autoGap_P  = spinR_P + auxR_P + 30; // centre distance spin→auto
   const turboGap_P = spinR_P + auxR_P + 30;
 
@@ -151,7 +173,7 @@ function computeLayout(){
     // Logo: prominent centred box in the full space above the JP bars
     logo:     {x:logoX_P, y:logoY_P, w:logoW_P, h:logoH_P},
     // Char: portrait character art alongside reel area (left edge, disabled by default)
-    char:     {x:441, y:jpY_P, w:240, h:frameH_P + JP_H_P},
+    char:     {x:VP_P_LEFT, y:jpY_P, w:240, h:frameH_P + JP_H_P},
     // Settings: small circle top-right of crop
     settings: {x:settingsX, y:settingsY, w:settingsSize, h:settingsSize},
     // Spin cluster: AUTO(left) · SPIN(centre) · TURBO(right) — centred in upper half of UI strip
@@ -162,7 +184,7 @@ function computeLayout(){
     bannerBet: {x:betX_P,  y:panelBotY - betH_P,               w:betW_P,  h:betH_P},
     bannerAnte:{x:betX_P,  y:panelBotY - betH_P - anteH_P - 8, w:anteW_P, h:anteH_P},
     bannerBuy: {x:buyX_P,  y:panelBotY - buyH_P,               w:buyW_P,  h:buyH_P},
-    msgLabel:  {x:441, y:0, w:984, h:MSG_H_P},
+    msgLabel:  {x:VP_P_LEFT, y:0, w:VP.portrait.cw, h:MSG_H_P},
   };
 
   // ── LANDSCAPE ──
@@ -275,6 +297,35 @@ function _ensureScreenBucket(vp, sk){
   return EL_VP[vp][sk];
 }
 
+/** v2 symmetric-viewport migration: shift every portrait x coord by
+ *  PORTRAIT_X_SHIFT_V2 (+67). Preserves the visual position of every
+ *  saved layout when the viewport's cx changes from 441 to 508 — old
+ *  positions were calibrated against the old viewport, +67 brings
+ *  them onto the new viewport.
+ *
+ *  Operates on a per-viewport bucket (the shape post-screen-bucket
+ *  migration), so it expects:
+ *    vpData = { base: { char: {x,y,w,h}, ... }, splash: { ... }, ... }
+ *  Skips landscape data (caller only invokes on portrait).
+ *
+ *  IMPORTANT: don't migrate twice — an `elVPCoordV >= 2` flag on the
+ *  saved payload means the shift was already applied. Caller handles
+ *  the flag check.
+ */
+function _migrateELVPPortraitCoordsV2(portraitData){
+  if(!portraitData || typeof portraitData !== 'object') return;
+  Object.keys(portraitData).forEach(function(sk){
+    var bucket = portraitData[sk];
+    if(!bucket || typeof bucket !== 'object') return;
+    Object.keys(bucket).forEach(function(elKey){
+      var pos = bucket[elKey];
+      if(pos && typeof pos === 'object' && typeof pos.x === 'number'){
+        pos.x += PORTRAIT_X_SHIFT_V2;
+      }
+    });
+  });
+}
+
 /** Detect the legacy flat-EL_VP shape and wrap into a base-screen
  *  bucket so all the new per-screen accessors work transparently with
  *  pre-migration payloads. Mutates the input object in place. */
@@ -343,6 +394,10 @@ function serializeState(){
     if (k.startsWith('group_') || k.startsWith('custom_')) customPsd[k] = PSD[k];
   });
   return JSON.stringify({
+    // v2 stamp: marks this snapshot's portrait coords as already on
+    // the symmetric viewport. The migration in restoreSnap reads
+    // this; without the flag it would re-shift.
+    elVPCoordV: EL_VP_COORD_VERSION,
     p: JSON.parse(JSON.stringify(EL_VP.portrait)),
     l: JSON.parse(JSON.stringify(EL_VP.landscape)),
     features: JSON.parse(JSON.stringify(P.features)),
@@ -400,11 +455,14 @@ function restoreSnap(){
   Object.keys(EL_VP.landscape).forEach(k=>delete EL_VP.landscape[k]);
   // v2 UX: snapshots saved BEFORE the per-screen migration carry the
   // old flat shape; migrate before merging so old undo/redo entries
-  // restore cleanly into the new EL_VP bucket structure.
+  // restore cleanly into the new EL_VP bucket structure. The
+  // portrait-coord shift then runs only when the snapshot pre-dates
+  // the symmetric-viewport change (s.elVPCoordV unset / < 2).
   const sP = JSON.parse(JSON.stringify(s.p));
   const sL = JSON.parse(JSON.stringify(s.l));
   _migrateELVPViewport(sP);
   _migrateELVPViewport(sL);
+  if((s.elVPCoordV || 0) < EL_VP_COORD_VERSION) _migrateELVPPortraitCoordsV2(sP);
   Object.assign(EL_VP.portrait,sP);
   Object.assign(EL_VP.landscape,sL);
   if(s.features) Object.assign(P.features,s.features);
@@ -862,9 +920,9 @@ Object.keys(OV_SUBS).forEach((ovId, i) => {
       subId: sub.id,
       locked: false,
       z: 500 + i * 10 + j,
-      // Portrait viewport: cx=441, cw=984 → centred
-      // Landscape viewport: cx=0, cw=2000 → centred
-      portrait: { x: 441, y: 700 + j * 130, w: 984,  h: 120 },
+      // Portrait viewport: cx=508, cw=984 → centred (v2 symmetric)
+      // Landscape viewport: cx=0,   cw=2000 → centred
+      portrait: { x: VP.portrait.cx, y: 700 + j * 130, w: VP.portrait.cw, h: 120 },
       landscape:{ x: 0,   y: 300 + j * 130, w: 2000, h: 120 },
     };
   });
@@ -884,10 +942,11 @@ PSD['dimLayer'] = {
 // Auto-registered PSD entries use a generic "stacked rows" default (y=700,
 // 130 px apart). Override with bespoke positions tuned to the catalogue's
 // intro/outro compositions so they land in sensible spots on first paint.
-// Portrait viewport: cx=441, cy=0, cw=984, ch=2000 — so "centered 984 wide"
-// means x=441, w=984. Landscape: cx=0, cy=0, cw=2000, ch=1125.
+// Portrait viewport: cx=508, cy=0, cw=984, ch=2000 (v2 symmetric).
+// "Centered 984 wide" means x=cx, w=cw — read from VP so the
+// migration constants stay in one place.
 (function _layoutFeatureOvs(){
-  const portraitBanner = { x:441, w:984 };
+  const portraitBanner = { x: VP.portrait.cx, w: VP.portrait.cw };
   const landscapeBanner= { x:0,   w:2000 };
   // Intro: banner at top-center, sub-copy below
   ['ov-bp-intro','ov-fs-intro','ov-hns-intro','ov-wb-intro','ov-lb-intro','ov-gb-intro','ov-sg-intro'].forEach(ov => {
@@ -903,7 +962,7 @@ PSD['dimLayer'] = {
     PSD[`${ov}_amount`].portrait = { ...portraitBanner,  y: 620, h: 260 };
     PSD[`${ov}_amount`].landscape= { ...landscapeBanner, y: 320, h: 200 };
     // Button defaults to 400×140 centred horizontally in portrait, 480×120 in landscape
-    PSD[`${ov}_btn`].portrait    = { x: 441 + (984-500)/2, y: 1360, w: 500, h: 140 };
+    PSD[`${ov}_btn`].portrait    = { x: VP.portrait.cx + (VP.portrait.cw - 500)/2, y: 1360, w: 500, h: 140 };
     PSD[`${ov}_btn`].landscape   = { x:       (2000-560)/2, y: 780,  w: 560, h: 120 };
   });
 })();
@@ -4221,6 +4280,10 @@ function buildFilePayload(){
     screens:   P.screens ? [...P.screens] : null,
     library:   JSON.parse(JSON.stringify(P.library||[])),
     symbols:   JSON.parse(JSON.stringify(P.symbols||[])),
+    // v2 UX: stamp the coord version so the loader knows portrait x
+    // values are already on the symmetric (cx:508) viewport — no
+    // +67 shift needed on next load.
+    elVPCoordV: EL_VP_COORD_VERSION,
     // Layer positions
     elVP: {
       portrait:  JSON.parse(JSON.stringify(EL_VP.portrait  || {})),
@@ -4370,9 +4433,11 @@ function _restoreFilePayload(d){
     Object.keys(EL_VP.landscape||{}).forEach(k => delete EL_VP.landscape[k]);
     // v2 UX: migrate flat snapshots into screen-bucket shape before
     // merging. Same logic as restoreSnap / _sfApplyPayload.
+    var _needCoordShift2 = ((d.elVPCoordV || 0) < EL_VP_COORD_VERSION);
     if(d.elVP.portrait){
       var _vpP2 = JSON.parse(JSON.stringify(d.elVP.portrait));
       _migrateELVPViewport(_vpP2);
+      if(_needCoordShift2) _migrateELVPPortraitCoordsV2(_vpP2);
       Object.assign(EL_VP.portrait, _vpP2);
     }
     if(d.elVP.landscape){
@@ -12258,9 +12323,15 @@ window._sfApplyPayload = function(payload){
   // layouts because the migration wraps every element into the
   // 'base' screen bucket — getPos's base-fallback then preserves
   // identical visual output across every screen.
+  // After bucket migration, the portrait-coord shift runs only on
+  // payloads from before the symmetric-viewport change
+  // (s.elVPCoordV unset or < 2). Visual position is preserved: the
+  // viewport moved +67 right and every element x moves +67 right.
+  var _needCoordShift = ((s.elVPCoordV || 0) < EL_VP_COORD_VERSION);
   try { if(s.elVP && s.elVP.portrait){
     var _vpP = JSON.parse(JSON.stringify(s.elVP.portrait));
     _migrateELVPViewport(_vpP);
+    if(_needCoordShift) _migrateELVPPortraitCoordsV2(_vpP);
     Object.assign(EL_VP.portrait, _vpP);
   } } catch(e){}
   try { if(s.elVP && s.elVP.landscape){
