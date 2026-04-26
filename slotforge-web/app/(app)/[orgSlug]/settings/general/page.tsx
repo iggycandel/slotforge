@@ -1,6 +1,7 @@
-import { auth }            from '@clerk/nextjs/server'
-import { createClient }    from '@/lib/supabase/server'
-import GeneralSettingsForm from './GeneralSettingsForm'
+import { auth }                       from '@clerk/nextjs/server'
+import { createAdminClient }          from '@/lib/supabase/admin'
+import { assertWorkspaceAccessBySlug } from '@/lib/supabase/authz'
+import GeneralSettingsForm            from './GeneralSettingsForm'
 
 interface Props { params: Promise<{ orgSlug: string }> }
 
@@ -10,14 +11,20 @@ export default async function GeneralSettingsPage({ params }: Props) {
   const { orgSlug } = await params
   const { userId }  = await auth()
 
-  // Read workspace from Supabase (the app has no Clerk orgs — routes by userId)
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('workspaces')
-    .select('name, slug')
-    .eq('slug', orgSlug)
-    .eq('clerk_org_id', userId ?? '')
-    .maybeSingle()
+  // v122 / H1 follow-up — service-role read with explicit ownership
+  // assertion. Pre-v122 used the anon-key SSR client which now has zero
+  // privileges on the workspaces table.
+  let data: { name: string; slug: string } | null = null
+  if (userId && (await assertWorkspaceAccessBySlug(userId, orgSlug))) {
+    const supabase = createAdminClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await (supabase as any)
+      .from('workspaces')
+      .select('name, slug')
+      .eq('slug', orgSlug)
+      .maybeSingle()
+    data = res.data
+  }
 
   return (
     <div className="max-w-lg space-y-8">

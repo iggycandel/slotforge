@@ -1,10 +1,20 @@
 'use server'
 
 import { auth } from '@clerk/nextjs/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertWorkspaceAccessBySlug, assertProjectAccess } from '@/lib/supabase/authz'
 import { slugify } from '@/lib/utils'
 import { getOrgPlan, underProjectLimit } from '@/lib/billing/subscription'
 import type { Project, ActionResult } from '@/types'
+
+// v122 / H1 follow-up — this file ran on the anon-key SSR client pre-v122
+// and silently relied on RLS to filter rows. With the public-schema
+// lockdown, anon/authenticated have no privileges → every query returned
+// empty → list pages went blank, project create silently failed. All
+// reads/writes now go through the service-role admin client; ownership
+// is checked explicitly via assertWorkspaceAccessBySlug /
+// assertProjectAccess before any query that takes a user-supplied id or
+// slug.
 
 // ─── Read ───────────────────────────────────────────────────────────────────
 
@@ -15,10 +25,14 @@ export async function getProjects(
 ): Promise<Project[]> {
   const { userId } = await auth()
   if (!userId) return []
+  // Verify the caller owns this workspace BEFORE we issue the query.
+  // Without this, a malicious caller passing someone else's slug would
+  // get back projects through the service-role client.
+  if (!(await assertWorkspaceAccessBySlug(userId, orgSlug))) return []
 
-  const supabase = await createClient()
-
-  let q = supabase
+  const supabase = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q = (supabase as any)
     .from('projects')
     .select('*, workspaces!inner(slug)')
     .eq('workspaces.slug', orgSlug)
@@ -38,10 +52,10 @@ export async function getProjects(
   // directly in thumbnail_path (small enough for a 240×135 preview); legacy
   // rows may contain a Supabase Storage path, so handle both.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  return (data ?? []).map((row) => ({
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
     ...row,
     thumbnail_url: row.thumbnail_path
-      ? (row.thumbnail_path.startsWith('data:')
+      ? ((row.thumbnail_path as string).startsWith('data:')
           ? row.thumbnail_path
           : `${supabaseUrl}/storage/v1/object/public/thumbnails/${row.thumbnail_path}`)
       : null,
@@ -71,25 +85,20 @@ export async function createProject(input: {
     return { data: null, error: 'Not authenticated' }
   }
 
-  const supabase = await createClient()
-
-  // Resolve workspace ID from slug
-  const { data: workspace, error: wsError } = await supabase
-    .from('workspaces')
-    .select('id')
-    .eq('slug', input.orgSlug)
-    .single()
-
-  if (wsError || !workspace) {
+  const access = await assertWorkspaceAccessBySlug(userId, input.orgSlug)
+  if (!access) {
     return { data: null, error: 'Workspace not found' }
   }
 
+  const supabase = createAdminClient()
+
   // ── Plan limit check ────────────────────────────────────────────────────────
   const plan = await getOrgPlan(userId)
-  const { count: projectCount } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { count: projectCount } = await (supabase as any)
     .from('projects')
     .select('*', { count: 'exact', head: true })
-    .eq('workspace_id', workspace.id)
+    .eq('workspace_id', access.workspaceId)
 
   if (!underProjectLimit(plan, projectCount ?? 0)) {
     return { data: null, error: 'project_limit_reached' }
@@ -98,10 +107,11 @@ export async function createProject(input: {
 
   const slug = slugify(input.name)
 
-  const { data, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
     .from('projects')
     .insert({
-      workspace_id: workspace.id,
+      workspace_id: access.workspaceId,
       name:         input.name,
       slug,
       theme:        input.theme,
@@ -130,10 +140,13 @@ export async function updateProjectStatus(
 ): Promise<ActionResult<null>> {
   const { userId } = await auth()
   if (!userId) return { data: null, error: 'Not authenticated' }
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return { data: null, error: 'Not found' }
+  }
 
-  const supabase = await createClient()
-
-  const { error } = await supabase
+  const supabase = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
     .from('projects')
     .update({ status })
     .eq('id', projectId)

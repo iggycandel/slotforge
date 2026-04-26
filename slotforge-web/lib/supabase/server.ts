@@ -4,10 +4,22 @@ import { auth } from '@clerk/nextjs/server'
 import type { Database } from '@/types/database'
 
 /**
- * Server Supabase client — used in Server Components and Server Actions.
+ * @deprecated v122 / H1 — DO NOT USE for the public schema.
  *
- * Injects the Clerk session JWT as the Authorization header so that
- * Supabase RLS policies receive the correct `org_id` claim.
+ * Post-v122 lockdown, anon and authenticated have zero privileges on
+ * every public table. This anon-key SSR client (with optional Clerk JWT
+ * pass-through) returns empty result sets and broken writes for any
+ * `public.*` query.
+ *
+ * Use lib/supabase/admin.ts (service-role bypass) for server-side
+ * reads/writes, with explicit `assertProjectAccess` /
+ * `assertWorkspaceAccessBySlug` calls in lib/supabase/authz.ts as the
+ * authorization gate.
+ *
+ * The file is kept only for the (currently unused) future scenario
+ * where client-side direct DB access is reintroduced — in which case
+ * narrow per-table RLS policies must be added to grant access back to
+ * `authenticated`.
  */
 export async function createClient() {
   const cookieStore = await cookies()

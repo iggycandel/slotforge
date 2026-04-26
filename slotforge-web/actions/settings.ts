@@ -1,8 +1,13 @@
 'use server'
 
-import { auth }         from '@clerk/nextjs/server'
-import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { auth }              from '@clerk/nextjs/server'
+import { revalidatePath }    from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertWorkspaceAccessBySlug } from '@/lib/supabase/authz'
+
+// v122 / H1 follow-up — switched to service-role admin client, ownership
+// gated explicitly via assertWorkspaceAccessBySlug. See actions/editor.ts
+// for the full rationale.
 
 export interface UpdateWorkspaceResult {
   ok:     boolean
@@ -30,15 +35,19 @@ export async function updateWorkspace(
   if (!slug)        return { ok: false, error: 'Slug is required' }
   if (!currentSlug) return { ok: false, error: 'Current slug missing' }
 
-  try {
-    const supabase = await createClient()
+  // Verify ownership before any write — service-role bypasses RLS so the
+  // .eq('clerk_org_id', userId) belt that used to protect this query is
+  // no longer load-bearing.
+  const access = await assertWorkspaceAccessBySlug(userId, currentSlug)
+  if (!access) return { ok: false, error: 'Workspace not found' }
 
-    const { error } = await supabase
+  try {
+    const supabase = createAdminClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
       .from('workspaces')
       .update({ name, slug })
-      .eq('slug', currentSlug)
-      // Ensure the user owns this workspace (clerk_org_id stores userId for personal workspaces)
-      .eq('clerk_org_id', userId)
+      .eq('id', access.workspaceId)
 
     if (error) return { ok: false, error: error.message }
 

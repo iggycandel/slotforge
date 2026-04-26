@@ -1,10 +1,26 @@
 'use server'
 import { auth } from '@clerk/nextjs/server'
-import { createClient } from '../lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertProjectAccess } from '@/lib/supabase/authz'
+
+// v122 / H1 follow-up — server actions must use the service-role admin
+// client. The pre-v122 lockdown stripped anon/authenticated of all
+// privileges on public tables, so the previous `createClient` (anon-key
+// SSR client with Clerk JWT pass-through) returned zero rows and every
+// project page 404'd. Auth is enforced HERE via assertProjectAccess
+// before any read/write that takes a user-supplied projectId — the
+// previous code relied on RLS, which now has nothing to fall back on
+// since service-role bypasses it.
 
 export async function getProjectWithPayload(projectId: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
+  const { userId } = await auth()
+  if (!userId) return { data: null, error: 'Not authenticated' }
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return { data: null, error: 'Not found' }
+  }
+  const supabase = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
     .from('projects')
     .select('*')
     .eq('id', projectId)
@@ -13,7 +29,12 @@ export async function getProjectWithPayload(projectId: string) {
 }
 
 export async function autosaveProject(projectId: string, payload: Record<string, unknown>) {
-  const supabase = await createClient()
+  const { userId } = await auth()
+  if (!userId) return { error: 'Not authenticated' }
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return { error: 'Not found' }
+  }
+  const supabase  = createAdminClient()
   const thumbnail = (payload._thumbnail as string | undefined) ?? null
   const cleanPayload: Record<string, unknown> = { ...payload }
   delete cleanPayload._thumbnail
@@ -47,10 +68,12 @@ export async function autosaveProject(projectId: string, payload: Record<string,
   const update: Record<string, unknown> = { payload: cleanPayload, updated_at: new Date().toISOString() }
   const gameName = (payload.gameName as string | undefined)?.trim()
   if (gameName) update.name = gameName
-  const { error } = await supabase.from('projects').update(update as any).eq('id', projectId)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).from('projects').update(update).eq('id', projectId)
   // Save thumbnail separately (best-effort) — column is thumbnail_path, not thumbnail_url
   if (thumbnail && !error) {
-    await supabase.from('projects').update({ thumbnail_path: thumbnail }).eq('id', projectId)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('projects').update({ thumbnail_path: thumbnail }).eq('id', projectId)
   }
   return { error }
 }
@@ -58,14 +81,19 @@ export async function autosaveProject(projectId: string, payload: Record<string,
 export async function createSnapshot(projectId: string, payload: Record<string, unknown>, label?: string) {
   const { userId } = await auth()
   if (!userId) return { data: null, error: 'Not authenticated' }
-  const supabase = await createClient()
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return { data: null, error: 'Not found' }
+  }
+  const supabase = createAdminClient()
   // Count existing snapshots to derive an auto-incrementing version number
-  const { count } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { count } = await (supabase as any)
     .from('project_snapshots')
     .select('*', { count: 'exact', head: true })
     .eq('project_id', projectId)
   const version = (count ?? 0) + 1
-  const { data, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
     .from('project_snapshots')
     .insert({
       project_id: projectId,
@@ -81,8 +109,14 @@ export async function createSnapshot(projectId: string, payload: Record<string, 
 }
 
 export async function getSnapshots(projectId: string, limit = 20) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
+  const { userId } = await auth()
+  if (!userId) return { data: null, error: 'Not authenticated' }
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return { data: null, error: 'Not found' }
+  }
+  const supabase = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any)
     .from('project_snapshots')
     .select('*')
     .eq('project_id', projectId)
@@ -91,30 +125,56 @@ export async function getSnapshots(projectId: string, limit = 20) {
   return { data, error }
 }
 
+/** Restore a snapshot by id. Resolves the snapshot → its project_id, then
+ *  asserts the caller owns that project before applying the payload. The
+ *  caller never supplies the project id directly so the same auth chain
+ *  applies whether the link is shared internally or guessed. */
 export async function restoreSnapshot(snapshotId: string) {
-  const supabase = await createClient()
-  const { data: snapshot, error: snapError } = await supabase
+  const { userId } = await auth()
+  if (!userId) return { error: 'Not authenticated' }
+  const supabase = createAdminClient()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: snapshot, error: snapError } = await (supabase as any)
     .from('project_snapshots')
     .select('*')
     .eq('id', snapshotId)
     .single()
-  if (snapError || !snapshot) return { error: snapError }
-  const { error } = await supabase
+  if (snapError || !snapshot) return { error: snapError ?? 'Not found' }
+
+  if (!(await assertProjectAccess(userId, snapshot.project_id))) {
+    return { error: 'Not found' }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
     .from('projects')
     .update({ payload: snapshot.payload as Record<string, unknown>, updated_at: new Date().toISOString() })
     .eq('id', snapshot.project_id)
   return { error }
 }
 
-/** Delete a single snapshot. Server-only — needs the auth check so a
- *  user can't delete someone else's history through the public action.
- *  Returns { error } so the caller can show inline feedback without a
- *  toast / modal infra. */
+/** Delete a single snapshot. Same auth chain as restoreSnapshot — resolve
+ *  the snapshot first, then verify ownership before deleting. */
 export async function deleteSnapshot(snapshotId: string) {
   const { userId } = await auth()
   if (!userId) return { error: 'Not authenticated' }
-  const supabase = await createClient()
-  const { error } = await supabase
+  const supabase = createAdminClient()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: snapshot } = await (supabase as any)
+    .from('project_snapshots')
+    .select('project_id')
+    .eq('id', snapshotId)
+    .maybeSingle()
+  if (!snapshot?.project_id) return { error: 'Not found' }
+
+  if (!(await assertProjectAccess(userId, snapshot.project_id))) {
+    return { error: 'Not found' }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
     .from('project_snapshots')
     .delete()
     .eq('id', snapshotId)
