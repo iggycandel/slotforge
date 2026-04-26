@@ -14,11 +14,15 @@ const nextConfig = {
   // Security headers (audit M1, v120). Conservative baseline applied to
   // every response. Each header exists for a specific attack class:
   //
-  //   X-Frame-Options: DENY
-  //     Stops the editor being framed by a third-party origin
+  //   X-Frame-Options: SAMEORIGIN
+  //     Stops the editor being framed by a THIRD-PARTY origin
   //     (clickjacking — an attacker frames the canvas, overlays a
   //     transparent button, tricks the user into clicking Generate /
-  //     Save / Delete on their own project).
+  //     Save / Delete on their own project). v122 fix-up: was DENY,
+  //     which blocked the editor's own iframe from loading
+  //     `/editor/spinative.html` even though both URLs are same-origin.
+  //     SAMEORIGIN closes the cross-origin clickjacking surface while
+  //     letting our own editor frame load.
   //
   //   X-Content-Type-Options: nosniff
   //     Forces the browser to honour the Content-Type header. Without
@@ -51,7 +55,7 @@ const nextConfig = {
       {
         source: '/(.*)',
         headers: [
-          { key: 'X-Frame-Options',           value: 'DENY' },
+          { key: 'X-Frame-Options',           value: 'SAMEORIGIN' },
           { key: 'X-Content-Type-Options',    value: 'nosniff' },
           { key: 'Referrer-Policy',           value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy',        value: 'camera=(), microphone=(), geolocation=()' },
