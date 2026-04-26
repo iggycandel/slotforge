@@ -154,13 +154,178 @@
     });
   }
 
+  // ─── Export-all menu ───────────────────────────────────────────────────────
+  //
+  // The topbar "Export all kit ▾" button opens a small dropdown anchored
+  // to the button. Each option fires a render-all SSE for the chosen
+  // category set, then triggers a zip download once everything's
+  // rendered (cache hits make the second pass effectively free).
+
   function openExportMenu(){
-    // Day 9 wires bulk-export with a real menu. Until then surface a
-    // toast so a user click on the topbar button is acknowledged
-    // instead of looking dead.
-    if(typeof showToast === 'function'){
-      showToast('Bulk export ships in v1 day 9');
+    if(!projectId()){
+      if(typeof showToast === 'function') showToast('Project not loaded yet');
+      return;
     }
+    var btn = document.getElementById('mkt-export-btn');
+    if(!btn) return;
+    // Toggle: clicking the button while the menu is open closes it.
+    var existing = document.getElementById('mkt-export-menu');
+    if(existing){ existing.remove(); return; }
+
+    // Anchor the menu under the button. Position fixed so it survives
+    // any iframe scroll. Built fresh each open so a stale menu can't
+    // leak between sessions.
+    var rect = btn.getBoundingClientRect();
+    var menu = document.createElement('div');
+    menu.id = 'mkt-export-menu';
+    menu.style.cssText = 'position:fixed;top:'+(rect.bottom+6)+'px;right:'+Math.max(8, window.innerWidth - rect.right)+'px;background:#13131a;border:1px solid #2a2a3a;border-radius:6px;padding:6px;z-index:9999;min-width:240px;box-shadow:0 8px 24px rgba(0,0,0,0.4)';
+
+    // Compute counts so the menu labels are honest about output volume.
+    var counts = countRendersByCategory();
+    var items = [
+      { key: null,                 label: 'All categories',     count: counts.all   },
+      { key: ['promo'],            label: 'Promo Screens only', count: counts.promo },
+      { key: ['social'],           label: 'Social Assets only', count: counts.social },
+      { key: ['store'],            label: 'Store Page only',    count: counts.store },
+      { key: ['press'],            label: 'Press Kit only',     count: counts.press },
+    ];
+    var html = '';
+    for(var i = 0; i < items.length; i++){
+      var it = items[i];
+      if(it.count === 0) continue;
+      html += '<button class="mkt-export-item" data-cats="'+(it.key ? it.key.join(',') : '')+'">'
+            +   '<span>'+escapeHtml(it.label)+'</span>'
+            +   '<span class="mkt-export-count">'+it.count+' files</span>'
+            + '</button>';
+    }
+    menu.innerHTML = html;
+    document.body.appendChild(menu);
+
+    // Inject menu CSS once
+    if(!document.getElementById('_sf_marketing_menu_css')){
+      var s = document.createElement('style');
+      s.id = '_sf_marketing_menu_css';
+      s.textContent = ''
+        + '.mkt-export-item{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 12px;font-size:12px;color:#e0deda;background:transparent;border:none;border-radius:4px;cursor:pointer;text-align:left;font-family:inherit}'
+        + '.mkt-export-item:hover{background:#1a1a24}'
+        + '.mkt-export-count{color:#7a7a94;font-size:10px;font-family:"DM Mono",monospace;margin-left:12px}';
+      document.head.appendChild(s);
+    }
+
+    menu.addEventListener('click', function(ev){
+      var item = ev.target && ev.target.closest && ev.target.closest('.mkt-export-item');
+      if(!item) return;
+      var cats = item.getAttribute('data-cats');
+      var arr  = cats ? cats.split(',') : null;
+      menu.remove();
+      runExportAll(arr);
+    });
+
+    // Outside-click closes
+    setTimeout(function(){
+      function offClick(e){
+        if(!menu.contains(e.target) && e.target !== btn){
+          menu.remove();
+          document.removeEventListener('click', offClick);
+        }
+      }
+      document.addEventListener('click', offClick);
+    }, 0);
+  }
+
+  /** Sum of (template × size) pairs for each category, given the
+   *  loaded templates catalogue. */
+  function countRendersByCategory(){
+    var out = { promo: 0, social: 0, store: 0, press: 0, all: 0 };
+    var ts = state.templates || [];
+    for(var i = 0; i < ts.length; i++){
+      var t = ts[i];
+      var n = (t.sizes || []).length;
+      if(out[t.category] != null) out[t.category] += n;
+      out.all += n;
+    }
+    return out;
+  }
+
+  /** Fire the render-all SSE, surface progress as toast updates, then
+   *  trigger a zip download once the stream completes. The render-all
+   *  stream events update tile thumbnails as they land — same pipeline
+   *  as single-template Render. */
+  function runExportAll(categories){
+    var pid = projectId();
+    if(!pid) return;
+
+    if(typeof showToast === 'function') showToast('Rendering kit…');
+
+    fetch('/api/marketing/render-all', {
+      method:      'POST',
+      credentials: 'same-origin',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ project_id: pid, categories: categories || undefined }),
+    }).then(function(res){
+      if(!res.ok || !res.body){
+        return res.json().catch(function(){ return {}; }).then(function(b){
+          var msg = (b && b.message) || (b && b.error) || ('HTTP ' + res.status);
+          throw new Error(msg);
+        });
+      }
+      var reader  = res.body.getReader();
+      var decoder = new TextDecoder('utf-8');
+      var buf     = '';
+      var lastProgressToast = 0;
+      var done = 0, total = 0;
+
+      function pump(){
+        return reader.read().then(function(chunk){
+          if(chunk.done) return;
+          buf += decoder.decode(chunk.value, { stream: true });
+          var idx;
+          while((idx = buf.indexOf('\n\n')) >= 0){
+            var raw = buf.slice(0, idx); buf = buf.slice(idx + 2);
+            var ev = parseSseBlock(raw);
+            if(!ev) continue;
+            if(ev.event === 'start'){
+              total = ev.data.total;
+              if(typeof showToast === 'function') showToast('Rendering 0 / ' + total + '…');
+            } else if(ev.event === 'render'){
+              // Update tile thumbnail in real time — same path as
+              // single-template Render so the grid populates as we go.
+              updateTileThumbnail(ev.data.template_id, ev.data.url);
+            } else if(ev.event === 'progress'){
+              done = ev.data.completed;
+              var now = Date.now();
+              if(now - lastProgressToast > 1000 && typeof showToast === 'function'){
+                lastProgressToast = now;
+                showToast('Rendering ' + done + ' / ' + total + '…');
+              }
+            } else if(ev.event === 'complete'){
+              if(typeof showToast === 'function') showToast('Rendered ' + done + ' / ' + total + ' — packaging zip…');
+              // Refresh the kit list so the modal sees fresh renders
+              // next time it opens. Best-effort; non-blocking.
+              fetchJSON('/api/marketing/kits?project_id=' + encodeURIComponent(pid))
+                .then(function(r){
+                  state.kits      = (r && r.kits)      || state.kits;
+                  state.readiness = (r && r.readiness) || state.readiness;
+                }).catch(function(){});
+              // Trigger the zip download via an invisible anchor.
+              var a = document.createElement('a');
+              var qs = 'project_id=' + encodeURIComponent(pid);
+              a.href     = '/api/marketing/zip?' + qs;
+              a.download = '';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            } else if(ev.event === 'error'){
+              if(typeof showToast === 'function') showToast(ev.data.message || 'Render error');
+            }
+          }
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function(err){
+      if(typeof showToast === 'function') showToast(err.message || 'Export failed');
+    });
   }
 
   // ─── Rendering ─────────────────────────────────────────────────────────────

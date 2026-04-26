@@ -21,12 +21,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 import { computeVarsHash, buildStoragePath, type CacheKeyInputs } from './cache'
 import { renderTemplate }                                          from './compose'
-import { uploadRender, signRenderUrl }                             from './storage'
+import { renderPressOnePager }                                     from './pdf'
+import { uploadRender, signRenderUrl, downloadRender }             from './storage'
 import type {
   MarketingTemplate, TemplateSize,
   ResolvedVars, ResolvedAssets, MarketingRenderRow,
   RenderedLayerBox,
 } from './types'
+import type { MarketingProject } from './project'
 
 export interface EnsureRenderInputs {
   /** The kit row's id — must already exist (PUT /api/marketing/kits creates it). */
@@ -42,6 +44,11 @@ export interface EnsureRenderInputs {
   /** Asset version stamps from the project — fed into the vars hash so
    *  the cache invalidates when an upstream asset is regenerated. */
   assetVersions: CacheKeyInputs['assetVersions']
+  /** Required for PDF templates (press one-pager) — supplies the facts
+   *  block (RTP / volatility / paylines / mechanics / jackpots).
+   *  Optional for raster templates so existing call sites stay
+   *  unchanged. */
+  project?:      MarketingProject
 }
 
 export interface EnsureRenderResult {
@@ -128,7 +135,32 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
     input.size.format,
   )
 
-  const { buffer, renderedLayers } = await renderTemplate(input.template, input.size, input.vars, input.assets)
+  // PDF dispatch — press one-pager goes through pdf-lib instead of the
+  // raster engine. The PDF generator embeds the project's largest
+  // existing rendered hero (cover-fits a hero_banner_desktop or any
+  // promo render in the kit's project) so facts + visuals come together
+  // in a single sheet.
+  let buffer: Buffer
+  let renderedLayers: RenderedLayerBox[] = []
+  if (input.size.format === 'pdf') {
+    if (!input.project) {
+      throw new Error(`[marketing/render] PDF template ${input.template.id} requires a project`)
+    }
+    // Best-effort hero. Reuse a previously-rendered hero_banner_desktop
+    // if one exists for this project; otherwise omit and pdf.ts paints
+    // a coloured strip from the palette.
+    const heroImage = await loadHeroForPdf(input.projectId)
+    buffer = await renderPressOnePager({
+      project:   input.project,
+      vars:      input.vars,
+      assets:    input.assets,
+      heroImage,
+    })
+  } else {
+    const r = await renderTemplate(input.template, input.size, input.vars, input.assets)
+    buffer         = r.buffer
+    renderedLayers = r.renderedLayers
+  }
   const { bytes } = await uploadRender(storagePath, buffer, input.size.format)
 
   // Insert the cache row. We use upsert with onConflict so a parallel
@@ -164,5 +196,47 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
     width:       input.size.w,
     height:      input.size.h,
     sizeLabel:   input.size.label,
+  }
+}
+
+/** Pull the most recent rendered hero image we have for a project so
+ *  the press PDF has something visual at the top. Looks for a
+ *  hero_banner_desktop render first (best framing for an A4 page),
+ *  then falls back to any other raster render. Returns null when the
+ *  project hasn't rendered anything yet — pdf.ts will paint a flat
+ *  palette strip instead. */
+async function loadHeroForPdf(projectId: string): Promise<Buffer | null> {
+  // Lazy import to avoid pulling supabase admin into the hot path of
+  // the raster engine — only PDFs walk this branch.
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any
+
+  // Prefer hero_banner_desktop renders when the user has them.
+  const { data: rows } = await sb
+    .from('marketing_renders')
+    .select('storage_path, format, kit:marketing_kits!inner(project_id, template_id)')
+    .eq('kit.project_id', projectId)
+    .in('format', ['png', 'jpg', 'webp'])
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  const list = (rows ?? []) as Array<{
+    storage_path: string; format: string;
+    kit: { template_id: string }
+  }>
+  if (list.length === 0) return null
+
+  const hero =
+    list.find(r => r.kit?.template_id === 'promo.hero_banner_desktop') ??
+    list.find(r => /banner|hero/.test(r.kit?.template_id ?? '')) ??
+    list[0]
+
+  if (!hero) return null
+  try {
+    return await downloadRender(hero.storage_path)
+  } catch {
+    return null
   }
 }

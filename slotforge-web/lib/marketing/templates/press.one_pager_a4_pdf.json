@@ -1,0 +1,22 @@
+{
+  "id": "press.one_pager_a4_pdf",
+  "name": "Press One-Pager",
+  "category": "press",
+  "version": 1,
+  "sizes": [
+    { "w": 2480, "h": 3508, "label": "A4_300dpi", "format": "pdf" }
+  ],
+  "layers": [
+    { "type": "shape", "shape": "rect", "fill": "#ffffff", "anchor": "middle-center", "size": { "w": "100%", "h": "100%" } }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "none", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/press_one_pager.png"
+}

@@ -12,10 +12,28 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ProjectMeta }   from '@/types/assets'
 
+/** Press-kit / one-pager facts pulled out of payload. None of these
+ *  exist on ProjectMeta because they're game-design data, not visual
+ *  prompt context — they only matter for the press PDF and the GDD
+ *  export. Strings are returned as-is for layout flexibility. */
+export interface MarketingFacts {
+  rtp?:        string  // e.g. '96.1%'
+  volatility?: string  // 'Low' | 'Medium' | 'High' | 'Very High'
+  paylines?:   string  // number as a string
+  reelset?:    string  // '5x3', '6x4'
+  maxWin?:     string  // 'x10000' / similar
+  jackpotMini?:  string
+  jackpotMinor?: string
+  jackpotMajor?: string
+  jackpotGrand?: string
+  features?:   string[]   // mechanics keys, e.g. ['freespin','wheel_bonus']
+}
+
 export interface MarketingProject {
   id:    string
   name:  string
   meta:  Partial<ProjectMeta>
+  facts: MarketingFacts
 }
 
 /** Load a project's marketing-relevant meta. Caller is responsible for
@@ -37,6 +55,21 @@ export async function loadMarketingProject(projectId: string): Promise<Marketing
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const m: any = p.meta ?? {}
 
+  // Press facts live mostly top-level (the GDD parser writes them
+  // there). features come from the editor's enabled mechanics list.
+  const facts: MarketingFacts = {
+    rtp:          asStr(p.rtp),
+    volatility:   asStr(p.volatility),
+    paylines:     asStr(p.paylines),
+    reelset:      asStr(p.reelset),
+    maxWin:       asStr(p.maxWin ?? p.max_win),
+    jackpotMini:  asStr(p.jackpotMini),
+    jackpotMinor: asStr(p.jackpotMinor),
+    jackpotMajor: asStr(p.jackpotMajor),
+    jackpotGrand: asStr(p.jackpotGrand),
+    features:     Array.isArray(p.features) ? p.features.filter((f: unknown) => typeof f === 'string') : undefined,
+  }
+
   return {
     id:   data.id as string,
     name: (data.name as string) ?? 'Untitled Project',
@@ -47,5 +80,12 @@ export async function loadMarketingProject(projectId: string): Promise<Marketing
       colorAccent:  m.colorAccent,
       colorBg:      m.colorBg,
     },
+    facts,
   }
+}
+
+function asStr(v: unknown): string | undefined {
+  if (typeof v === 'string')  return v.trim() || undefined
+  if (typeof v === 'number')  return String(v)
+  return undefined
 }

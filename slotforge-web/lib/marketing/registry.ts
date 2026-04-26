@@ -57,6 +57,11 @@ import storeAppIcon             from './templates/store.app_icon_1024.json'
 import storeGplayFeatureGraphic from './templates/store.gplay_feature_graphic_1024x500.json'
 import storeAppStoreScreenshot  from './templates/store.app_store_screenshot.json'
 
+// Press Kit (1) — composed via lib/marketing/pdf.ts (pdf-lib), not the
+// raster engine. The JSON exists so the catalogue + grid card show up
+// alongside the others; ensureRender dispatches by size.format.
+import pressOnePagerA4Pdf       from './templates/press.one_pager_a4_pdf.json'
+
 const SHIPPED_TEMPLATES: MarketingTemplate[] = [
   // Insertion order = grid display order within each category.
   promoSquareLobbyTile     as MarketingTemplate,
@@ -80,6 +85,8 @@ const SHIPPED_TEMPLATES: MarketingTemplate[] = [
   storeAppIcon             as MarketingTemplate,
   storeGplayFeatureGraphic as MarketingTemplate,
   storeAppStoreScreenshot  as MarketingTemplate,
+
+  pressOnePagerA4Pdf       as MarketingTemplate,
 ]
 
 // ─── Storage ─────────────────────────────────────────────────────────────────

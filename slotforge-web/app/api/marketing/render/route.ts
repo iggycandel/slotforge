@@ -170,6 +170,8 @@ export async function POST(req: NextRequest) {
               vars:          resolved,
               assets,
               assetVersions,
+              // Press PDF needs the facts blob; raster templates ignore.
+              project,
             })
             const evt = {
               size_label:  size.label,
