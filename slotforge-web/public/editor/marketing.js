@@ -430,6 +430,19 @@
     var el = grid();
     if(!el) return;
 
+    // Inject styles BEFORE any branch — the readiness empty state and
+    // the legacy GDD card both rely on the .mkt-section / .mkt-tile
+    // styles. Previous code only injected once we hit the populated
+    // grid path, which left the empty state looking unstyled (the
+    // "no premium feel" report). Idempotent — element id keeps a
+    // single style block per session.
+    if(!document.getElementById('_sf_marketing_css')){
+      var s0 = document.createElement('style');
+      s0.id = '_sf_marketing_css';
+      s0.textContent = MARKETING_CSS;
+      document.head.appendChild(s0);
+    }
+
     // ── Plan / auth errors are surfaced in fetchJSON; here we own the
     //    "logically allowed but missing assets" state.
     if(state.readiness && !isReady(state.readiness)){
@@ -538,23 +551,53 @@
       + '</div>';
   }
 
+  /** Premium empty-state for new projects without the three required
+   *  base assets. A hero card with gold accent, three asset cards
+   *  showing their status, and a strong CTA into the Art workspace.
+   *  All styles live in MARKETING_CSS under .mkt-onboard*. */
   function renderReadinessEmpty(r){
-    function check(ok, label){
-      return '<li style="margin:6px 0">'
-        + '<span style="display:inline-block;width:18px;color:'+(ok?'#7ac98a':'#c97a7a')+'">'+(ok?'✓':'✗')+'</span>'
-        + '<span style="color:'+(ok?'#a0a0b0':'#e8d4a4')+'">'+escapeHtml(label)+'</span>'
-        + '</li>';
-    }
+    var assetCards = [
+      { key: 'bg',   label: 'Background',  hint: 'The base-game scene',   ok: !!r.hasBackground, icon: '🏞' },
+      { key: 'logo', label: 'Logo',         hint: 'Your game wordmark',    ok: !!r.hasLogo,       icon: '✦'  },
+      { key: 'char', label: 'Character',    hint: 'Hero figure',           ok: !!r.hasCharacter,  icon: '🦸' },
+    ];
+    var doneCount = assetCards.filter(function(c){ return c.ok; }).length;
+
+    var cardsHtml = assetCards.map(function(c){
+      // Pre-compute the status badge so the chained-string concat
+      // below stays a single expression — the leading-`+` pattern
+      // breaks JS when wrapped around a multi-line conditional.
+      var statusHtml = c.ok
+        ? '<span class="mkt-onboard-tick" title="Ready">✓</span>'
+        : '<span class="mkt-onboard-pending" title="Not yet">●</span>';
+      return ''
+        + '<div class="mkt-onboard-card ' + (c.ok ? 'is-done' : 'is-pending') + '">'
+        +   '<div class="mkt-onboard-card-icon">' + c.icon + '</div>'
+        +   '<div class="mkt-onboard-card-meta">'
+        +     '<div class="mkt-onboard-card-title">' + escapeHtml(c.label) + '</div>'
+        +     '<div class="mkt-onboard-card-hint">'  + escapeHtml(c.hint)  + '</div>'
+        +   '</div>'
+        +   '<div class="mkt-onboard-card-status">' + statusHtml + '</div>'
+        + '</div>';
+    }).join('');
+
     return ''
-      + '<div style="padding:32px;max-width:520px">'
-      +   '<div style="font-size:14px;color:#e8e6e2;margin-bottom:6px">Getting ready</div>'
-      +   '<div style="font-size:12px;color:#7a7a94;line-height:1.5;margin-bottom:14px">Marketing renders use your generated assets. Three are required before the kit unlocks.</div>'
-      +   '<ul style="list-style:none;padding:0;margin:0 0 16px;font-size:12px">'
-      +     check(r.hasBackground, 'Background (base game)')
-      +     check(r.hasLogo,        'Logo')
-      +     check(r.hasCharacter,   'Character')
-      +   '</ul>'
-      +   '<button class="mkt-tile-btn primary" onclick="if(typeof switchWorkspace===\'function\')switchWorkspace(\'assets\')">Open Art workspace →</button>'
+      + '<div class="mkt-onboard">'
+      +   '<div class="mkt-onboard-hero">'
+      +     '<div class="mkt-onboard-eyebrow">Marketing kit · Setup</div>'
+      +     '<div class="mkt-onboard-title">Three assets unlock your kit</div>'
+      +     '<div class="mkt-onboard-sub">Once your background, logo, and character are generated in the Art workspace, this view fills with renderable templates — lobby tiles, social posts, store pages, and more.</div>'
+      +     '<div class="mkt-onboard-progress">'
+      +       '<div class="mkt-onboard-progress-fill" style="width:' + Math.round((doneCount/3)*100) + '%"></div>'
+      +     '</div>'
+      +     '<div class="mkt-onboard-progress-text">' + doneCount + ' of 3 ready</div>'
+      +   '</div>'
+      +   '<div class="mkt-onboard-cards">' + cardsHtml + '</div>'
+      +   '<div class="mkt-onboard-cta">'
+      +     '<button class="mkt-onboard-btn" onclick="if(typeof switchWorkspace===\'function\')switchWorkspace(\'assets\')">'
+      +       'Generate in Art workspace <span style="margin-left:6px">→</span>'
+      +     '</button>'
+      +   '</div>'
       + '</div>';
   }
 
@@ -1715,5 +1758,33 @@
     + '.mkt-skeleton-block{width:100%;aspect-ratio:1/1;background:linear-gradient(110deg,#1a1a24 30%,#222230 50%,#1a1a24 70%);background-size:200% 100%;border-radius:6px;animation:mktShimmer 1.4s linear infinite}'
     + '.mkt-skeleton-line{height:10px;background:linear-gradient(110deg,#1a1a24 30%,#222230 50%,#1a1a24 70%);background-size:200% 100%;border-radius:3px;animation:mktShimmer 1.4s linear infinite}'
     + '.mkt-skeleton-line.w70{width:70%}'
-    + '.mkt-skeleton-line.w40{width:40%}';
+    + '.mkt-skeleton-line.w40{width:40%}'
+    // ─── Premium empty-state for fresh projects ──────────────────────────
+    // Hero card with gold accent, three asset status cards, strong CTA.
+    + '.mkt-onboard{max-width:780px;margin:30px auto 60px;padding:0 28px;font-family:Space Grotesk,sans-serif}'
+    + '.mkt-onboard-hero{background:linear-gradient(135deg,#13131a 0%,#0a0a14 100%);border:1px solid #2a2a3a;border-radius:14px;padding:36px 36px 30px;position:relative;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,0.45)}'
+    + '.mkt-onboard-hero::before{content:"";position:absolute;left:0;top:0;width:3px;height:100%;background:linear-gradient(180deg,#c9a84c 0%,#7a4a08 100%)}'
+    + '.mkt-onboard-eyebrow{font-size:9px;font-family:DM Mono,monospace;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:14px;font-weight:700}'
+    + '.mkt-onboard-title{font-size:24px;font-weight:600;color:#e8e6e2;letter-spacing:-0.01em;margin-bottom:10px;line-height:1.15}'
+    + '.mkt-onboard-sub{font-size:13px;color:#a0a0b0;line-height:1.55;max-width:560px;margin-bottom:22px}'
+    + '.mkt-onboard-progress{height:4px;background:#1a1a24;border-radius:2px;overflow:hidden;margin-top:6px}'
+    + '.mkt-onboard-progress-fill{height:100%;background:linear-gradient(90deg,#c9a84c 0%,#e8c060 100%);border-radius:2px;transition:width 0.4s ease}'
+    + '.mkt-onboard-progress-text{font-size:10px;color:#7a7a94;font-family:DM Mono,monospace;letter-spacing:0.06em;margin-top:8px;text-transform:uppercase}'
+    + '.mkt-onboard-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}'
+    + '@media (max-width:780px){.mkt-onboard-cards{grid-template-columns:1fr}}'
+    + '.mkt-onboard-card{display:flex;align-items:center;gap:14px;background:#13131a;border:1px solid #2a2a3a;border-radius:10px;padding:16px 18px;transition:border-color 0.15s,transform 0.15s}'
+    + '.mkt-onboard-card.is-done{border-color:rgba(122,201,138,0.35);background:linear-gradient(135deg,rgba(122,201,138,0.06) 0%,#13131a 60%)}'
+    + '.mkt-onboard-card.is-pending{border-color:rgba(201,168,76,0.18)}'
+    + '.mkt-onboard-card-icon{width:42px;height:42px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#0a0a10;border:1px solid #2a2a3a;border-radius:8px;font-size:20px}'
+    + '.mkt-onboard-card.is-done .mkt-onboard-card-icon{border-color:rgba(122,201,138,0.4);background:rgba(122,201,138,0.08)}'
+    + '.mkt-onboard-card-meta{flex:1;min-width:0}'
+    + '.mkt-onboard-card-title{font-size:13px;color:#e8e6e2;font-weight:600;margin-bottom:2px}'
+    + '.mkt-onboard-card-hint{font-size:10px;color:#7a7a94;font-family:DM Mono,monospace;letter-spacing:0.04em}'
+    + '.mkt-onboard-card-status{flex-shrink:0}'
+    + '.mkt-onboard-tick{display:flex;width:24px;height:24px;align-items:center;justify-content:center;background:#7ac98a;color:#0a0a10;border-radius:50%;font-weight:800;font-size:13px}'
+    + '.mkt-onboard-pending{display:flex;width:14px;height:14px;align-items:center;justify-content:center;background:transparent;border:1.5px solid rgba(201,168,76,0.5);color:transparent;border-radius:50%}'
+    + '.mkt-onboard-cta{display:flex;justify-content:flex-start;margin-top:24px}'
+    + '.mkt-onboard-btn{background:#c9a84c;border:none;color:#0a0a10;padding:13px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;letter-spacing:0.02em;transition:background 0.15s,transform 0.12s,box-shadow 0.15s;box-shadow:0 6px 20px rgba(201,168,76,0.22)}'
+    + '.mkt-onboard-btn:hover{background:#d4b65c;transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.32)}'
+    + '.mkt-onboard-btn:active{transform:translateY(0)}';
 })();
