@@ -185,9 +185,13 @@
     }).join(' · ');
     var formats = uniq(t.sizes.map(function(s){ return (s.format||'').toUpperCase(); })).join(' / ');
 
-    var preview = t.previewPath
-      ? '<img class="mkt-tile-preview" src="'+escapeAttr(t.previewPath)+'" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-      : '<div class="mkt-tile-preview-empty"></div>';
+    // v124-fix: always start with the empty placeholder. The original
+    // code rendered <img src=previewPath onerror=display:none> which
+    // left a hidden element in place; subsequent thumbnail swaps then
+    // updated the hidden img and the user never saw the render. Day 8
+    // polish ships hand-rendered preview PNGs and re-introduces the
+    // previewPath path with proper fallback.
+    var preview = '<div class="mkt-tile-preview-slot"></div>';
 
     return ''
       + '<div class="mkt-tile" data-template-id="'+escapeAttr(t.id)+'">'
@@ -509,6 +513,12 @@
     var prog    = document.getElementById('mkt-modal-progress');
     var results = document.getElementById('mkt-modal-results');
 
+    // Per-tile feedback for grid-Render. Modal Render has its own
+    // progress UI inside the modal so the tile state is redundant
+    // there; we still flip it so a user who closes the modal
+    // mid-render still sees the tile spinning.
+    setTileRendering(template.id, true);
+
     if(!toastOnly){
       if(preview) preview.innerHTML = '';
       if(prog)    prog.textContent  = 'Starting…';
@@ -544,6 +554,7 @@
           if(chunk.done){
             // Stream closed — finalise UI
             if(btn && !toastOnly){ btn.disabled = false; btn.textContent = 'Render selected sizes'; }
+            setTileRendering(template.id, false);
             return;
           }
           buf += decoder.decode(chunk.value, { stream: true });
@@ -595,6 +606,7 @@
       return pump();
     }).catch(function(err){
       if(btn && !toastOnly){ btn.disabled = false; btn.textContent = 'Render selected sizes'; }
+      setTileRendering(template.id, false);
       if(prog && !toastOnly) prog.textContent = err.message || 'Render failed';
       if(typeof showToast === 'function') showToast(err.message || 'Render failed');
     });
@@ -639,26 +651,54 @@
       + '</div>';
   }
 
-  function updateTileThumbnail(templateId, url){
-    // Replace the tile's placeholder preview with the freshly rendered
-    // URL. Picks the biggest size's URL if multiple events fire — this
-    // function is called per-event so a 256² render briefly shows
-    // before the 1024² overwrites it. Visually fine.
+  function findTile(templateId){
     var tiles = document.querySelectorAll('.mkt-tile[data-template-id]');
     for(var i = 0; i < tiles.length; i++){
-      if(tiles[i].getAttribute('data-template-id') !== templateId) continue;
-      var prev = tiles[i].querySelector('.mkt-tile-preview, .mkt-tile-preview-empty');
-      if(!prev) return;
-      // If we already have an <img>, just swap the src
-      if(prev.tagName === 'IMG'){ prev.setAttribute('src', url); return; }
-      // Otherwise replace the placeholder element with an img
-      var img = document.createElement('img');
-      img.className = 'mkt-tile-preview';
-      img.setAttribute('src', url);
-      img.setAttribute('alt', '');
-      img.setAttribute('loading', 'lazy');
-      prev.parentNode.replaceChild(img, prev);
+      if(tiles[i].getAttribute('data-template-id') === templateId) return tiles[i];
+    }
+    return null;
+  }
+
+  function updateTileThumbnail(templateId, url){
+    // Drop the freshly rendered URL into the tile's preview slot. The
+    // slot starts as an empty placeholder div; on first render we
+    // replace it with an <img>, on subsequent renders we just swap the
+    // src so the bigger size overwrites the smaller (per-event order
+    // is small→large).
+    var tile = findTile(templateId);
+    if(!tile) return;
+    var prev = tile.querySelector('.mkt-tile-preview-slot, .mkt-tile-preview, .mkt-tile-preview-empty, img.mkt-tile-preview');
+    if(!prev){
+      // Defensive: tile exists but slot is missing — nothing safe to
+      // do; caller logs the URL elsewhere so the user can still get it.
       return;
+    }
+    if(prev.tagName === 'IMG'){
+      prev.setAttribute('src', url);
+      // Clear any inline display:none left over by a previous onerror —
+      // hostile state from earlier marketing.js versions.
+      prev.style.display = '';
+      return;
+    }
+    var img = document.createElement('img');
+    img.className = 'mkt-tile-preview';
+    img.setAttribute('src', url);
+    img.setAttribute('alt', '');
+    img.setAttribute('loading', 'lazy');
+    prev.parentNode.replaceChild(img, prev);
+  }
+
+  /** Toggle the per-tile rendering state — disables the Render button,
+   *  swaps its label, and shows a "Rendering…" overlay on the preview
+   *  slot. The CSS lives under .mkt-tile.is-rendering. */
+  function setTileRendering(templateId, isRendering){
+    var tile = findTile(templateId);
+    if(!tile) return;
+    tile.classList.toggle('is-rendering', !!isRendering);
+    var btn = tile.querySelector('.mkt-tile-btn[data-act="render"]');
+    if(btn){
+      btn.disabled    = !!isRendering;
+      btn.textContent = isRendering ? 'Rendering…' : 'Render';
     }
   }
 
@@ -750,15 +790,37 @@
     + '.mkt-section-title{font-size:12px;font-weight:600;color:#e8e6e2;margin-bottom:12px;letter-spacing:0.04em;text-transform:uppercase}'
     + '.mkt-section-count{color:#5a5a78;font-weight:400;margin-left:4px}'
     + '.mkt-section-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}'
-    + '.mkt-tile{background:#13131a;border:1px solid #2a2a3a;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;transition:border-color .15s}'
+    + '.mkt-tile{background:#13131a;border:1px solid #2a2a3a;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;transition:border-color .15s;position:relative}'
     + '.mkt-tile:hover{border-color:#3a3a4f}'
-    + '.mkt-tile-preview,.mkt-tile-preview-empty{width:100%;aspect-ratio:1/1;background:#0a0a10;border-radius:6px;object-fit:cover;display:block}'
-    + '.mkt-tile-preview-empty{background:linear-gradient(135deg,#1a1a24 0%,#222230 100%)}'
+    + '.mkt-tile-preview,.mkt-tile-preview-empty,.mkt-tile-preview-slot{width:100%;aspect-ratio:1/1;background:#0a0a10;border-radius:6px;object-fit:cover;display:block;position:relative;overflow:hidden}'
+    + '.mkt-tile-preview-empty,.mkt-tile-preview-slot{background:linear-gradient(135deg,#1a1a24 0%,#222230 100%)}'
     + '.mkt-tile-name{font-size:12px;color:#e8e6e2;font-weight:500;margin-top:2px}'
     + '.mkt-tile-sizes{font-size:10px;color:#7a7a94;font-family:"DM Mono",monospace;letter-spacing:0.02em}'
     + '.mkt-tile-actions{display:flex;gap:6px;margin-top:auto}'
     + '.mkt-tile-btn{flex:1;background:#1a1a24;border:1px solid #2a2a3a;color:#e0deda;border-radius:5px;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:500;transition:background .12s,border-color .12s}'
     + '.mkt-tile-btn:hover{background:#222230;border-color:#3a3a4f}'
+    + '.mkt-tile-btn:disabled{opacity:0.7;cursor:wait}'
     + '.mkt-tile-btn.primary{background:#c9a84c;border-color:#c9a84c;color:#0a0a10}'
-    + '.mkt-tile-btn.primary:hover{background:#d4b65c;border-color:#d4b65c}';
+    + '.mkt-tile-btn.primary:hover{background:#d4b65c;border-color:#d4b65c}'
+    // Per-tile rendering overlay — keyframed shimmer + label so the user
+    // sees motion while the SSE stream is in flight.
+    + '.mkt-tile.is-rendering .mkt-tile-preview-slot,'
+    + '.mkt-tile.is-rendering .mkt-tile-preview-empty,'
+    + '.mkt-tile.is-rendering .mkt-tile-preview{position:relative}'
+    + '.mkt-tile.is-rendering .mkt-tile-preview-slot::before,'
+    + '.mkt-tile.is-rendering .mkt-tile-preview-empty::before,'
+    + '.mkt-tile.is-rendering .mkt-tile-preview::before{'
+    +   'content:"";position:absolute;inset:0;border-radius:6px;'
+    +   'background:linear-gradient(110deg,transparent 30%,rgba(201,168,76,0.18) 50%,transparent 70%);'
+    +   'background-size:200% 100%;animation:mktShimmer 1.4s linear infinite;'
+    + '}'
+    + '.mkt-tile.is-rendering .mkt-tile-preview-slot::after,'
+    + '.mkt-tile.is-rendering .mkt-tile-preview-empty::after,'
+    + '.mkt-tile.is-rendering .mkt-tile-preview::after{'
+    +   'content:"Rendering…";position:absolute;inset:0;border-radius:6px;'
+    +   'display:flex;align-items:center;justify-content:center;'
+    +   'background:rgba(10,10,16,0.45);'
+    +   'color:#c9a84c;font-size:11px;font-family:"DM Mono",monospace;letter-spacing:0.05em;'
+    + '}'
+    + '@keyframes mktShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}';
 })();
