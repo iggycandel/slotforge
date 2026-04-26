@@ -14159,32 +14159,103 @@ setTimeout(() => {
       '%;width:' + widthPct.toFixed(2) + '%;height:' + heightPct.toFixed(2) + '%;object-fit:contain;pointer-events:none">';
   }
 
+  /** Build a positioned overlay div with arbitrary inline content
+   *  (used for non-image elements like the JP bar and reel frame
+   *  placeholders). Same coord-mapping as positionedAssetImg. */
+  function positionedOverlay(pos, vpDef, klass, innerHtml, extraStyle){
+    if(!pos || !vpDef || !vpDef.cw || !vpDef.ch) return '';
+    var leftPct   = ((pos.x - vpDef.cx) / vpDef.cw) * 100;
+    var topPct    = ((pos.y - vpDef.cy) / vpDef.ch) * 100;
+    var widthPct  = (pos.w / vpDef.cw) * 100;
+    var heightPct = (pos.h / vpDef.ch) * 100;
+    var style = 'position:absolute;left:' + leftPct.toFixed(2) + '%;top:' + topPct.toFixed(2) +
+                '%;width:' + widthPct.toFixed(2) + '%;height:' + heightPct.toFixed(2) +
+                '%;pointer-events:none;' + (extraStyle || '');
+    return '<div class="' + (klass || '') + '" style="' + style + '">' + (innerHtml || '') + '</div>';
+  }
+
+  /** Mini reel-grid placeholder. Fills the reelArea pos with a 5×3
+   *  (or whatever P.reelset says) grid of symbol thumbs. Uses uploaded
+   *  symbol assets when present; falls back to tinted cells. Each cell
+   *  is positioned via flex inside the parent div so reelset changes
+   *  reflow naturally. */
+  function reelGridHtml(){
+    var rs = (window.P && P.reelset) || '5x3';
+    var parts = String(rs).split('x');
+    var cols = parseInt(parts[0], 10) || 5;
+    var rows = parseInt(parts[1], 10) || 3;
+    // Pick from the available symbol slots — high tier first since
+    // they have most pulling power; fall back to lows.
+    var slots = ['sym_H1','sym_H2','sym_H3','sym_H4','sym_H5','sym_L1','sym_L2','sym_L3','sym_L4','sym_L5'];
+    var pool = [];
+    for(var i = 0; i < slots.length; i++){
+      if(EL_ASSETS && EL_ASSETS[slots[i]]) pool.push(EL_ASSETS[slots[i]]);
+    }
+    var cellHtml = '';
+    var total = cols * rows;
+    for(var c = 0; c < total; c++){
+      var url = pool.length ? pool[c % pool.length] : null;
+      cellHtml += '<div class="stp-cell">' +
+        (url ? '<img src="' + (url || '').replace(/"/g, '%22') + '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />' : '') +
+        '</div>';
+    }
+    return '<div class="stp-grid" style="--cols:' + cols + ';--rows:' + rows + '">' + cellHtml + '</div>';
+  }
+
   function buildTile(item, isChild){
     var sk     = item.key;
     var active = (window.P && window.P.screen === sk) ? ' is-active' : '';
     var cls    = isChild ? 'stp-tile-child' : 'stp-tile-parent';
     var ready  = readinessFor(sk);
 
-    // Phase 3.2: composite the actual screen — bg + character + logo —
-    // so the tile reads as a real preview, not just a backdrop.
-    // Positions read via thumbPos respect per-screen EL_VP overrides
-    // (e.g. character moved on Splash → Splash thumb shows the moved
-    // position) with base-screen inheritance for screens that haven't
-    // been individually customised.
+    // Phase 3.3: dense composite — bg + reel frame + symbol grid + JP
+    // bar + character + logo + spin button — so the thumb genuinely
+    // reflects what the user sees on the canvas. Each layer reads its
+    // position via thumbPos (per-screen override → base inheritance →
+    // EL_COMPUTED → PSD), then maps canvas coords into viewport
+    // percentages so the layout matches the live canvas at any tile
+    // size.
     var vp = (window.P && P.viewport === 'desktop') ? 'landscape' : ((window.P && P.viewport) || 'portrait');
     var vpDef = (typeof VP !== 'undefined' ? VP[vp] : null) || { cx:0, cy:0, cw:2000, ch:2000 };
 
-    // Background — fills the viewport area of the tile. Uses the same
-    // bg-resolution chain as the canvas (bgUrlFor mirrors the editor's
-    // resolver). The bg img is positioned to show only the viewport
-    // crop — same as what the user actually sees on the live canvas.
+    // ── Background ────────────────────────────────────────────────
     var bgUrl = bgUrlFor(sk);
     var bgPos = thumbPos(sk, 'bg');
     var bgImg = (bgUrl && bgPos) ? positionedAssetImg(bgUrl, bgPos, vpDef, 'stp-tile-img') : '';
 
-    // Character — only if the project has it enabled and the asset is
-    // present. P.char.enabled is the master toggle; EL_ASSETS.char is
-    // the cutout / image. Skip on screens that wouldn't show one.
+    // ── Reel frame + symbol grid ──────────────────────────────────
+    // Always show a reel frame on screens that have one (everything
+    // except splash + popups where the reels aren't visible). The
+    // reel frame is a tinted dark rounded rect; the symbol grid sits
+    // on top filling the reelArea pos.
+    var reelHtml = '';
+    var SHOWS_REELS = { splash:0 };  // splash is the only screen without reels by default
+    var hideReelsOnPopups = { popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1 };
+    if(!hideReelsOnPopups[sk] && SHOWS_REELS[sk] !== 0){
+      var framePos = thumbPos(sk, 'reelFrame');
+      var areaPos  = thumbPos(sk, 'reelArea');
+      if(framePos){
+        reelHtml += positionedOverlay(framePos, vpDef, 'stp-tile-frame', '',
+          'background:rgba(8,8,16,0.55);border:1px solid rgba(201,168,76,0.25);border-radius:3px');
+      }
+      if(areaPos){
+        reelHtml += positionedOverlay(areaPos, vpDef, 'stp-tile-area', reelGridHtml(),
+          'overflow:hidden');
+      }
+    }
+
+    // ── Jackpot bar ───────────────────────────────────────────────
+    // jpRow spans all four jackpot tiers. Render as a single gold
+    // strip — too small to render the four sub-cells legibly at thumb
+    // scale.
+    var jpHtml = '';
+    var jpPos = thumbPos(sk, 'jpRow');
+    if(jpPos && !hideReelsOnPopups[sk]){
+      jpHtml = positionedOverlay(jpPos, vpDef, 'stp-tile-jp', '',
+        'background:linear-gradient(180deg,#3a2a08 0%,#9a7830 50%,#3a2a08 100%);border-radius:1px;opacity:0.85');
+    }
+
+    // ── Character ─────────────────────────────────────────────────
     var charImg = '';
     var charEnabled = !!(window.P && P.char && P.char.enabled);
     if(charEnabled && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.char){
@@ -14192,17 +14263,37 @@ setTimeout(() => {
       if(cPos) charImg = positionedAssetImg(EL_ASSETS.char, cPos, vpDef, 'stp-tile-asset');
     }
 
-    // Logo — splash, base, lobby tiles all use it. Hidden on win-popup
-    // screens where it competes with the win text.
+    // ── Logo ──────────────────────────────────────────────────────
     var logoImg = '';
-    var skipLogoOn = { popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1 };
-    if(!skipLogoOn[sk] && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.logo){
+    if(!hideReelsOnPopups[sk] && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.logo){
       var lPos = thumbPos(sk, 'logo');
       if(lPos) logoImg = positionedAssetImg(EL_ASSETS.logo, lPos, vpDef, 'stp-tile-asset');
     }
 
-    // Tinted gradient stays as the no-bg fallback. Dimmed when bg
-    // exists so the bg image is the dominant signal.
+    // ── Spin / aux buttons (gold circles) ─────────────────────────
+    var btnsHtml = '';
+    if(!hideReelsOnPopups[sk]){
+      [['spinBtn','#c9a84c'], ['autoBtn','#7a7a94'], ['turboBtn','#7a7a94']].forEach(function(b){
+        var pos = thumbPos(sk, b[0]);
+        if(!pos) return;
+        // Render as a soft circle; spin is gold, aux are grey.
+        btnsHtml += positionedOverlay(pos, vpDef, 'stp-tile-btn', '',
+          'background:radial-gradient(circle,' + b[1] + ' 0%,rgba(0,0,0,0.7) 100%);' +
+          'border-radius:50%;opacity:0.85');
+      });
+    }
+
+    // ── Message label (thin top strip) ────────────────────────────
+    var msgHtml = '';
+    if(!hideReelsOnPopups[sk]){
+      var mPos = thumbPos(sk, 'msgLabel');
+      if(mPos){
+        msgHtml = positionedOverlay(mPos, vpDef, 'stp-tile-msg', '',
+          'background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(201,168,76,0.15)');
+      }
+    }
+
+    // Tinted gradient stays as the no-bg fallback.
     var gradientStyle = 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';' +
                        (bgUrl ? 'opacity:0.18' : 'opacity:0.55');
 
@@ -14211,8 +14302,12 @@ setTimeout(() => {
       +   (sk || '') + '" title="' + (item.label || '') + '">'
       +   '<div class="stp-tile-fill" style="' + gradientStyle + '"></div>'
       +   bgImg
-      +   charImg
+      +   msgHtml
+      +   jpHtml
+      +   reelHtml
       +   logoImg
+      +   charImg
+      +   btnsHtml
       +   '<div class="stp-tile-vignette"></div>'
       +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
       +   '<span class="stp-tile-label">' + (item.label || '') + '</span>'

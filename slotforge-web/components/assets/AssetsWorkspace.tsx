@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 import { ASSET_LABELS } from '@/types/assets'
+import type { TypographySpec } from '@/types/typography'
+import { TypographyWorkspace } from '../typography/TypographyWorkspace'
 import type { FeatureDef, FeatureId, AssetSlot } from '@/types/features'
 import { activeAssetSlots } from '@/types/features'
 import { FEATURE_REGISTRY } from '@/lib/features/registry'
@@ -237,11 +239,13 @@ interface Props {
   inlineMode?:   boolean
   /** Called when user wants to return to the canvas (only used in inlineMode) */
   onBackToCanvas?: () => void
-  /** Phase 1 fold-in: Typography is a sub-step of Art, accessed via a
-   *  third tab in the sidebar. Click triggers a workspace switch to
-   *  'typography' (handled by editor-frame.tsx which mounts the
-   *  TypographyWorkspace full-page). */
-  onOpenTypography?: () => void
+  /** Typography embed (Phase 1 fold-in finalised): the typography
+   *  spec from payload.typographySpec, hydrated on mount. */
+  initialTypographySpec?: TypographySpec | null
+  /** Called when the user generates / clears the typography spec.
+   *  Editor-frame wires this to SF_SAVE_TYPOGRAPHY so the iframe
+   *  picks up the spec for autosave. */
+  onTypographySpecChange?: (spec: TypographySpec | null) => void
   /** Rich theme/art-direction meta forwarded from the editor's Project Settings panel */
   projectMeta?:  Record<string, unknown>
   /** Whether the current plan allows exporting/downloading assets (default: false for safety) */
@@ -267,7 +271,7 @@ interface Props {
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, onOpenTypography, projectMeta, exportsEnabled = false, onAddToCanvas, onUpdateMeta }: Props) {
+export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, initialTypographySpec, onTypographySpecChange, projectMeta, exportsEnabled = false, onAddToCanvas, onUpdateMeta }: Props) {
   // Route params (for billing page link)
   const params = useParams<{ orgSlug: string }>()
   const routeSlug = orgSlug ?? params?.orgSlug ?? ''
@@ -294,10 +298,12 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // which by checking FEATURE_SLOT_KEYS and route label/regen accordingly.
   const [selected,    setSelected]    = useState<string | null>(null)
   const [activeGroup, setActiveGroup] = useState<string | null>(null)
-  // Left-sidebar tab: 'assets' (the legacy navigator) or 'inputs' (the
-  // consolidated Prompt Inputs panel introduced in v109). Kept on the
-  // component itself so navigating away-and-back remembers the mode.
-  const [sidebarMode, setSidebarMode] = useState<'assets' | 'inputs'>('assets')
+  // Left-sidebar tab: 'assets' (the legacy navigator), 'inputs' (the
+  // consolidated Prompt Inputs panel introduced in v109), or
+  // 'typography' (embeds the TypographyWorkspace as the main-pane
+  // content — Phase 1 fold-in done properly). Kept on the component
+  // itself so navigating away-and-back remembers the mode.
+  const [sidebarMode, setSidebarMode] = useState<'assets' | 'inputs' | 'typography'>('assets')
 
   // Optimistic overlay for PromptInputsPanel edits. The shell's editorMeta
   // only updates on SF_AUTOSAVE round-trips (the SF_DIRTY path into
@@ -1074,12 +1080,21 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden', background: C.surface,
         }}>
-          <SidebarTabSwitcher
-            mode={sidebarMode}
-            onChange={setSidebarMode}
-            onOpenTypography={onOpenTypography}
-          />
-          {sidebarMode === 'assets' ? (
+          <SidebarTabSwitcher mode={sidebarMode} onChange={setSidebarMode} />
+          {sidebarMode === 'typography' ? (
+            // Typography mode: the SIDEBAR is intentionally empty. The
+            // full TypographyWorkspace UI takes over the main pane
+            // below — see the matching branch in the canvas section.
+            // A small breadcrumb keeps the user oriented.
+            <div style={{
+              padding: '14px 16px',
+              fontSize: 11, color: C.txMuted, lineHeight: 1.6,
+              fontFamily: C.font, letterSpacing: '.02em',
+            }}>
+              Typography spec lives in the main pane. Switch to Assets
+              or Inputs to come back to art generation.
+            </div>
+          ) : sidebarMode === 'assets' ? (
             <LeftSidebar
               groups={assetGroups}
               featureGroups={featureGroups}
@@ -1224,6 +1239,21 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           borderLeft:  `1px solid ${C.border}`,
           borderRight: `1px solid ${C.border}`,
         }}>
+          {sidebarMode === 'typography' ? (
+            // Embedded TypographyWorkspace — replaces the entire art
+            // pane content while still inside Art's outer chrome.
+            // Switching sidebar mode back to Assets / Inputs returns
+            // the user to the art generation flow without any
+            // navigation.
+            <TypographyWorkspace
+              projectId={projectId}
+              projectName={projectName}
+              projectMeta={projectMeta}
+              initialSpec={initialTypographySpec ?? null}
+              onSpecChange={onTypographySpecChange}
+            />
+          ) : (
+            <>
           {/* Generation Control Bar */}
           <GenerationControlBar
             theme={theme}
@@ -1341,6 +1371,8 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
               />
             ))}
           </div>
+            </>
+          )}
         </main>
 
         {/* ── RIGHT PANEL ─────────────────────────────────────────────────── */}
@@ -1683,20 +1715,19 @@ function LeftSidebar({
   )
 }
 
-// ─── Sidebar tab switcher — flips between Assets / Inputs / Typography ─────
+// ─── Sidebar tab switcher — Assets / Inputs / Typography ──────────────────
 //
-// Typography isn't a sidebar mode like the other two — it's a full-page
-// workspace mounted by editor-frame.tsx based on SF_SET_WORKSPACE. The
-// "Typography" tab here triggers a workspace change to 'typography'
-// (see onOpenTypography callback). Once the user is in Typography, the
-// React shell takes over the page; the user comes back via Typography's
-// own "back to Art" affordance.
+// Typography is a true embedded mode now: when the user picks it, the
+// main pane swaps to the TypographyWorkspace component INSIDE Art —
+// no full-page workspace switch. Coming back is just clicking Assets
+// or Inputs again.
+type SidebarMode = 'assets' | 'inputs' | 'typography'
+
 function SidebarTabSwitcher({
-  mode, onChange, onOpenTypography,
+  mode, onChange,
 }: {
-  mode: 'assets' | 'inputs'
-  onChange: (m: 'assets' | 'inputs') => void
-  onOpenTypography?: () => void
+  mode: SidebarMode
+  onChange: (m: SidebarMode) => void
 }) {
   return (
     <div style={{
@@ -1704,21 +1735,15 @@ function SidebarTabSwitcher({
       borderBottom: `1px solid ${C.border}`, flexShrink: 0,
     }}>
       {([
-        { id: 'assets',     label: 'Assets',      isTypography: false },
-        { id: 'inputs',     label: 'Inputs',      isTypography: false },
-        { id: 'typography', label: 'Typography',  isTypography: true  },
+        { id: 'assets',     label: 'Assets'     },
+        { id: 'inputs',     label: 'Inputs'     },
+        { id: 'typography', label: 'Typography' },
       ] as const).map(tab => {
-        const active = !tab.isTypography && mode === tab.id
+        const active = mode === tab.id
         return (
           <button
             key={tab.id}
-            onClick={() => {
-              if (tab.isTypography) {
-                onOpenTypography?.()
-              } else {
-                onChange(tab.id as 'assets' | 'inputs')
-              }
-            }}
+            onClick={() => onChange(tab.id)}
             style={{
               flex: 1, padding: '6px 10px',
               background: active ? C.surfHigh : 'transparent',

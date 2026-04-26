@@ -1040,6 +1040,33 @@ svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:non
   display: block;
   pointer-events: none;
 }
+
+/* Phase 3.3: dense composite — additional element types overlaid on
+ * top of bg to make the thumb a real reflection of the screen. */
+.stp-tile-asset {
+  /* asset img: scaled position from canvas coords */
+  pointer-events: none;
+}
+/* Mini reel grid placeholder — flexbox grid reflecting P.reelset cols × rows */
+.stp-grid {
+  position: absolute; inset: 4%;
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 5), 1fr);
+  grid-template-rows: repeat(var(--rows, 3), 1fr);
+  gap: 1px;
+}
+.stp-cell {
+  background: rgba(20, 20, 32, 0.55);
+  border-radius: 1px;
+  overflow: hidden;
+  position: relative;
+}
+.stp-cell img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0.9;
+}
 .stp-tile-vignette {
   position: absolute; inset: 0;
   background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.7) 100%);
