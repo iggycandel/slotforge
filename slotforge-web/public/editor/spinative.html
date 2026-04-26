@@ -652,14 +652,22 @@
         <div class="mkt-loading" style="padding:24px;color:#7a7a94;font-size:12px">Loading marketing kit…</div>
       </div>
 
-      <!-- GDD Export — legacy, kept untouched per design doc §13.2.
-           This was the only working flow before v1 marketing landed. -->
-      <div class="mkt-card" onclick="openGDDModal()" style="cursor:pointer">
-        <div class="mkt-card-banner" style="background:linear-gradient(135deg,#1a1a20 0%,#2a2830 100%)">📋</div>
-        <div class="mkt-card-body">
-          <div class="mkt-card-title">GDD Export</div>
-          <div class="mkt-card-sub">Full game design document — auto-generated from your project data and exported as HTML.</div>
-          <span class="mkt-badge-live">✓ Available Now</span>
+      <!-- GDD Export — legacy flow, preserved per design doc §13.2.
+           Wrapped in a fifth visual section so it sits inside the same
+           grid system as the v1 template tiles. The .mkt-section style
+           is owned by marketing.js and injected on first activation,
+           so this block stays inert until the workspace boots. -->
+      <div class="mkt-section">
+        <div class="mkt-section-title">Documents <span class="mkt-section-count">(1)</span></div>
+        <div class="mkt-section-grid">
+          <div class="mkt-tile" onclick="openGDDModal()" style="cursor:pointer">
+            <div class="mkt-tile-preview-empty" style="display:flex;align-items:center;justify-content:center;font-size:48px">📋</div>
+            <div class="mkt-tile-name">GDD Export</div>
+            <div class="mkt-tile-sizes">Full project document · HTML</div>
+            <div class="mkt-tile-actions">
+              <button class="mkt-tile-btn primary" style="flex:1">Export</button>
+            </div>
+          </div>
         </div>
       </div>
 

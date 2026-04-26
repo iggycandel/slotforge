@@ -231,16 +231,443 @@
     var act  = btn.getAttribute('data-act');
     if(!tid || !act) return;
 
+    var t = findTemplate(tid);
+    if(!t){
+      if(typeof showToast === 'function') showToast('Template not found: ' + tid);
+      return;
+    }
+
     if(act === 'customise'){
-      // Day 6 wires the Customise modal. For now surface a toast so the
-      // click is acknowledged.
-      if(typeof showToast === 'function') showToast('Customise modal ships day 6 — ' + tid);
+      openCustomiseModal(t);
       return;
     }
     if(act === 'render'){
-      if(typeof showToast === 'function') showToast('Render trigger ships day 6 — ' + tid);
+      // Quick-render from the grid: every size, current saved vars, no
+      // prompts. The Customise modal is for fine-tuning; this button is
+      // for "give me the full set right now". Renders sequentially via
+      // SSE so the toast can show progress.
+      runRender(t, t.sizes.map(function(s){ return s.label; }), null, /*toastOnly*/ true);
       return;
     }
+  }
+
+  function findTemplate(id){
+    if(!state.templates) return null;
+    for(var i = 0; i < state.templates.length; i++){
+      if(state.templates[i].id === id) return state.templates[i];
+    }
+    return null;
+  }
+
+  function findKit(templateId){
+    if(!state.kits) return null;
+    for(var i = 0; i < state.kits.length; i++){
+      if(state.kits[i].template_id === templateId) return state.kits[i];
+    }
+    return null;
+  }
+
+  // ─── Customise modal ───────────────────────────────────────────────────────
+  //
+  // Built on demand: the modal markup is appended to <body> the first
+  // time the user clicks Customise, then reused. State (current vars
+  // + selected sizes) lives in modalState; the form is the source of
+  // truth — Save reads .value off each input and posts it.
+
+  var modalState = { templateId: null };
+
+  function openCustomiseModal(template){
+    ensureModal();
+    modalState.templateId = template.id;
+
+    // Seed form values from the kit's stored vars (or template defaults).
+    var kit  = findKit(template.id);
+    var vars = (kit && kit.vars) || {};
+    var schema = template.vars || {};
+
+    // Title + sizes summary
+    document.getElementById('mkt-modal-title').textContent     = template.name || template.id;
+    document.getElementById('mkt-modal-subtitle').textContent  = template.id;
+
+    // Build the form body fresh on every open so a template change
+    // doesn't leak inputs between sessions.
+    var body = document.getElementById('mkt-modal-form');
+    body.innerHTML = ''
+      + formField('gameName',      'Game name',      'text',
+          pickStr(vars.gameName, ''))
+      + formField('headline',      'Headline',       'text',
+          pickStr(vars.headline, ''),
+          'Optional — leave blank for templates that don\'t use a headline.')
+      + formField('subhead',       'Subhead',        'text',
+          pickStr(vars.subhead, ''),
+          'Optional — short tagline below the headline.')
+      + formSelect('ctaText',      'Call to action',
+          (schema.ctaText && schema.ctaText.options) || ['PLAY NOW'],
+          pickStr(vars.ctaText, schema.ctaText ? schema.ctaText.default : 'PLAY NOW'))
+      + formSelect('language',     'Language',
+          (schema.language && schema.language.options) || ['EN'],
+          pickStr(vars.language, schema.language ? schema.language.default : 'EN'))
+      + formSelect('colorMode',    'Color mode',
+          (schema.colorMode && schema.colorMode.options) || ['auto'],
+          pickStr(vars.colorMode, schema.colorMode ? schema.colorMode.default : 'auto'))
+      + formSelect('layoutVariant','Layout variant',
+          (schema.layoutVariant && schema.layoutVariant.options) || ['A'],
+          pickStr(vars.layoutVariant, schema.layoutVariant ? schema.layoutVariant.default : 'A'));
+
+    // Size checkboxes — default all selected.
+    var sizesHtml = '<div class="mkt-form-label">Sizes</div><div class="mkt-form-sizes">';
+    for(var i = 0; i < template.sizes.length; i++){
+      var s = template.sizes[i];
+      var lbl = (s.w === s.h ? (s.w + '²') : (s.w + '×' + s.h)) + ' ' + (s.format||'').toUpperCase();
+      sizesHtml += ''
+        + '<label class="mkt-form-size">'
+        +   '<input type="checkbox" data-size="'+escapeAttr(s.label)+'" checked>'
+        +   '<span>'+escapeHtml(lbl)+'</span>'
+        + '</label>';
+    }
+    sizesHtml += '</div>';
+    body.insertAdjacentHTML('beforeend', sizesHtml);
+
+    // Reset right-pane state — no preview yet, no renders.
+    var preview = document.getElementById('mkt-modal-preview');
+    if(preview) preview.innerHTML = '<div class="mkt-modal-preview-empty">Click <b>Render selected sizes</b> to see your kit</div>';
+    var results = document.getElementById('mkt-modal-results');
+    if(results) results.innerHTML = '';
+
+    document.getElementById('mkt-modal-overlay').style.display = 'flex';
+  }
+
+  function closeCustomiseModal(){
+    var ov = document.getElementById('mkt-modal-overlay');
+    if(ov) ov.style.display = 'none';
+    modalState.templateId = null;
+  }
+
+  function ensureModal(){
+    if(document.getElementById('mkt-modal-overlay')) return;
+
+    // Inject styles
+    if(!document.getElementById('_sf_marketing_modal_css')){
+      var s = document.createElement('style');
+      s.id = '_sf_marketing_modal_css';
+      s.textContent = MODAL_CSS;
+      document.head.appendChild(s);
+    }
+
+    var html = ''
+      + '<div id="mkt-modal-overlay" style="display:none">'
+      +   '<div id="mkt-modal">'
+      +     '<div id="mkt-modal-header">'
+      +       '<div>'
+      +         '<div id="mkt-modal-title">Customise</div>'
+      +         '<div id="mkt-modal-subtitle"></div>'
+      +       '</div>'
+      +       '<button id="mkt-modal-close" title="Close (Esc)">×</button>'
+      +     '</div>'
+      +     '<div id="mkt-modal-body">'
+      +       '<div id="mkt-modal-left">'
+      +         '<form id="mkt-modal-form" autocomplete="off"></form>'
+      +         '<div id="mkt-modal-actions">'
+      +           '<button class="mkt-tile-btn"         id="mkt-modal-save"   type="button">Save</button>'
+      +           '<button class="mkt-tile-btn primary" id="mkt-modal-render" type="button">Render selected sizes</button>'
+      +         '</div>'
+      +       '</div>'
+      +       '<div id="mkt-modal-right">'
+      +         '<div id="mkt-modal-preview"></div>'
+      +         '<div id="mkt-modal-progress"></div>'
+      +         '<div id="mkt-modal-results"></div>'
+      +       '</div>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+
+    // Wiring
+    document.getElementById('mkt-modal-close').addEventListener('click', closeCustomiseModal);
+    document.getElementById('mkt-modal-overlay').addEventListener('click', function(e){
+      if(e.target && e.target.id === 'mkt-modal-overlay') closeCustomiseModal();
+    });
+    document.addEventListener('keydown', function(e){
+      if(e.key === 'Escape'){
+        var ov = document.getElementById('mkt-modal-overlay');
+        if(ov && ov.style.display === 'flex') closeCustomiseModal();
+      }
+    });
+    document.getElementById('mkt-modal-save').addEventListener('click',   onModalSave);
+    document.getElementById('mkt-modal-render').addEventListener('click', onModalRender);
+  }
+
+  // ─── Form helpers ──────────────────────────────────────────────────────────
+
+  function formField(name, label, type, value, hint){
+    return ''
+      + '<div class="mkt-form-row">'
+      +   '<label class="mkt-form-label" for="mkt-f-'+name+'">'+escapeHtml(label)+'</label>'
+      +   '<input class="mkt-form-input" id="mkt-f-'+name+'" name="'+name+'" type="'+type+'" value="'+escapeAttr(value)+'">'
+      +   (hint ? '<div class="mkt-form-hint">'+escapeHtml(hint)+'</div>' : '')
+      + '</div>';
+  }
+
+  function formSelect(name, label, options, value){
+    var opts = '';
+    for(var i = 0; i < options.length; i++){
+      var o = options[i];
+      opts += '<option value="'+escapeAttr(o)+'"'+(o === value ? ' selected' : '')+'>'+escapeHtml(o)+'</option>';
+    }
+    return ''
+      + '<div class="mkt-form-row">'
+      +   '<label class="mkt-form-label" for="mkt-f-'+name+'">'+escapeHtml(label)+'</label>'
+      +   '<select class="mkt-form-input" id="mkt-f-'+name+'" name="'+name+'">'+opts+'</select>'
+      + '</div>';
+  }
+
+  function readModalVars(){
+    var form = document.getElementById('mkt-modal-form');
+    if(!form) return {};
+    var out = {};
+    var inputs = form.querySelectorAll('input[name], select[name]');
+    for(var i = 0; i < inputs.length; i++){
+      var el = inputs[i];
+      out[el.name] = el.value;
+    }
+    return out;
+  }
+
+  function readModalSizes(){
+    var form = document.getElementById('mkt-modal-form');
+    if(!form) return [];
+    var boxes = form.querySelectorAll('input[type=checkbox][data-size]');
+    var out = [];
+    for(var i = 0; i < boxes.length; i++){
+      if(boxes[i].checked) out.push(boxes[i].getAttribute('data-size'));
+    }
+    return out;
+  }
+
+  // ─── Modal actions ─────────────────────────────────────────────────────────
+
+  function onModalSave(){
+    var tid = modalState.templateId;
+    if(!tid) return;
+    var vars = readModalVars();
+    var btn  = document.getElementById('mkt-modal-save');
+    btn.disabled = true; btn.textContent = 'Saving…';
+
+    fetch('/api/marketing/kits/' + encodeURIComponent(tid), {
+      method:      'PUT',
+      credentials: 'same-origin',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ project_id: projectId(), vars: vars }),
+    }).then(function(r){
+      btn.disabled = false; btn.textContent = 'Save';
+      if(!r.ok){ if(typeof showToast === 'function') showToast('Save failed'); return; }
+      if(typeof showToast === 'function') showToast('Saved');
+      // Refresh the in-memory kit list so future opens reflect the new vars
+      // without a full /kits round-trip.
+      r.json().then(function(b){
+        if(b && b.kit){
+          var idx = -1;
+          for(var i = 0; i < (state.kits||[]).length; i++){
+            if(state.kits[i].template_id === b.kit.template_id){ idx = i; break; }
+          }
+          if(idx >= 0) state.kits[idx] = b.kit;
+          else (state.kits = state.kits || []).push(b.kit);
+        }
+      }).catch(function(){});
+    }).catch(function(){
+      btn.disabled = false; btn.textContent = 'Save';
+      if(typeof showToast === 'function') showToast('Save failed');
+    });
+  }
+
+  function onModalRender(){
+    var tid = modalState.templateId;
+    if(!tid) return;
+    var template = findTemplate(tid);
+    if(!template) return;
+    var sizes = readModalSizes();
+    if(sizes.length === 0){
+      if(typeof showToast === 'function') showToast('Pick at least one size');
+      return;
+    }
+    var vars = readModalVars();
+    runRender(template, sizes, vars, /*toastOnly*/ false);
+  }
+
+  // ─── Render trigger ────────────────────────────────────────────────────────
+  //
+  // POST /api/marketing/render returns SSE. We use fetch+ReadableStream
+  // (rather than EventSource) so we can POST a body — EventSource is
+  // GET-only. The parser handles event:/data: lines and dispatches to
+  // onEvent.
+
+  function runRender(template, sizeLabels, varsOverride, toastOnly){
+    var btn = document.getElementById('mkt-modal-render');
+    if(btn && !toastOnly){ btn.disabled = true; btn.textContent = 'Rendering…'; }
+
+    var preview = document.getElementById('mkt-modal-preview');
+    var prog    = document.getElementById('mkt-modal-progress');
+    var results = document.getElementById('mkt-modal-results');
+
+    if(!toastOnly){
+      if(preview) preview.innerHTML = '';
+      if(prog)    prog.textContent  = 'Starting…';
+      if(results) results.innerHTML = '';
+    } else {
+      if(typeof showToast === 'function') showToast('Rendering ' + template.id + '…');
+    }
+
+    var body = { project_id: projectId(), template_id: template.id, size_labels: sizeLabels };
+    if(varsOverride) body.vars = varsOverride;
+
+    fetch('/api/marketing/render', {
+      method:      'POST',
+      credentials: 'same-origin',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify(body),
+    }).then(function(res){
+      if(!res.ok || !res.body){
+        return res.json().catch(function(){ return {}; }).then(function(b){
+          var msg = (b && b.message) || (b && b.error) || ('HTTP ' + res.status);
+          throw new Error(msg);
+        });
+      }
+      var reader  = res.body.getReader();
+      var decoder = new TextDecoder('utf-8');
+      var buf     = '';
+      var rendersBySize = {};
+      var doneSizes = 0;
+      var totalSizes = sizeLabels.length;
+
+      function pump(){
+        return reader.read().then(function(chunk){
+          if(chunk.done){
+            // Stream closed — finalise UI
+            if(btn && !toastOnly){ btn.disabled = false; btn.textContent = 'Render selected sizes'; }
+            return;
+          }
+          buf += decoder.decode(chunk.value, { stream: true });
+          // Parse complete SSE events ("event:foo\ndata:{...}\n\n")
+          var idx;
+          while((idx = buf.indexOf('\n\n')) >= 0){
+            var raw = buf.slice(0, idx);
+            buf     = buf.slice(idx + 2);
+            var ev = parseSseBlock(raw);
+            if(ev) onEvent(ev);
+          }
+          return pump();
+        });
+      }
+
+      function onEvent(ev){
+        if(ev.event === 'start'){
+          if(prog && !toastOnly) prog.textContent = '0 / ' + ev.data.total + ' rendered';
+          totalSizes = ev.data.total || totalSizes;
+        } else if(ev.event === 'render'){
+          rendersBySize[ev.data.size_label] = ev.data;
+          doneSizes++;
+          if(prog && !toastOnly) prog.textContent = doneSizes + ' / ' + totalSizes + ' rendered' + (ev.data.cached ? ' (cached)' : '');
+          if(preview && !toastOnly){
+            // Preview = the largest finished size (visually most useful)
+            var biggest = pickBiggest(rendersBySize, template);
+            if(biggest){
+              preview.innerHTML = '<img src="'+escapeAttr(biggest.url)+'" alt="" style="width:100%;display:block;border-radius:6px">';
+            }
+          }
+          // Update tile thumbnail in the grid in real time so the user
+          // sees their kit start to populate even before they close the
+          // modal.
+          updateTileThumbnail(template.id, ev.data.url);
+          // Append a download link to the results list
+          if(results && !toastOnly){
+            results.insertAdjacentHTML('beforeend', renderResultLine(ev.data));
+          }
+        } else if(ev.event === 'error'){
+          var msg = (ev.data && ev.data.message) || 'Render failed';
+          if(prog && !toastOnly) prog.textContent = msg;
+          if(typeof showToast === 'function' && toastOnly) showToast(msg);
+        } else if(ev.event === 'complete'){
+          if(prog && !toastOnly) prog.textContent = (ev.data.renders || []).length + ' rendered · done';
+          if(toastOnly && typeof showToast === 'function') showToast('Rendered ' + (ev.data.renders||[]).length + ' size(s)');
+        }
+      }
+
+      return pump();
+    }).catch(function(err){
+      if(btn && !toastOnly){ btn.disabled = false; btn.textContent = 'Render selected sizes'; }
+      if(prog && !toastOnly) prog.textContent = err.message || 'Render failed';
+      if(typeof showToast === 'function') showToast(err.message || 'Render failed');
+    });
+  }
+
+  function parseSseBlock(raw){
+    var lines = raw.split('\n');
+    var event = 'message', data = '';
+    for(var i = 0; i < lines.length; i++){
+      var line = lines[i];
+      if(line.indexOf('event:') === 0) event = line.slice(6).trim();
+      else if(line.indexOf('data:') === 0) data += line.slice(5).trim();
+    }
+    if(!data) return null;
+    try { return { event: event, data: JSON.parse(data) }; }
+    catch(_){ return null; }
+  }
+
+  function pickBiggest(rendersBySize, template){
+    var best = null, bestArea = -1;
+    for(var k in rendersBySize){
+      if(!Object.prototype.hasOwnProperty.call(rendersBySize, k)) continue;
+      var size = null;
+      for(var i = 0; i < template.sizes.length; i++){
+        if(template.sizes[i].label === k){ size = template.sizes[i]; break; }
+      }
+      if(!size) continue;
+      var a = size.w * size.h;
+      if(a > bestArea){ bestArea = a; best = rendersBySize[k]; }
+    }
+    return best;
+  }
+
+  function renderResultLine(d){
+    var tag = (d.format || '').toUpperCase();
+    return ''
+      + '<div class="mkt-result-row">'
+      +   '<span class="mkt-result-size">'+escapeHtml(d.size_label)+'</span>'
+      +   '<span class="mkt-result-tag">'+escapeHtml(tag)+'</span>'
+      +   (d.cached ? '<span class="mkt-result-cached">cached</span>' : '')
+      +   '<a class="mkt-result-link" href="'+escapeAttr(d.url)+'" download target="_blank" rel="noopener">Download</a>'
+      + '</div>';
+  }
+
+  function updateTileThumbnail(templateId, url){
+    // Replace the tile's placeholder preview with the freshly rendered
+    // URL. Picks the biggest size's URL if multiple events fire — this
+    // function is called per-event so a 256² render briefly shows
+    // before the 1024² overwrites it. Visually fine.
+    var tiles = document.querySelectorAll('.mkt-tile[data-template-id]');
+    for(var i = 0; i < tiles.length; i++){
+      if(tiles[i].getAttribute('data-template-id') !== templateId) continue;
+      var prev = tiles[i].querySelector('.mkt-tile-preview, .mkt-tile-preview-empty');
+      if(!prev) return;
+      // If we already have an <img>, just swap the src
+      if(prev.tagName === 'IMG'){ prev.setAttribute('src', url); return; }
+      // Otherwise replace the placeholder element with an img
+      var img = document.createElement('img');
+      img.className = 'mkt-tile-preview';
+      img.setAttribute('src', url);
+      img.setAttribute('alt', '');
+      img.setAttribute('loading', 'lazy');
+      prev.parentNode.replaceChild(img, prev);
+      return;
+    }
+  }
+
+  function pickStr(){
+    for(var i = 0; i < arguments.length; i++){
+      var v = arguments[i];
+      if(typeof v === 'string') return v;
+    }
+    return '';
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -283,6 +710,39 @@
   // ─── Styles ────────────────────────────────────────────────────────────────
   // Inline so spinative.html doesn't have to grow a marketing.css <link>
   // for what's a localised v1 surface. Day 10 polish may extract.
+
+  var MODAL_CSS = ''
+    + '#mkt-modal-overlay{position:fixed;inset:0;background:rgba(6,6,10,0.78);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:32px}'
+    + '#mkt-modal{background:#13131a;border:1px solid #2a2a3a;border-radius:10px;width:100%;max-width:1080px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column}'
+    + '#mkt-modal-header{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #2a2a3a}'
+    + '#mkt-modal-title{font-size:14px;color:#e8e6e2;font-weight:600;margin-bottom:2px}'
+    + '#mkt-modal-subtitle{font-size:10px;color:#5a5a78;font-family:"DM Mono",monospace;letter-spacing:0.04em}'
+    + '#mkt-modal-close{background:transparent;border:none;color:#7a7a94;font-size:24px;line-height:1;cursor:pointer;padding:0 4px}'
+    + '#mkt-modal-close:hover{color:#e8e6e2}'
+    + '#mkt-modal-body{display:grid;grid-template-columns:340px 1fr;gap:0;flex:1;min-height:0}'
+    + '#mkt-modal-left{padding:18px 22px;border-right:1px solid #2a2a3a;overflow-y:auto}'
+    + '#mkt-modal-right{padding:18px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}'
+    + '.mkt-form-row{margin-bottom:14px}'
+    + '.mkt-form-label{font-size:11px;color:#a0a0b0;font-weight:500;margin-bottom:6px;letter-spacing:0.02em;display:block}'
+    + '.mkt-form-input{width:100%;background:#0a0a10;border:1px solid #2a2a3a;color:#e0deda;border-radius:5px;padding:8px 10px;font-size:12px;font-family:inherit}'
+    + '.mkt-form-input:focus{outline:none;border-color:#c9a84c}'
+    + '.mkt-form-hint{font-size:10px;color:#5a5a78;margin-top:4px;line-height:1.4}'
+    + '.mkt-form-sizes{display:flex;flex-wrap:wrap;gap:8px}'
+    + '.mkt-form-size{display:inline-flex;align-items:center;gap:6px;background:#0a0a10;border:1px solid #2a2a3a;border-radius:5px;padding:6px 10px;font-size:11px;color:#e0deda;cursor:pointer;font-family:"DM Mono",monospace}'
+    + '.mkt-form-size:hover{border-color:#3a3a4f}'
+    + '.mkt-form-size input{accent-color:#c9a84c}'
+    + '#mkt-modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #2a2a3a}'
+    + '#mkt-modal-actions .mkt-tile-btn{flex:1;padding:9px 14px;font-size:12px}'
+    + '#mkt-modal-preview{background:#0a0a10;border:1px solid #2a2a3a;border-radius:6px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden}'
+    + '.mkt-modal-preview-empty{color:#5a5a78;font-size:11px;padding:24px;text-align:center}'
+    + '#mkt-modal-progress{font-size:11px;color:#a0a0b0;font-family:"DM Mono",monospace;min-height:14px}'
+    + '#mkt-modal-results{display:flex;flex-direction:column;gap:6px}'
+    + '.mkt-result-row{display:flex;align-items:center;gap:10px;background:#1a1a24;border:1px solid #2a2a3a;border-radius:5px;padding:8px 12px;font-size:11px}'
+    + '.mkt-result-size{color:#e0deda;font-family:"DM Mono",monospace;flex:1}'
+    + '.mkt-result-tag{color:#7a7a94;font-family:"DM Mono",monospace;font-size:10px}'
+    + '.mkt-result-cached{color:#7ac98a;font-size:10px}'
+    + '.mkt-result-link{color:#c9a84c;text-decoration:none;font-weight:500}'
+    + '.mkt-result-link:hover{color:#d4b65c;text-decoration:underline}';
 
   var MARKETING_CSS = ''
     + '.mkt-section{padding:18px 22px;border-bottom:1px solid #1a1a24}'
