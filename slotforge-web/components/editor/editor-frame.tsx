@@ -779,6 +779,13 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
               // Tell the iframe to switch to canvas — it will post SF_WORKSPACE_CHANGED back
               iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'canvas' }, window.location.origin)
             }}
+            onOpenTypography={() => {
+              // Phase 1 fold-in: Typography is a sub-step of Art accessed
+              // via a sidebar tab in this workspace. Click pushes the
+              // iframe to the typography workspace; React shell mounts the
+              // full-page TypographyWorkspace component below.
+              iframeRef.current?.contentWindow?.postMessage({ type: 'SF_SET_WORKSPACE', workspace: 'typography' }, window.location.origin)
+            }}
           />
         )}
 

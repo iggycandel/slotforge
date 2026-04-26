@@ -237,6 +237,11 @@ interface Props {
   inlineMode?:   boolean
   /** Called when user wants to return to the canvas (only used in inlineMode) */
   onBackToCanvas?: () => void
+  /** Phase 1 fold-in: Typography is a sub-step of Art, accessed via a
+   *  third tab in the sidebar. Click triggers a workspace switch to
+   *  'typography' (handled by editor-frame.tsx which mounts the
+   *  TypographyWorkspace full-page). */
+  onOpenTypography?: () => void
   /** Rich theme/art-direction meta forwarded from the editor's Project Settings panel */
   projectMeta?:  Record<string, unknown>
   /** Whether the current plan allows exporting/downloading assets (default: false for safety) */
@@ -262,7 +267,7 @@ interface Props {
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, projectMeta, exportsEnabled = false, onAddToCanvas, onUpdateMeta }: Props) {
+export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets, inlineMode = false, onBackToCanvas, onOpenTypography, projectMeta, exportsEnabled = false, onAddToCanvas, onUpdateMeta }: Props) {
   // Route params (for billing page link)
   const params = useParams<{ orgSlug: string }>()
   const routeSlug = orgSlug ?? params?.orgSlug ?? ''
@@ -1069,7 +1074,11 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden', background: C.surface,
         }}>
-          <SidebarTabSwitcher mode={sidebarMode} onChange={setSidebarMode} />
+          <SidebarTabSwitcher
+            mode={sidebarMode}
+            onChange={setSidebarMode}
+            onOpenTypography={onOpenTypography}
+          />
           {sidebarMode === 'assets' ? (
             <LeftSidebar
               groups={assetGroups}
@@ -1674,24 +1683,42 @@ function LeftSidebar({
   )
 }
 
-// ─── Sidebar tab switcher — flips between Assets / Inputs modes ───────────
+// ─── Sidebar tab switcher — flips between Assets / Inputs / Typography ─────
+//
+// Typography isn't a sidebar mode like the other two — it's a full-page
+// workspace mounted by editor-frame.tsx based on SF_SET_WORKSPACE. The
+// "Typography" tab here triggers a workspace change to 'typography'
+// (see onOpenTypography callback). Once the user is in Typography, the
+// React shell takes over the page; the user comes back via Typography's
+// own "back to Art" affordance.
 function SidebarTabSwitcher({
-  mode, onChange,
-}: { mode: 'assets' | 'inputs'; onChange: (m: 'assets' | 'inputs') => void }) {
+  mode, onChange, onOpenTypography,
+}: {
+  mode: 'assets' | 'inputs'
+  onChange: (m: 'assets' | 'inputs') => void
+  onOpenTypography?: () => void
+}) {
   return (
     <div style={{
       display: 'flex', gap: 4, padding: '8px 10px 6px',
       borderBottom: `1px solid ${C.border}`, flexShrink: 0,
     }}>
       {([
-        { id: 'assets', label: 'Assets' },
-        { id: 'inputs', label: 'Inputs' },
+        { id: 'assets',     label: 'Assets',      isTypography: false },
+        { id: 'inputs',     label: 'Inputs',      isTypography: false },
+        { id: 'typography', label: 'Typography',  isTypography: true  },
       ] as const).map(tab => {
-        const active = mode === tab.id
+        const active = !tab.isTypography && mode === tab.id
         return (
           <button
             key={tab.id}
-            onClick={() => onChange(tab.id)}
+            onClick={() => {
+              if (tab.isTypography) {
+                onOpenTypography?.()
+              } else {
+                onChange(tab.id as 'assets' | 'inputs')
+              }
+            }}
             style={{
               flex: 1, padding: '6px 10px',
               background: active ? C.surfHigh : 'transparent',

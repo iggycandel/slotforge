@@ -14113,27 +14113,106 @@ setTimeout(() => {
     return 'linear-gradient(135deg, ' + dot + ' 0%, #0a0a10 100%)';
   }
 
+  /** Read a screen+element position respecting EL_VP screen-bucket
+   *  overrides → base-screen inheritance → EL_COMPUTED → PSD fallback.
+   *  Mirrors the canvas's getPos() but takes an explicit screen key
+   *  (getPos uses P.screen) so the panel can render every tile from
+   *  one rebuild without mutating P.screen. */
+  function thumbPos(screenKey, elementKey){
+    var vp = (window.P && P.viewport === 'desktop') ? 'landscape' : ((window.P && P.viewport) || 'portrait');
+    try {
+      // 1. screen-specific override
+      var here = EL_VP[vp] && EL_VP[vp][screenKey] && EL_VP[vp][screenKey][elementKey];
+      if(here) return here;
+      // 2. inherit from base when not already on base
+      if(screenKey !== 'base'){
+        var base = EL_VP[vp] && EL_VP[vp]['base'] && EL_VP[vp]['base'][elementKey];
+        if(base) return base;
+      }
+      // 3. computed defaults
+      if(typeof EL_COMPUTED !== 'undefined' && EL_COMPUTED[vp] && EL_COMPUTED[vp][elementKey]){
+        return EL_COMPUTED[vp][elementKey];
+      }
+      // 4. PSD fallback
+      if(typeof PSD !== 'undefined' && PSD[elementKey]){
+        return PSD[elementKey][vp] || PSD[elementKey].portrait;
+      }
+    } catch(e){}
+    return null;
+  }
+
+  /** Convert a canvas-coords position into an inline style string
+   *  positioned RELATIVE TO THE VIEWPORT, since the tile depicts the
+   *  viewport (cx..cx+cw × cy..cy+ch). For elements outside the
+   *  viewport the resulting %s go negative or >100 and CSS clips
+   *  them via the tile's overflow:hidden — matching what the user
+   *  sees on the canvas with off-canvas mode off. */
+  function positionedAssetImg(url, pos, vpDef, klass){
+    if(!url || !pos || !vpDef || !vpDef.cw || !vpDef.ch) return '';
+    var leftPct   = ((pos.x - vpDef.cx) / vpDef.cw) * 100;
+    var topPct    = ((pos.y - vpDef.cy) / vpDef.ch) * 100;
+    var widthPct  = (pos.w / vpDef.cw) * 100;
+    var heightPct = (pos.h / vpDef.ch) * 100;
+    return '<img class="' + (klass || 'stp-tile-asset') + '" src="' + (url || '').replace(/"/g, '%22') +
+      '" alt="" loading="lazy" onerror="this.style.display=\'none\'"' +
+      ' style="position:absolute;left:' + leftPct.toFixed(2) + '%;top:' + topPct.toFixed(2) +
+      '%;width:' + widthPct.toFixed(2) + '%;height:' + heightPct.toFixed(2) + '%;object-fit:contain;pointer-events:none">';
+  }
+
   function buildTile(item, isChild){
-    var active = (window.P && window.P.screen === item.key) ? ' is-active' : '';
+    var sk     = item.key;
+    var active = (window.P && window.P.screen === sk) ? ' is-active' : '';
     var cls    = isChild ? 'stp-tile-child' : 'stp-tile-parent';
-    var ready  = readinessFor(item.key);
-    // Phase 3.1: when the screen has a real bg asset, render it as
-    // an <img>. Image loading is more forgiving than CSS
-    // background-image (handles HTTPS / CORS / data:URI uniformly,
-    // and onerror lets us fall back gracefully). The tinted-gradient
-    // sits in the same spot as the .stp-tile-fill backstop so the
-    // tile is never empty.
-    var bg = bgUrlFor(item.key);
-    var imgEl = bg
-      ? '<img class="stp-tile-img" src="' + (bg || '').replace(/"/g, '%22') + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-      : '';
+    var ready  = readinessFor(sk);
+
+    // Phase 3.2: composite the actual screen — bg + character + logo —
+    // so the tile reads as a real preview, not just a backdrop.
+    // Positions read via thumbPos respect per-screen EL_VP overrides
+    // (e.g. character moved on Splash → Splash thumb shows the moved
+    // position) with base-screen inheritance for screens that haven't
+    // been individually customised.
+    var vp = (window.P && P.viewport === 'desktop') ? 'landscape' : ((window.P && P.viewport) || 'portrait');
+    var vpDef = (typeof VP !== 'undefined' ? VP[vp] : null) || { cx:0, cy:0, cw:2000, ch:2000 };
+
+    // Background — fills the viewport area of the tile. Uses the same
+    // bg-resolution chain as the canvas (bgUrlFor mirrors the editor's
+    // resolver). The bg img is positioned to show only the viewport
+    // crop — same as what the user actually sees on the live canvas.
+    var bgUrl = bgUrlFor(sk);
+    var bgPos = thumbPos(sk, 'bg');
+    var bgImg = (bgUrl && bgPos) ? positionedAssetImg(bgUrl, bgPos, vpDef, 'stp-tile-img') : '';
+
+    // Character — only if the project has it enabled and the asset is
+    // present. P.char.enabled is the master toggle; EL_ASSETS.char is
+    // the cutout / image. Skip on screens that wouldn't show one.
+    var charImg = '';
+    var charEnabled = !!(window.P && P.char && P.char.enabled);
+    if(charEnabled && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.char){
+      var cPos = thumbPos(sk, 'char');
+      if(cPos) charImg = positionedAssetImg(EL_ASSETS.char, cPos, vpDef, 'stp-tile-asset');
+    }
+
+    // Logo — splash, base, lobby tiles all use it. Hidden on win-popup
+    // screens where it competes with the win text.
+    var logoImg = '';
+    var skipLogoOn = { popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1 };
+    if(!skipLogoOn[sk] && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.logo){
+      var lPos = thumbPos(sk, 'logo');
+      if(lPos) logoImg = positionedAssetImg(EL_ASSETS.logo, lPos, vpDef, 'stp-tile-asset');
+    }
+
+    // Tinted gradient stays as the no-bg fallback. Dimmed when bg
+    // exists so the bg image is the dominant signal.
     var gradientStyle = 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';' +
-                       (bg ? 'opacity:0.18' : 'opacity:0.55');
+                       (bgUrl ? 'opacity:0.18' : 'opacity:0.55');
+
     return ''
       + '<button type="button" class="stp-tile ' + cls + active + '" data-screen="'
-      +   (item.key || '') + '" title="' + (item.label || '') + '">'
+      +   (sk || '') + '" title="' + (item.label || '') + '">'
       +   '<div class="stp-tile-fill" style="' + gradientStyle + '"></div>'
-      +   imgEl
+      +   bgImg
+      +   charImg
+      +   logoImg
       +   '<div class="stp-tile-vignette"></div>'
       +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
       +   '<span class="stp-tile-label">' + (item.label || '') + '</span>'
