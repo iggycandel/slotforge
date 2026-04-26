@@ -101,7 +101,7 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
   // most one row.
   const { data: existing } = await sb
     .from('marketing_renders')
-    .select('storage_path, bytes')
+    .select('storage_path, bytes, layer_boxes')
     .eq('kit_id',     input.kitId)
     .eq('size_label', input.size.label)
     .eq('format',     input.size.format)
@@ -116,10 +116,11 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
       storagePath: existing.storage_path as string,
       bytes:       (existing.bytes as number) ?? 0,
       varsHash,
-      // Cache hits don't re-run the engine, so we don't have fresh
-      // layer boxes. Modal handles this by falling back to its last
-      // captured set or re-firing a one-shot render to repopulate.
-      layerBoxes:  [],
+      // Cache hits read the persisted bboxes from the row — drag works
+      // immediately even on a render the engine hasn't seen this
+      // session. Falls back to [] for older rows that pre-date the
+      // layer_boxes column (cleared by the migration default).
+      layerBoxes:  Array.isArray(existing.layer_boxes) ? existing.layer_boxes : [],
       width:       input.size.w,
       height:      input.size.h,
       sizeLabel:   input.size.label,
@@ -173,6 +174,10 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
     storage_path: storagePath,
     vars_hash:    varsHash,
     bytes,
+    // Persist the engine's bbox output so the modal can wire drag-on-
+    // preview against this render even after the user closes + reopens
+    // the modal (cache hit returns these directly).
+    layer_boxes:  renderedLayers,
   }
   const { error } = await sb
     .from('marketing_renders')

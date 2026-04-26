@@ -655,10 +655,28 @@
     // applies, mirrored client-side so a stale cache doesn't show
     // 9 entries for a 3-size template.
     var existing = dedupeRenders((kit && kit.renders) || []);
+    // Reset previewMeta — the seed below restores it from persisted
+    // bboxes if any cached render carries them.
+    previewMeta = null;
     if(existing.length > 0){
       // Show the biggest as the live preview
       var biggest = pickBiggestExisting(existing, template);
-      if(biggest && preview) showPreview(biggest);
+      if(biggest){
+        // Seed previewMeta from the persisted bboxes BEFORE showPreview
+        // so renderPreviewHandles paints the drag overlay on the very
+        // first paint. Older renders (pre-layer_boxes column) ship an
+        // empty array; modal silently falls back to the "render once"
+        // hint in that case.
+        if(biggest.layer_boxes && biggest.layer_boxes.length && biggest.width && biggest.height){
+          previewMeta = {
+            templateId: template.id,
+            width:      biggest.width,
+            height:     biggest.height,
+            boxes:      biggest.layer_boxes,
+          };
+        }
+        if(preview) showPreview(biggest);
+      }
       // Populate the results list with download links
       if(results){
         results.innerHTML = '';
@@ -675,11 +693,6 @@
       if(preview) preview.innerHTML = '<div class="mkt-modal-preview-empty">Click <b>Render selected sizes</b> to see your kit</div>';
       if(results) results.innerHTML = '';
     }
-    // previewMeta from a prior session is wiped — bbox metadata is
-    // pixel coords in the previous render's space and won't line up
-    // with the persisted thumbnail. Drag becomes available after the
-    // next live render fires.
-    previewMeta = null;
 
     document.getElementById('mkt-modal-overlay').style.display = 'flex';
   }

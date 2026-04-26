@@ -311,4 +311,9 @@ export interface MarketingRenderRow {
   vars_hash:    string
   bytes:        number
   created_at:   string
+  /** Per-asset bboxes captured at render time. Lets the Customise
+   *  modal's drag-on-preview work against ANY render — fresh or
+   *  cached — without re-running the engine just to recompute
+   *  positions. Empty array on PDF renders (no drag surface). */
+  layer_boxes:  RenderedLayerBox[]
 }
