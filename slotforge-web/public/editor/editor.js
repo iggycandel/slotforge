@@ -3369,6 +3369,10 @@ function setViewport(vp){
   if(P.screen!=='project'){buildCanvas();fitZoom();updateDeviceFrame();}
   // Redraw crop indicator if visible
   if(document.getElementById('gf-outer')?.dataset.overflow==='1'){toggleCanvasOverflow();toggleCanvasOverflow();}
+  // v2 UX: refresh the screen thumbs panel so its tile aspect ratio
+  // (9:16 portrait vs 16:9 landscape) matches what the canvas now
+  // shows. _sfRebuildScreenThumbs is set by the panel module's IIFE.
+  try { if(typeof window._sfRebuildScreenThumbs === 'function') window._sfRebuildScreenThumbs(); } catch(e){}
 }
 
 // ═══ PROJECT → CANVAS REACTIVITY ═══
@@ -14025,6 +14029,17 @@ setTimeout(() => {
     var list = document.getElementById('stp-list');
     if(!list) return;
     if(typeof computeTabs !== 'function') return;
+
+    // Reflect the active viewport so tile aspect ratios match what the
+    // user sees on the canvas. setViewport() also calls this rebuild
+    // so toggling Portrait ↔ Landscape from the topbar refreshes the
+    // panel automatically.
+    var panel = document.getElementById('screen-thumbs-panel');
+    if(panel){
+      var vp = (window.P && window.P.viewport) || 'portrait';
+      panel.classList.toggle('is-portrait',  vp === 'portrait');
+      panel.classList.toggle('is-landscape', vp === 'landscape' || vp === 'desktop');
+    }
 
     var tabs;
     try { tabs = computeTabs(); } catch(e){ console.warn('[stp] computeTabs failed', e); return; }
