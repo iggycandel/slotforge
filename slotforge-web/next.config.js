@@ -9,6 +9,11 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '4mb',
     },
+    // Native modules used by the marketing composition pipeline. Webpack
+    // refuses to bundle .node binaries; this list tells Next.js to leave
+    // them as runtime requires that load the platform-specific binary
+    // off node_modules at execution time.
+    serverComponentsExternalPackages: ['sharp', '@napi-rs/canvas'],
   },
 
   // Security headers (audit M1, v120). Conservative baseline applied to
