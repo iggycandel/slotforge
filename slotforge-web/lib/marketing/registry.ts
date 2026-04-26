@@ -25,6 +25,17 @@ import type {
   TemplateCategory,
 } from './types'
 
+// ─── Template imports ───────────────────────────────────────────────────────
+//
+// Explicit imports per file. Next.js / webpack can't `glob('./templates/*.json')`
+// at build time, so the only way to bundle the JSON into the route output
+// is to import each one by name. Day 8 will add the remaining 19 entries.
+import promoSquareLobbyTile from './templates/promo.square_lobby_tile.json'
+
+const SHIPPED_TEMPLATES: MarketingTemplate[] = [
+  promoSquareLobbyTile as MarketingTemplate,
+]
+
 // ─── Storage ─────────────────────────────────────────────────────────────────
 //
 // Templates are loaded into a frozen array at module init. The Map is
@@ -155,3 +166,13 @@ export function listTemplateSummaries(): TemplateSummary[] {
     previewPath: t.previewPath,
   }))
 }
+
+// ─── Module-init bootstrap ──────────────────────────────────────────────────
+//
+// Register the shipped templates as soon as this module is imported. Any
+// import of registry.ts (or anything that re-exports from it) lights the
+// catalogue up. Validation errors crash the module, which crashes the
+// route at cold-start — exactly what we want: a malformed template should
+// never silently ship a broken render.
+
+registerTemplates(SHIPPED_TEMPLATES)

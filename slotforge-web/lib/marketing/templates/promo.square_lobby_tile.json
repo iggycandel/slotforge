@@ -1,0 +1,76 @@
+{
+  "id": "promo.square_lobby_tile",
+  "name": "Square Lobby Tile",
+  "category": "promo",
+  "version": 1,
+  "sizes": [
+    { "w": 256,  "h": 256,  "label": "256x256",   "format": "png" },
+    { "w": 512,  "h": 512,  "label": "512x512",   "format": "png" },
+    { "w": 1024, "h": 1024, "label": "1024x1024", "format": "png" }
+  ],
+  "layers": [
+    {
+      "type": "asset",
+      "slot": "background_base",
+      "fit": "cover",
+      "anchor": "middle-center"
+    },
+    {
+      "type": "gradient",
+      "from": "transparent",
+      "to": "rgba(0,0,0,0.65)",
+      "direction": "bottom",
+      "start": 0.4
+    },
+    {
+      "type": "asset",
+      "slot": "character.transparent",
+      "fit": "contain",
+      "anchor": "bottom-center",
+      "scale": 0.85,
+      "padding": 40,
+      "variants": {
+        "B": { "anchor": "bottom-right", "scale": 0.75 },
+        "C": { "anchor": "bottom-left",  "scale": 0.75 }
+      }
+    },
+    {
+      "type": "asset",
+      "slot": "logo",
+      "fit": "contain",
+      "anchor": "top-center",
+      "scale": 0.7,
+      "padding": 60
+    },
+    {
+      "type": "text",
+      "value": "${gameName}",
+      "font": { "family": "Inter", "weight": 900, "size": 48, "tracking": 1.2 },
+      "color": "#ffffff",
+      "stroke": { "color": "rgba(0,0,0,0.45)", "width": 3 },
+      "anchor": "bottom-center",
+      "align": "center",
+      "maxWidth": "85%"
+    },
+    {
+      "type": "cta",
+      "valueVar": "ctaText",
+      "style": "pill",
+      "font": { "family": "Inter", "weight": 800, "size": 18 },
+      "bg": { "var": "colorAccent" },
+      "fg": "#ffffff",
+      "anchor": "bottom-right",
+      "padding": [10, 20]
+    }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/promo_square_lobby_tile.png"
+}
