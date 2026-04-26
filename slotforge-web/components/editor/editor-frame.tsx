@@ -246,13 +246,23 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     try {
       const { error } = await autosaveProject(projectId, payload)
       if (error) throw error
+      const noteText = versionLabel.trim()
       if (isManual) {
-        await createSnapshot(projectId, payload, versionLabel.trim() || undefined)
+        await createSnapshot(projectId, payload, noteText || undefined)
         setVersionLabel('')
         loadSnapshots()
       }
       setSaveState({ status: 'saved', lastSaved: new Date() })
       setTimeout(() => setSaveState(s => s.status === 'saved' ? { ...s, status: 'idle' } : s), 3000)
+      // v2 UX (Phase 5): tell the iframe whether this save carried a
+      // version note. The iframe-side version-notes nudge counts
+      // unnoted saves and gently prompts the user after a threshold.
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'SF_SAVED', isManual, hasNote: noteText.length > 0 },
+          window.location.origin,
+        )
+      } catch { /* iframe gone — ignore */ }
     } catch {
       setSaveState({ status: 'error' })
     } finally {

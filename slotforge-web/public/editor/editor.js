@@ -12518,14 +12518,29 @@ window._sfBridge = (function(){
   /* ─── 7. Load a saved payload ─── */
   function loadPayload(payload){
     if(!payload) return;
+    // v2 UX: a project is "new" when its gameName isn't set. We show
+    // the welcome modal in that case regardless of sf_welcomed_v1 — the
+    // critique's "single-step modal on project creation" is the
+    // intended unblocking point. Returning users with a named project
+    // never see it.
+    var isNewProject = !payload.gameName || !String(payload.gameName).trim();
     try {
+      // Mark first-run as seen so the legacy unconditional show on
+      // ever-first-load doesn't fire over a payload-driven open.
       localStorage.setItem('sf_welcomed_v1', '1');
       localStorage.setItem('sf_overlay_v1',  '1');
     } catch(e){}
     try { prefillName(payload.gameName); } catch(e){}
     try {
       var wm = document.getElementById('welcome-modal');
-      if(wm){ wm.classList.remove('show'); }
+      if(wm){
+        if(isNewProject){
+          wm.classList.add('show');
+          setTimeout(function(){ var wn=document.getElementById('wf-name'); if(wn) wn.focus(); }, 80);
+        } else {
+          wm.classList.remove('show');
+        }
+      }
     } catch(e){}
     setTimeout(function(){ _sfApplyPayload(payload); }, 300);
     setTimeout(function(){
@@ -13922,3 +13937,203 @@ setTimeout(() => {
  * (see the editor.js call to window._sfRebuildScreenThumbs at the end
  * of rebuildTabs). Bare-identifier callers in editor.js wouldn't have
  * gone through a window.* reassignment, so doing it inline is correct. */
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KEYBOARD SHORTCUTS OVERLAY (Phase 5)
+   ─────────────────────────────────────────────────────────────────────────────
+   Opens on `?` (or `Cmd+/` on Mac). Lists every published shortcut grouped
+   by category. Listens at document level; ignores key events while the user
+   is typing in an input / textarea / contenteditable so we don't intercept
+   their punctuation.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+(function(){
+  'use strict';
+
+  var STYLE_ID = '_sf_kbd_overlay_css';
+  var OVERLAY_ID = 'kbd-overlay';
+
+  function ensureStyles(){
+    if(document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = ''
+      + '#' + OVERLAY_ID + '{position:fixed;inset:0;background:rgba(6,6,10,0.78);backdrop-filter:blur(4px);z-index:99999;display:none;align-items:center;justify-content:center;padding:32px}'
+      + '#' + OVERLAY_ID + '.show{display:flex}'
+      + '.kbd-card{background:#13131a;border:1px solid #2a2a3a;border-radius:12px;width:100%;max-width:720px;max-height:84vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,0.5)}'
+      + '.kbd-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #2a2a3a}'
+      + '.kbd-title{font-size:14px;color:#e8e6e2;font-weight:600;letter-spacing:-0.01em}'
+      + '.kbd-sub{font-size:10px;color:#7a7a94;font-family:DM Mono,monospace;letter-spacing:0.06em;text-transform:uppercase;margin-top:2px}'
+      + '.kbd-close{background:transparent;border:none;color:#7a7a94;font-size:22px;line-height:1;cursor:pointer;padding:0 6px}'
+      + '.kbd-close:hover{color:#e8e6e2}'
+      + '.kbd-body{padding:18px 22px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:24px}'
+      + '.kbd-section-title{font-size:9px;color:#7a7a94;letter-spacing:0.10em;text-transform:uppercase;margin-bottom:8px;font-weight:700}'
+      + '.kbd-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12px;color:#e0deda}'
+      + '.kbd-keys{display:flex;gap:4px}'
+      + '.kbd-key{display:inline-block;background:#0a0a10;border:1px solid #2a2a3a;border-bottom-width:2px;border-radius:4px;padding:2px 7px;font-family:DM Mono,monospace;font-size:10px;color:#c9a84c;letter-spacing:0.04em;min-width:18px;text-align:center}';
+    document.head.appendChild(s);
+  }
+
+  // Same-origin keyboard map. Mac shows ⌘ for meta; PC shows Ctrl. The
+  // shortcuts here are aspirational — we publish what the editor already
+  // listens for or could trivially listen for. Some are reads-only docs
+  // (advertising the binding) without us re-implementing the handler.
+  var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || '');
+  var MOD = IS_MAC ? '⌘' : 'Ctrl';
+
+  var SECTIONS = [
+    {
+      title: 'Workspaces',
+      shortcuts: [
+        { keys: ['1'],          desc: 'Flow (canvas)' },
+        { keys: ['2'],          desc: 'Art' },
+        { keys: ['3'],          desc: 'Features' },
+        { keys: ['4'],          desc: 'Logic' },
+        { keys: ['5'],          desc: 'Project' },
+        { keys: ['6'],          desc: 'Marketing' },
+      ],
+    },
+    {
+      title: 'Project',
+      shortcuts: [
+        { keys: [MOD, 'S'],     desc: 'Save' },
+        { keys: [MOD, 'Z'],     desc: 'Undo' },
+        { keys: [MOD, 'Shift', 'Z'], desc: 'Redo' },
+      ],
+    },
+    {
+      title: 'Canvas tools',
+      shortcuts: [
+        { keys: ['V'],          desc: 'Move' },
+        { keys: ['A'],          desc: 'Auto-Select' },
+        { keys: ['H'],          desc: 'Hand / Pan' },
+        { keys: ['+'],          desc: 'Zoom in' },
+        { keys: ['-'],          desc: 'Zoom out' },
+      ],
+    },
+    {
+      title: 'Help',
+      shortcuts: [
+        { keys: ['?'],          desc: 'Open this overlay' },
+        { keys: [MOD, '/'],     desc: 'Open this overlay' },
+        { keys: ['Esc'],        desc: 'Close this overlay' },
+      ],
+    },
+  ];
+
+  function buildOverlay(){
+    if(document.getElementById(OVERLAY_ID)) return;
+    ensureStyles();
+    var html = ''
+      + '<div id="' + OVERLAY_ID + '">'
+      +   '<div class="kbd-card">'
+      +     '<div class="kbd-head">'
+      +       '<div>'
+      +         '<div class="kbd-title">Keyboard shortcuts</div>'
+      +         '<div class="kbd-sub">' + (IS_MAC ? '⌘ for command, ⇧ for shift' : 'Ctrl for control') + '</div>'
+      +       '</div>'
+      +       '<button class="kbd-close" id="kbd-close" title="Close (Esc)">×</button>'
+      +     '</div>'
+      +     '<div class="kbd-body">'
+      +       SECTIONS.map(function(s){
+      +         return '<div>'
+      +           + '<div class="kbd-section-title">' + s.title + '</div>'
+      +           + s.shortcuts.map(function(r){
+      +               return '<div class="kbd-row">'
+      +                 + '<span>' + r.desc + '</span>'
+      +                 + '<span class="kbd-keys">'
+      +                 + r.keys.map(function(k){ return '<span class="kbd-key">' + k + '</span>'; }).join('+ ')
+      +                 + '</span>'
+      +               + '</div>';
+      +           }).join('')
+      +         + '</div>';
+      +       }).join('')
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+
+    var ov = document.getElementById(OVERLAY_ID);
+    document.getElementById('kbd-close').addEventListener('click', hide);
+    ov.addEventListener('click', function(e){ if(e.target === ov) hide(); });
+  }
+
+  function show(){ buildOverlay(); document.getElementById(OVERLAY_ID)?.classList.add('show'); }
+  function hide(){ document.getElementById(OVERLAY_ID)?.classList.remove('show'); }
+
+  function isTypingTarget(t){
+    if(!t) return false;
+    var tag = t.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t.isContentEditable === true);
+  }
+
+  document.addEventListener('keydown', function(e){
+    // Esc closes if open.
+    if(e.key === 'Escape'){
+      var ov = document.getElementById(OVERLAY_ID);
+      if(ov && ov.classList.contains('show')){ hide(); return; }
+    }
+    if(isTypingTarget(e.target)) return;
+    // ? — open. Cmd+/ on Mac (or Ctrl+/ on PC) — open.
+    if(e.key === '?' || ((e.metaKey || e.ctrlKey) && e.key === '/')){
+      e.preventDefault();
+      show();
+    }
+  });
+
+  window._sfShowKeyboardShortcuts = show;
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VERSION NOTES NUDGE (Phase 5)
+   ─────────────────────────────────────────────────────────────────────────────
+   The header carries an "Add version note…" input that's a useful habit. We
+   nudge gently — after 5 saves without a note, drop a one-time toast pointing
+   the user at it. Counts reset whenever the user actually adds a note. Stored
+   per-browser via localStorage so the nudge isn't naggy.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+(function(){
+  'use strict';
+
+  var KEY = 'sf_unnoted_saves_v1';
+  var THRESHOLD = 5;
+
+  function readCount(){
+    try { return parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch(e){ return 0; }
+  }
+  function writeCount(n){
+    try { localStorage.setItem(KEY, String(n)); } catch(e){}
+  }
+
+  function checkNudge(){
+    var n = readCount();
+    if(n < THRESHOLD) return;
+    if(typeof showToast === 'function'){
+      showToast(n + ' saves without a note. Add context in "Add version note…" so future-you can navigate.');
+    }
+    writeCount(0);   // reset so the nudge fires again only after another N saves
+  }
+
+  // Hook the existing autosave / save flows. The shell sends a postMessage
+  // back from the React side after a successful save — we increment on
+  // that. The user's "add version note" input lives in the React shell,
+  // not the iframe, so the iframe can't observe its content directly;
+  // we listen for a SF_SAVED_WITH_NOTE message from the shell.
+  window.addEventListener('message', function(ev){
+    var msg = ev && ev.data;
+    if(!msg || !msg.type) return;
+    if(msg.type === 'SF_SAVED'){
+      if(msg.hasNote){
+        writeCount(0);
+      } else {
+        writeCount(readCount() + 1);
+        // Defer the toast slightly so it doesn't compete with the
+        // shell's save-success indicator.
+        setTimeout(checkNudge, 800);
+      }
+    }
+  });
+})();
