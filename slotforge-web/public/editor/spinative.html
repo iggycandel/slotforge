@@ -685,6 +685,12 @@
     <div style="display:flex;align-items:center;gap:16px;flex:1">
       <div><div class="ph-title">Project Settings</div><div class="ph-sub">All screens update live as you configure</div></div>
     </div>
+    <!-- v2 UX: completion progress. Refreshed by recomputeProjectProgress()
+         on every relevant field change so the user always sees momentum. -->
+    <div id="proj-progress-wrap" title="Setup completion across the Theme tabs">
+      <div class="ppw-bar"><div class="ppw-fill" id="proj-progress-fill"></div></div>
+      <div class="ppw-text"><span id="proj-progress-pct">0%</span> · <span id="proj-progress-count">0/0</span></div>
+    </div>
     <div class="ph-chip" id="ph-chip"></div>
     <!-- proj-close-btn kept hidden so code references (Save & Close buttons) still work -->
     <button id="proj-close-btn" style="display:none"></button>
@@ -730,6 +736,19 @@
       <!-- ══ THEME TAB ══ -->
       <div class="proj-tab-pane" id="ptab-theme">
 
+          <!-- Theme Picker (v2 UX) — visual grid on top of the legacy
+               <select id="theme-sel">. The select is hidden but kept
+               as source of truth so all save/load/onchange wiring
+               works unchanged. Cards programmatically set
+               theme-sel.value + dispatch a change event. -->
+          <div class="ps s2">
+            <div class="psh"><span class="pi">✦</span><span class="pl">Pick a theme</span></div>
+            <div class="psb">
+              <div style="font-size:9px;color:#778;line-height:1.6;margin-bottom:14px">Aesthetic direction. This shapes the AI prompts, asset palette, and tone across the kit. Change anytime.</div>
+              <div id="theme-picker-grid"></div>
+            </div>
+          </div>
+
           <!-- Game Identity -->
           <div class="ps s2">
             <div class="psh"><span class="pi">🎮</span><span class="pl">Game Identity</span></div>
@@ -743,7 +762,11 @@
                 <div class="pf"><div class="lbl">Version</div><input class="fi" id="game-version" placeholder="1.0.0" value="1.0.0"></div>
               </div>
               <div class="pfr">
-                <div class="pf"><div class="lbl">Theme</div>
+                <!-- Theme: legacy <select> kept as source-of-truth for
+                     save/load. Visually replaced by #theme-picker-grid
+                     above (the cards drive .value + dispatch change). -->
+                <div class="pf" style="display:none">
+                  <div class="lbl">Theme</div>
                   <select class="fsel" id="theme-sel">
                     <option value="western">Western / Rodeo</option><option value="egypt">Ancient Egypt</option><option value="rome">Ancient Rome</option><option value="greece">Ancient Greece</option><option value="aztec">Aztec / Mayan</option><option value="chinese">Chinese / Oriental</option><option value="irish">Irish / Celtic</option><option value="viking">Viking / Norse</option><option value="pirate">Pirate / Nautical</option><option value="fantasy">Fantasy / Magic</option><option value="fairy">Fairy Tale</option><option value="space">Space / Sci-Fi</option><option value="jungle">Jungle / Safari</option><option value="underwater">Underwater</option><option value="halloween">Halloween</option><option value="christmas">Christmas</option><option value="fruits">Classic Fruits</option><option value="diamonds">Diamonds / Luxury</option><option value="sports">Sports</option><option value="music">Music / Rock</option><option value="other">Other…</option>
                   </select>

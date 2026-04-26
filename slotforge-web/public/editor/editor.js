@@ -6162,7 +6162,13 @@ function switchProjTab(name){
   if(!name) name='import';
   document.querySelectorAll('.proj-tab').forEach(b=>b.classList.toggle('active', b.dataset.ptab===name));
   document.querySelectorAll('.proj-tab-pane').forEach(p=>p.classList.toggle('active', p.id==='ptab-'+name));
-  if(name==='theme') setTimeout(renderMiniPreview, 50);
+  if(name==='theme'){
+    setTimeout(renderMiniPreview, 50);
+    // v2 UX: re-paint the visual theme picker (mirrors the legacy
+    // <select> value back into the active card) when the user lands
+    // on the theme tab.
+    try { if(typeof window._sfRenderThemePicker === 'function') window._sfRenderThemePicker(); } catch(e){}
+  }
 }
 
 // Wire tab bar clicks
@@ -13388,4 +13394,314 @@ setTimeout(() => {
             document.onmousemove = null;
         }
     }
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME VISUAL PICKER — v2 UX (Phase 2.A)
+   ─────────────────────────────────────────────────────────────────────────────
+   Grid of clickable theme cards rendered into #theme-picker-grid. Each card
+   sets the legacy <select id="theme-sel"> value + dispatches a change event
+   so all existing wiring (P.theme update, custom-theme reveal, _sfApplyPayload
+   round-trip, refresh + markDirty) keeps working unchanged.
+
+   The themes array mirrors the legacy <option> set 1:1 so the source-of-truth
+   select doesn't drift. Each entry carries:
+     • value     — option key sent to AI prompt builder + saved in payload
+     • label     — display text on the card
+     • icon      — single emoji to anchor recognition (fast scanning)
+     • gradient  — two-stop CSS gradient that hints the palette
+
+   When the user picks "Other" we still reveal #custom-theme-wrap (the legacy
+   select.onchange handler does that for us — we just dispatch).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+(function(){
+  'use strict';
+
+  var THEMES = [
+    { value: 'western',    label: 'Western',         icon: '🤠', gradient: ['#7a4a20','#3a1a08'] },
+    { value: 'egypt',      label: 'Ancient Egypt',   icon: '🏺', gradient: ['#d4a64a','#3a2c10'] },
+    { value: 'rome',       label: 'Ancient Rome',    icon: '🏛',  gradient: ['#c9a878','#5a3020'] },
+    { value: 'greece',     label: 'Ancient Greece',  icon: '🏛',  gradient: ['#3a86c0','#0a1830'] },
+    { value: 'aztec',      label: 'Aztec / Mayan',   icon: '🌽', gradient: ['#3a8030','#1a3010'] },
+    { value: 'chinese',    label: 'Chinese',         icon: '🐉', gradient: ['#c92020','#400a08'] },
+    { value: 'irish',      label: 'Irish / Celtic',  icon: '☘',  gradient: ['#2a8030','#0a2010'] },
+    { value: 'viking',     label: 'Viking / Norse',  icon: '⚔',  gradient: ['#5078a0','#0a1828'] },
+    { value: 'pirate',     label: 'Pirate',          icon: '🏴‍☠', gradient: ['#604030','#0a1820'] },
+    { value: 'fantasy',    label: 'Fantasy / Magic', icon: '🐲', gradient: ['#6030a0','#1a0a30'] },
+    { value: 'fairy',      label: 'Fairy Tale',      icon: '✨', gradient: ['#d050a0','#2a0830'] },
+    { value: 'space',      label: 'Space / Sci-Fi',  icon: '🚀', gradient: ['#2050b0','#000010'] },
+    { value: 'jungle',     label: 'Jungle / Safari', icon: '🦁', gradient: ['#3a8020','#1a3008'] },
+    { value: 'underwater', label: 'Underwater',      icon: '🌊', gradient: ['#2070a0','#0a2030'] },
+    { value: 'halloween',  label: 'Halloween',       icon: '🎃', gradient: ['#c06820','#100208'] },
+    { value: 'christmas',  label: 'Christmas',       icon: '🎄', gradient: ['#c02020','#0a3010'] },
+    { value: 'fruits',     label: 'Classic Fruits',  icon: '🍒', gradient: ['#e84830','#2a0808'] },
+    { value: 'diamonds',   label: 'Diamonds',        icon: '💎', gradient: ['#5090c0','#0a1028'] },
+    { value: 'sports',     label: 'Sports',          icon: '⚽', gradient: ['#2a8830','#0a2810'] },
+    { value: 'music',      label: 'Music / Rock',    icon: '🎸', gradient: ['#c020a0','#0a0820'] },
+    { value: 'other',      label: 'Other / Custom',  icon: '✦',  gradient: ['#3a3a4a','#0a0a14'] },
+  ];
+
+  var STYLE_ID = '_sf_theme_picker_css';
+
+  function ensureStyles(){
+    if(document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = ''
+      + '#theme-picker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}'
+      + '.tpc{position:relative;aspect-ratio:1/1;border-radius:8px;border:1px solid rgba(255,255,255,0.06);cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:0;background:#0a0a10;transition:transform .12s ease,border-color .12s ease,box-shadow .12s ease}'
+      + '.tpc:hover{transform:translateY(-2px);border-color:rgba(201,168,76,0.5)}'
+      + '.tpc.is-active{border-color:#c9a84c;box-shadow:0 0 0 1px #c9a84c,0 4px 16px rgba(201,168,76,0.18)}'
+      + '.tpc-fill{position:absolute;inset:0;opacity:0.85;transition:opacity .12s}'
+      + '.tpc:hover .tpc-fill{opacity:1}'
+      + '.tpc-vignette{position:absolute;inset:0;background:linear-gradient(180deg,transparent 35%,rgba(0,0,0,0.55) 100%);pointer-events:none}'
+      + '.tpc-icon{position:absolute;top:10px;left:12px;font-size:22px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5))}'
+      + '.tpc-label{position:relative;padding:8px 10px;font-size:11px;font-weight:600;color:#fff;letter-spacing:0.02em;text-shadow:0 1px 2px rgba(0,0,0,0.7);font-family:Space Grotesk,sans-serif}'
+      + '.tpc-check{position:absolute;top:8px;right:8px;width:18px;height:18px;border-radius:50%;background:#c9a84c;color:#0a0a10;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;opacity:0;transform:scale(0.8);transition:opacity .15s,transform .15s}'
+      + '.tpc.is-active .tpc-check{opacity:1;transform:scale(1)}';
+    document.head.appendChild(s);
+  }
+
+  function buildCard(t){
+    return ''
+      + '<button type="button" class="tpc" data-theme="' + t.value + '" title="' + t.label + '">'
+      +   '<div class="tpc-fill" style="background:linear-gradient(135deg,' + t.gradient[0] + ' 0%,' + t.gradient[1] + ' 100%)"></div>'
+      +   '<div class="tpc-vignette"></div>'
+      +   '<div class="tpc-icon">' + t.icon + '</div>'
+      +   '<div class="tpc-check">✓</div>'
+      +   '<div class="tpc-label">' + t.label + '</div>'
+      + '</button>';
+  }
+
+  function renderPicker(){
+    var grid = document.getElementById('theme-picker-grid');
+    var sel  = document.getElementById('theme-sel');
+    if(!grid || !sel) return;
+    ensureStyles();
+
+    grid.innerHTML = THEMES.map(buildCard).join('');
+
+    // Reflect the current select value as the active card.
+    function syncActive(){
+      var cur = sel.value;
+      grid.querySelectorAll('.tpc').forEach(function(c){
+        c.classList.toggle('is-active', c.getAttribute('data-theme') === cur);
+      });
+    }
+    syncActive();
+
+    // Bind once: re-render is unnecessary because the cards are stable.
+    grid.addEventListener('click', function(ev){
+      var card = ev.target && ev.target.closest && ev.target.closest('.tpc');
+      if(!card) return;
+      var v = card.getAttribute('data-theme');
+      if(!v || sel.value === v){ return; }
+      sel.value = v;
+      // Dispatch so the existing change handler fires (P.theme update,
+      // custom-theme reveal, refresh, markDirty).
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      syncActive();
+    });
+
+    // Re-sync the active card whenever the select changes via other paths
+    // (e.g. payload load, GDD parse auto-fill). Bind once per session.
+    if(!sel._sfThemePickerBound){
+      sel._sfThemePickerBound = true;
+      sel.addEventListener('change', syncActive);
+    }
+  }
+
+  // Initial paint: try immediately + on the project tab activation, since
+  // proj-fs is a hidden overlay until the user opens it.
+  function init(){
+    renderPicker();
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Expose for switchProjTab to nudge the picker if the DOM was rebuilt.
+  window._sfRenderThemePicker = renderPicker;
+})();
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROJECT SETTINGS — COMPLETION PROGRESS (Phase 2.B)
+   ─────────────────────────────────────────────────────────────────────────────
+   Reflects setup completeness as a horizontal bar in the proj-fs header
+   (#proj-progress-wrap). Each tab gets a checkmark dot once its required
+   fields are filled.
+
+   Completion is intentionally lenient: a dozen-field form requires a few
+   anchor inputs (game name + theme + reels), and "filled" = anything more
+   than the placeholder default.  We use a section model:
+
+     theme    — game name AND theme picked
+     reels    — reelset (default '5x3' counts as filled)
+     jackpots — at least one jackpot enabled
+     features — at least one feature enabled
+     symbols  — at least one symbol image OR symbol-name set
+
+   Progress = filled sections / total sections.  Fires on:
+     • DOMContentLoaded
+     • every #proj-fs input/change event (delegated)
+     • payload-load completion (via _sfApplyPayload finishing)
+   ─────────────────────────────────────────────────────────────────────────── */
+
+(function(){
+  'use strict';
+
+  var STYLE_ID = '_sf_proj_progress_css';
+
+  function ensureStyles(){
+    if(document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = ''
+      + '#proj-progress-wrap{display:flex;align-items:center;gap:10px;min-width:220px}'
+      + '.ppw-bar{flex:1;height:6px;background:#1a1a24;border-radius:3px;overflow:hidden;border:1px solid rgba(255,255,255,0.05)}'
+      + '.ppw-fill{height:100%;background:linear-gradient(90deg,#c9a84c,#e8c060);border-radius:3px;transition:width .25s ease}'
+      + '.ppw-text{font-size:9px;color:#9090a8;font-family:DM Mono,monospace;letter-spacing:0.04em;white-space:nowrap}'
+      + '.ppw-text span:first-child{color:#c9a84c;font-weight:700}'
+      // Tab dots (small ✓ next to .proj-tab labels when complete)
+      + '.proj-tab .ppt-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:transparent;margin-left:6px;vertical-align:middle;transition:background .15s}'
+      + '.proj-tab .ppt-dot.is-done{background:#7ac98a;box-shadow:0 0 0 2px rgba(122,201,138,0.18)}';
+    document.head.appendChild(s);
+  }
+
+  /** Read a field value safely. Treats empty strings + the literal default
+   *  '5x3' (etc) as still filled because reelset has a real meaningful
+   *  default. Other fields require user-modified content to count. */
+  function val(id){ var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; }
+
+  function isThemeDone(){
+    return !!(val('game-name') && val('theme-sel'));
+  }
+
+  function isReelsDone(){
+    // Reelset has a sensible default; just confirm it's any non-empty value.
+    return !!val('rs-cols-display');
+  }
+
+  function isJackpotsDone(){
+    // At least one .jp-row is enabled (toggle-on class or input checked).
+    var inputs = document.querySelectorAll('#ptab-jackpots input[type="checkbox"]:checked');
+    if(inputs.length > 0) return true;
+    // Some configs use .tog buttons — check P state if available.
+    try {
+      if(window.P && window.P.jackpots){
+        var jp = window.P.jackpots;
+        return Object.keys(jp).some(function(k){ return jp[k] && jp[k].on; });
+      }
+    } catch(e){}
+    return false;
+  }
+
+  function isFeaturesDone(){
+    try {
+      if(window.P && Array.isArray(window.P.features)){
+        return window.P.features.some(function(f){ return f && f.enabled; });
+      }
+    } catch(e){}
+    // DOM fallback: any feature toggle showing the active state class.
+    return document.querySelectorAll('#ptab-features .tog.on').length > 0;
+  }
+
+  function isSymbolsDone(){
+    try {
+      if(window.P && window.P.symbols){
+        var s = window.P.symbols;
+        // Any symbol with a label or asset counts.
+        return Object.keys(s).some(function(k){
+          var sym = s[k];
+          return sym && (sym.name || sym.label || sym.url || sym.src);
+        });
+      }
+    } catch(e){}
+    // DOM fallback — any symbol-name input with content.
+    var inps = document.querySelectorAll('#ptab-symbols input.fi');
+    for(var i=0;i<inps.length;i++){ if(inps[i].value && inps[i].value.trim()) return true; }
+    return false;
+  }
+
+  // The Import + GDD tabs are utility entry points, not "completion"
+  // checkpoints. They don't move the progress needle.
+  var SECTIONS = [
+    { tab: 'theme',    fn: isThemeDone    },
+    { tab: 'reels',    fn: isReelsDone    },
+    { tab: 'jackpots', fn: isJackpotsDone },
+    { tab: 'features', fn: isFeaturesDone },
+    { tab: 'symbols',  fn: isSymbolsDone  },
+  ];
+
+  function recompute(){
+    ensureStyles();
+    var wrap = document.getElementById('proj-progress-wrap');
+    if(!wrap) return;
+
+    var done = 0;
+    SECTIONS.forEach(function(s){
+      var ok = false;
+      try { ok = !!s.fn(); } catch(e){ ok = false; }
+      if(ok) done++;
+      // Tab-bar dot
+      var btn = document.querySelector('.proj-tab[data-ptab="' + s.tab + '"]');
+      if(btn){
+        var dot = btn.querySelector('.ppt-dot');
+        if(!dot){
+          dot = document.createElement('span');
+          dot.className = 'ppt-dot';
+          btn.appendChild(dot);
+        }
+        dot.classList.toggle('is-done', ok);
+      }
+    });
+
+    var total = SECTIONS.length;
+    var pct   = total ? Math.round((done / total) * 100) : 0;
+    var fill  = document.getElementById('proj-progress-fill');
+    var pctEl = document.getElementById('proj-progress-pct');
+    var cntEl = document.getElementById('proj-progress-count');
+    if(fill)  fill.style.width = pct + '%';
+    if(pctEl) pctEl.textContent = pct + '%';
+    if(cntEl) cntEl.textContent = done + '/' + total;
+  }
+
+  // Debounce — many input events fire while the user is typing.
+  var t = null;
+  function schedule(){ if(t) clearTimeout(t); t = setTimeout(recompute, 150); }
+
+  function bindOnce(){
+    ensureStyles();
+    var fs = document.getElementById('proj-fs');
+    if(!fs) return;
+    if(fs._sfProgressBound) return;
+    fs._sfProgressBound = true;
+    fs.addEventListener('input',  schedule, true);
+    fs.addEventListener('change', schedule, true);
+    fs.addEventListener('click',  schedule, true);
+  }
+
+  // First paint + bind once DOM is ready. Reflow on every payload-load
+  // settle (1100ms in editor.js) by polling the stable post-load tick.
+  function init(){
+    bindOnce();
+    recompute();
+    // Re-evaluate after the standard 1100ms post-load settle so loaded
+    // payloads light up the progress correctly without per-field events.
+    setTimeout(recompute, 1200);
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  window._sfRecomputeProjectProgress = recompute;
 })();
