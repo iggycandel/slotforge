@@ -34,11 +34,13 @@ async function placeholder(label: string, color: string): Promise<Buffer> {
 }
 
 async function main() {
-  const tpl = getTemplate('promo.square_lobby_tile')
+  // Render the YouTube thumbnail (16:9 widescreen) — exercises the
+  // new widescreen layout recipe + JPG encoding through sharp.
+  const tpl = getTemplate('social.yt_thumbnail')
   if (!tpl) throw new Error('template not registered — registry bootstrap broke')
 
-  const size = tpl.sizes.find(s => s.label === '1024x1024')
-  if (!size) throw new Error('size 1024x1024 not declared on template')
+  const size = tpl.sizes[0]
+  if (!size) throw new Error('size missing on template')
 
   const assets = {
     background_base:         await placeholder('BACKGROUND',  '#1a3050'),
@@ -64,9 +66,9 @@ async function main() {
     layerOverrides:   {},
   }, assets)
 
-  const out = '/tmp/marketing-smoke.png'
+  const out = `/tmp/marketing-smoke.${size.format}`
   await fs.writeFile(out, result.buffer)
-  console.log(`OK — rendered ${result.buffer.length} bytes to ${out} (${result.renderedLayers.length} asset layers)`)
+  console.log(`OK — rendered ${result.buffer.length} bytes to ${out} (${size.w}x${size.h}, ${result.renderedLayers.length} asset layers)`)
 }
 
 main().catch(e => { console.error(e); process.exit(1) })

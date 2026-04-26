@@ -1,0 +1,27 @@
+{
+  "id": "social.ig_story",
+  "name": "Instagram — Story",
+  "category": "social",
+  "version": 1,
+  "sizes": [
+    { "w": 1080, "h": 1920, "label": "1080x1920", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "transparent", "to": "rgba(0,0,0,0.78)", "direction": "bottom", "start": 0.45 },
+    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "bottom-center", "scale": 0.95, "padding": 30 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-center", "scale": 0.55, "padding": 80 },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 84, "tracking": 1.2 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 4 }, "anchor": "bottom-center", "align": "center", "maxWidth": "85%" },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 28 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-center", "padding": [16, 36] }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/social_ig_story.png"
+}

@@ -29,11 +29,57 @@ import type {
 //
 // Explicit imports per file. Next.js / webpack can't `glob('./templates/*.json')`
 // at build time, so the only way to bundle the JSON into the route output
-// is to import each one by name. Day 8 will add the remaining 19 entries.
-import promoSquareLobbyTile from './templates/promo.square_lobby_tile.json'
+// is to import each one by name. Press one-pager (PDF) ships in Day 9 with
+// its own pdf-lib pipeline.
+
+// Promo Screens (8)
+import promoSquareLobbyTile     from './templates/promo.square_lobby_tile.json'
+import promoPortraitLobbyTile   from './templates/promo.portrait_lobby_tile.json'
+import promoLandscapeLobbyTile  from './templates/promo.landscape_lobby_tile.json'
+import promoHeroBannerDesktop   from './templates/promo.hero_banner_desktop.json'
+import promoHeroBannerMobile    from './templates/promo.hero_banner_mobile.json'
+import promoSideRail            from './templates/promo.side_rail_300x600.json'
+import promoSquarePromo300      from './templates/promo.square_promo_300.json'
+import promoLeaderboard         from './templates/promo.leaderboard_728x90.json'
+
+// Social Assets (8)
+import socialIgSquarePost       from './templates/social.ig_square_post.json'
+import socialIgPortraitPost     from './templates/social.ig_portrait_post.json'
+import socialIgStory            from './templates/social.ig_story.json'
+import socialFbCover            from './templates/social.fb_cover.json'
+import socialXHeader            from './templates/social.x_header.json'
+import socialLinkedinBanner     from './templates/social.linkedin_banner.json'
+import socialYtThumbnail        from './templates/social.yt_thumbnail.json'
+import socialTiktokCover        from './templates/social.tiktok_cover.json'
+
+// Store Page (3)
+import storeAppIcon             from './templates/store.app_icon_1024.json'
+import storeGplayFeatureGraphic from './templates/store.gplay_feature_graphic_1024x500.json'
+import storeAppStoreScreenshot  from './templates/store.app_store_screenshot.json'
 
 const SHIPPED_TEMPLATES: MarketingTemplate[] = [
-  promoSquareLobbyTile as MarketingTemplate,
+  // Insertion order = grid display order within each category.
+  promoSquareLobbyTile     as MarketingTemplate,
+  promoPortraitLobbyTile   as MarketingTemplate,
+  promoLandscapeLobbyTile  as MarketingTemplate,
+  promoHeroBannerDesktop   as MarketingTemplate,
+  promoHeroBannerMobile    as MarketingTemplate,
+  promoSideRail            as MarketingTemplate,
+  promoSquarePromo300      as MarketingTemplate,
+  promoLeaderboard         as MarketingTemplate,
+
+  socialIgSquarePost       as MarketingTemplate,
+  socialIgPortraitPost     as MarketingTemplate,
+  socialIgStory            as MarketingTemplate,
+  socialFbCover            as MarketingTemplate,
+  socialXHeader            as MarketingTemplate,
+  socialLinkedinBanner     as MarketingTemplate,
+  socialYtThumbnail        as MarketingTemplate,
+  socialTiktokCover        as MarketingTemplate,
+
+  storeAppIcon             as MarketingTemplate,
+  storeGplayFeatureGraphic as MarketingTemplate,
+  storeAppStoreScreenshot  as MarketingTemplate,
 ]
 
 // ─── Storage ─────────────────────────────────────────────────────────────────

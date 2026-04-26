@@ -1,0 +1,26 @@
+{
+  "id": "social.linkedin_banner",
+  "name": "LinkedIn — Banner",
+  "category": "social",
+  "version": 1,
+  "sizes": [
+    { "w": 1584, "h": 396, "label": "1584x396", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "rgba(0,0,0,0.55)", "to": "transparent", "direction": "right", "start": 0.0 },
+    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "middle-right", "scale": 1.05, "padding": 20 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-left", "scale": 0.4, "padding": 36 },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 56, "tracking": 1.2 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 2 }, "anchor": "middle-left", "align": "left", "maxWidth": "55%" }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "none", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/social_linkedin_banner.png"
+}

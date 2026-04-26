@@ -1,0 +1,27 @@
+{
+  "id": "social.fb_cover",
+  "name": "Facebook — Cover",
+  "category": "social",
+  "version": 1,
+  "sizes": [
+    { "w": 820, "h": 312, "label": "820x312", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "rgba(0,0,0,0.6)", "to": "transparent", "direction": "right", "start": 0.0 },
+    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "middle-right", "scale": 1.0, "padding": 16 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-left", "scale": 0.4, "padding": 24 },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 38, "tracking": 1.0 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 2 }, "anchor": "middle-left", "align": "left", "maxWidth": "55%" },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 16 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-left", "padding": [8, 18] }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/social_fb_cover.png"
+}

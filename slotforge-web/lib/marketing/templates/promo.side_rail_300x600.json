@@ -1,0 +1,27 @@
+{
+  "id": "promo.side_rail_300x600",
+  "name": "Side Rail",
+  "category": "promo",
+  "version": 1,
+  "sizes": [
+    { "w": 300, "h": 600, "label": "300x600", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "transparent", "to": "rgba(0,0,0,0.7)", "direction": "bottom", "start": 0.4 },
+    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "bottom-center", "scale": 0.95, "padding": 16 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-center", "scale": 0.8, "padding": 24 },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 28, "tracking": 1.1 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.55)", "width": 2 }, "anchor": "bottom-center", "align": "center", "maxWidth": "88%" },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 13 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-center", "padding": [8, 16] }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/promo_side_rail_300x600.png"
+}

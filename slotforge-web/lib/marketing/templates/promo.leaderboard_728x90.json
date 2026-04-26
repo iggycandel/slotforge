@@ -1,0 +1,27 @@
+{
+  "id": "promo.leaderboard_728x90",
+  "name": "Leaderboard Banner",
+  "category": "promo",
+  "version": 1,
+  "sizes": [
+    { "w": 728, "h": 90,  "label": "728x90",  "format": "jpg" },
+    { "w": 970, "h": 250, "label": "970x250", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "rgba(0,0,0,0.6)", "to": "rgba(0,0,0,0.4)", "direction": "right", "start": 0.0 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "middle-left", "scale": 0.85, "padding": [10, 16, 10, 16] },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 28, "tracking": 1.0 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 2 }, "anchor": "middle-center", "align": "center", "maxWidth": "55%" },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 14 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "middle-right", "padding": [8, 16] }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/promo_leaderboard_728x90.png"
+}

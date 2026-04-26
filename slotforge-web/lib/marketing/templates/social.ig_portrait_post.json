@@ -1,0 +1,27 @@
+{
+  "id": "social.ig_portrait_post",
+  "name": "Instagram — Portrait Post",
+  "category": "social",
+  "version": 1,
+  "sizes": [
+    { "w": 1080, "h": 1350, "label": "1080x1350", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "transparent", "to": "rgba(0,0,0,0.72)", "direction": "bottom", "start": 0.45 },
+    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "bottom-center", "scale": 0.95, "padding": 30 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-center", "scale": 0.55, "padding": 60 },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 64, "tracking": 1.2 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 3 }, "anchor": "bottom-center", "align": "center", "maxWidth": "85%" },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 24 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-center", "padding": [13, 30] }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/social_ig_portrait_post.png"
+}

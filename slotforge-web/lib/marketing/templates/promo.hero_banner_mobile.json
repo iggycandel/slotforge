@@ -1,0 +1,28 @@
+{
+  "id": "promo.hero_banner_mobile",
+  "name": "Hero Banner — Mobile",
+  "category": "promo",
+  "version": 1,
+  "sizes": [
+    { "w": 750,  "h": 400, "label": "750x400",  "format": "jpg" },
+    { "w": 1080, "h": 600, "label": "1080x600", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "rgba(0,0,0,0.65)", "to": "transparent", "direction": "right", "start": 0.0 },
+    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "middle-right", "scale": 1.0, "padding": 20 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-left", "scale": 0.35, "padding": 36 },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 48, "tracking": 1.0 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 2 }, "anchor": "middle-left", "align": "left", "maxWidth": "55%" },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 18 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-left", "padding": [10, 22] }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/promo_hero_banner_mobile.png"
+}

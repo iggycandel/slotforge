@@ -1,0 +1,28 @@
+{
+  "id": "promo.hero_banner_desktop",
+  "name": "Hero Banner — Desktop",
+  "category": "promo",
+  "version": 1,
+  "sizes": [
+    { "w": 1920, "h": 600, "label": "1920x600", "format": "jpg" },
+    { "w": 2400, "h": 800, "label": "2400x800", "format": "jpg" }
+  ],
+  "layers": [
+    { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
+    { "type": "gradient", "from": "rgba(0,0,0,0.6)", "to": "transparent", "direction": "right", "start": 0.0 },
+    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "middle-right", "scale": 1.05, "padding": 30 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-left", "scale": 0.4, "padding": 60 },
+    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 88, "tracking": 1.2 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 3 }, "anchor": "middle-left", "align": "left", "maxWidth": "50%" },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 26 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-left", "padding": [14, 32] }
+  ],
+  "vars": {
+    "gameName":      { "source": "project.gameName", "override": true },
+    "headline":      { "default": null, "override": true },
+    "subhead":       { "default": null, "override": true },
+    "ctaText":       { "default": "PLAY NOW", "options": ["PLAY NOW", "SPIN NOW", "TRY IT", "NEW SLOT", "LAUNCHING SOON", "none"] },
+    "language":      { "default": "EN", "options": ["EN","ES","PT","DE","FR","IT","SV","JA"] },
+    "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
+    "layoutVariant": { "default": "A", "options": ["A","B","C"] }
+  },
+  "previewPath": "/marketing/previews/promo_hero_banner_desktop.png"
+}
