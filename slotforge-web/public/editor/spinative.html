@@ -220,7 +220,7 @@
   <!-- Marketing workspace topbar -->
   <div id="topbar-marketing">
     <span class="tb-ws-label">Marketing Assets</span>
-    <button class="tb-ws-action primary" style="margin-left:auto" id="mkt-new-btn">+ New Asset</button>
+    <button class="tb-ws-action primary" style="margin-left:auto" id="mkt-export-btn">Export all kit ▾</button>
   </div>
   <!-- Art workspace topbar (internal key: "assets") -->
   <div id="topbar-assets">
@@ -644,58 +644,16 @@
       </div>
     </div>
     <div id="mkt-body">
-
-      <!-- Store Page -->
-      <div class="mkt-card">
-        <div class="mkt-card-banner" style="background:linear-gradient(135deg,#1a1a2e 0%,#2e2240 100%)">🏪</div>
-        <div class="mkt-card-body">
-          <div class="mkt-card-title">Store Page</div>
-          <div class="mkt-card-sub">App store listing assets — icon, screenshots, feature graphic, and description copy.</div>
-          <span class="mkt-badge-cs">⏳ Coming Soon</span>
-        </div>
+      <!-- Marketing Workspace v1 — populated by public/editor/marketing.js
+           on first switchWorkspace('marketing'). Until JS runs the
+           container shows a 1-line loading state; the readiness probe +
+           templates fetch happen on first activation only. -->
+      <div id="mkt-grid">
+        <div class="mkt-loading" style="padding:24px;color:#7a7a94;font-size:12px">Loading marketing kit…</div>
       </div>
 
-      <!-- Promo Screens -->
-      <div class="mkt-card">
-        <div class="mkt-card-banner" style="background:linear-gradient(135deg,#1a2020 0%,#1a3030 100%)">📸</div>
-        <div class="mkt-card-body">
-          <div class="mkt-card-title">Promo Screens</div>
-          <div class="mkt-card-sub">High-impact promotional screenshots formatted for operator lobbies and aggregator pages.</div>
-          <span class="mkt-badge-cs">⏳ Coming Soon</span>
-        </div>
-      </div>
-
-      <!-- Trailer -->
-      <div class="mkt-card">
-        <div class="mkt-card-banner" style="background:linear-gradient(135deg,#201520 0%,#301520 100%)">🎬</div>
-        <div class="mkt-card-body">
-          <div class="mkt-card-title">Trailer</div>
-          <div class="mkt-card-sub">Storyboard frames, motion brief, and asset pack for trailer production studios.</div>
-          <span class="mkt-badge-cs">⏳ Coming Soon</span>
-        </div>
-      </div>
-
-      <!-- Social Assets -->
-      <div class="mkt-card">
-        <div class="mkt-card-banner" style="background:linear-gradient(135deg,#1a1a28 0%,#202040 100%)">📱</div>
-        <div class="mkt-card-body">
-          <div class="mkt-card-title">Social Assets</div>
-          <div class="mkt-card-sub">Formatted assets for Instagram, Twitter/X, Facebook and LinkedIn — multiple ratios.</div>
-          <span class="mkt-badge-cs">⏳ Coming Soon</span>
-        </div>
-      </div>
-
-      <!-- Press Kit -->
-      <div class="mkt-card">
-        <div class="mkt-card-banner" style="background:linear-gradient(135deg,#1a2018 0%,#203020 100%)">📦</div>
-        <div class="mkt-card-body">
-          <div class="mkt-card-title">Press Kit</div>
-          <div class="mkt-card-sub">Bundled ZIP with logos, screenshots, factsheet, and boilerplate copy for press.</div>
-          <span class="mkt-badge-cs">⏳ Coming Soon</span>
-        </div>
-      </div>
-
-      <!-- GDD Export (live) -->
+      <!-- GDD Export — legacy, kept untouched per design doc §13.2.
+           This was the only working flow before v1 marketing landed. -->
       <div class="mkt-card" onclick="openGDDModal()" style="cursor:pointer">
         <div class="mkt-card-banner" style="background:linear-gradient(135deg,#1a1a20 0%,#2a2830 100%)">📋</div>
         <div class="mkt-card-body">

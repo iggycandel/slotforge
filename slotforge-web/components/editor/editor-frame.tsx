@@ -276,7 +276,9 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
 
       if (msg.type === 'SF_IFRAME_READY') {
         iframeRef.current?.contentWindow?.postMessage({
-          type: 'SF_LOAD', payload: payloadRef.current ?? null, projectName,
+          // projectId added v1 marketing — the iframe needs it to call
+          // /api/marketing/* without piping every URL through the shell.
+          type: 'SF_LOAD', payload: payloadRef.current ?? null, projectName, projectId,
         }, window.location.origin)
         iframeRef.current?.contentWindow?.postMessage({ type: 'SF_INJECT_CSS', css: IFRAME_CSS }, window.location.origin)
         // Once CSS is injected, request a layers update so RightPanel populates immediately

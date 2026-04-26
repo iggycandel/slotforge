@@ -10586,6 +10586,10 @@ function switchWorkspace(ws){
   updateWorkspaceUI();
   if(ws === 'flow')    _activateFlowWorkspace();
   if(ws === 'features') buildFeaturesEditor();
+  // Marketing v1: lazy-load marketing.js the first time the tab is
+  // activated. The script is a no-op on import; activation calls its
+  // init() which fetches templates + readiness and renders the grid.
+  if(ws === 'marketing') _activateMarketingWorkspace();
   // Notify parent frame — include rich meta when switching to assets so the
   // React AssetsWorkspace can pre-populate theme inputs and enrich AI prompts.
   try {
@@ -10638,6 +10642,34 @@ function _activateFlowWorkspace(){
   openGameFlowDesigner();
   // gfdFit with a small delay to allow layout to settle
   setTimeout(gfdFit, 120);
+}
+
+// Marketing Workspace v1 — lazy-load marketing.js on first activation.
+// The script tags itself onto window._sfMarketing once it's done; the
+// loader is idempotent so re-entering the tab just calls refresh().
+function _activateMarketingWorkspace(){
+  // Already loaded → just refresh (cheap; honours the existing kits +
+  // readiness so a returning user sees their last state immediately).
+  if(window._sfMarketing){
+    try { window._sfMarketing.refresh(); } catch(e){ console.warn(e); }
+    return;
+  }
+  // Inject the script tag once. The browser caches it for the rest of
+  // the session; a fresh deploy invalidates via the ?v= cache-buster.
+  if(document.getElementById('_sf_marketing_js')) return;
+  var s = document.createElement('script');
+  s.id  = '_sf_marketing_js';
+  s.src = '/editor/marketing.js?v=v123';
+  s.onload  = function(){
+    if(window._sfMarketing && typeof window._sfMarketing.init === 'function'){
+      window._sfMarketing.init();
+    }
+  };
+  s.onerror = function(){
+    var grid = document.getElementById('mkt-grid');
+    if(grid) grid.innerHTML = '<div style="padding:24px;color:#c97a7a;font-size:12px">Failed to load marketing module. Refresh the page.</div>';
+  };
+  document.head.appendChild(s);
 }
 
 // ─── Feature Editor State ─────────────────────────────────────────────────────
@@ -11502,9 +11534,17 @@ function buildAssetChecklist(){
   const docsExport = document.getElementById('docs-export-btn');
   if(docsExport) docsExport.addEventListener('click', () => showToast('Export coming soon'));
 
-  // Marketing topbar
-  const mktNew = document.getElementById('mkt-new-btn');
-  if(mktNew) mktNew.addEventListener('click', () => showToast('Asset creation coming soon'));
+  // Marketing topbar — Export all kit dropdown is wired in marketing.js
+  // when the workspace first activates. Until then the button is a no-op
+  // toast so a stray click is loud enough to notice without crashing.
+  const mktExport = document.getElementById('mkt-export-btn');
+  if(mktExport) mktExport.addEventListener('click', () => {
+    if(window._sfMarketing && typeof window._sfMarketing.openExportMenu === 'function'){
+      window._sfMarketing.openExportMenu();
+    } else {
+      showToast('Export menu not ready — switch to the Marketing tab first');
+    }
+  });
 })();
 
 // ─── Help menu ───────────────────────────────────────────
@@ -12548,6 +12588,10 @@ window._sfBridge = (function(){
     var msg = event.data;
     if(!msg || !msg.type) return;
     if(msg.type === 'SF_LOAD'){
+      // Capture the projectId so workspaces inside the iframe (Marketing
+      // v1) can call /api/* routes that need it without piping every
+      // URL through the shell's postMessage bridge.
+      if(msg.projectId) window._sfProjectId = msg.projectId;
       if(msg.payload){
         // If the saved gameName is empty or matches old hardcoded defaults,
         // use the projectName from the shell as the canonical name instead
