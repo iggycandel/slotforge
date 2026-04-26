@@ -25,6 +25,7 @@ import { uploadRender, signRenderUrl }                             from './stora
 import type {
   MarketingTemplate, TemplateSize,
   ResolvedVars, ResolvedAssets, MarketingRenderRow,
+  RenderedLayerBox,
 } from './types'
 
 export interface EnsureRenderInputs {
@@ -55,6 +56,18 @@ export interface EnsureRenderResult {
   /** The hash that was computed/looked up. Returned so callers can
    *  log it for cache-hit-rate observability. */
   varsHash:    string
+  /** Bbox per drawn AssetLayer in this render's pixel space. Empty on
+   *  cache hits (we don't re-render to capture them; the modal falls
+   *  back to a "click here to refresh layout boxes" path that triggers
+   *  a one-shot re-render with the same vars). */
+  layerBoxes:  RenderedLayerBox[]
+  /** Final pixel dimensions of the rendered image — paired with
+   *  layerBoxes so the client can scale the boxes to whatever CSS
+   *  size it displays the preview at. */
+  width:       number
+  height:      number
+  /** Image dimensions PLUS size_label so the client can correlate. */
+  sizeLabel:   string
 }
 
 /**
@@ -96,6 +109,13 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
       storagePath: existing.storage_path as string,
       bytes:       (existing.bytes as number) ?? 0,
       varsHash,
+      // Cache hits don't re-run the engine, so we don't have fresh
+      // layer boxes. Modal handles this by falling back to its last
+      // captured set or re-firing a one-shot render to repopulate.
+      layerBoxes:  [],
+      width:       input.size.w,
+      height:      input.size.h,
+      sizeLabel:   input.size.label,
     }
   }
 
@@ -108,7 +128,7 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
     input.size.format,
   )
 
-  const buffer = await renderTemplate(input.template, input.size, input.vars, input.assets)
+  const { buffer, renderedLayers } = await renderTemplate(input.template, input.size, input.vars, input.assets)
   const { bytes } = await uploadRender(storagePath, buffer, input.size.format)
 
   // Insert the cache row. We use upsert with onConflict so a parallel
@@ -134,5 +154,15 @@ export async function ensureRender(input: EnsureRenderInputs): Promise<EnsureRen
   }
 
   const url = await signRenderUrl(storagePath)
-  return { rendered: true, url, storagePath, bytes, varsHash }
+  return {
+    rendered:    true,
+    url,
+    storagePath,
+    bytes,
+    varsHash,
+    layerBoxes:  renderedLayers,
+    width:       input.size.w,
+    height:      input.size.h,
+    sizeLabel:   input.size.label,
+  }
 }

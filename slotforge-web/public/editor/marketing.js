@@ -350,13 +350,50 @@
     sizesHtml += '</div>';
     body.insertAdjacentHTML('beforeend', sizesHtml);
 
-    // Reset right-pane state — no preview yet, no renders.
+    // Restore the user's previously-rendered creatives if any. The
+    // /kits endpoint already shipped them on initial load — reuse the
+    // cached list rather than firing another request.
     var preview = document.getElementById('mkt-modal-preview');
-    if(preview) preview.innerHTML = '<div class="mkt-modal-preview-empty">Click <b>Render selected sizes</b> to see your kit</div>';
     var results = document.getElementById('mkt-modal-results');
-    if(results) results.innerHTML = '';
+    var existing = (kit && kit.renders) || [];
+    if(existing.length > 0){
+      // Show the biggest as the live preview
+      var biggest = pickBiggestExisting(existing, template);
+      if(biggest && preview) showPreview(biggest);
+      // Populate the results list with download links
+      if(results){
+        results.innerHTML = '';
+        for(var ri = 0; ri < existing.length; ri++){
+          results.insertAdjacentHTML('beforeend', renderResultLine({
+            size_label: existing[ri].size_label,
+            format:     existing[ri].format,
+            url:        existing[ri].url,
+            cached:     true,
+          }));
+        }
+      }
+    } else {
+      if(preview) preview.innerHTML = '<div class="mkt-modal-preview-empty">Click <b>Render selected sizes</b> to see your kit</div>';
+      if(results) results.innerHTML = '';
+    }
+    // previewMeta from a prior session is wiped — bbox metadata is
+    // pixel coords in the previous render's space and won't line up
+    // with the persisted thumbnail. Drag becomes available after the
+    // next live render fires.
+    previewMeta = null;
 
     document.getElementById('mkt-modal-overlay').style.display = 'flex';
+  }
+
+  function pickBiggestExisting(renders, template){
+    var best = null, bestArea = -1;
+    for(var i = 0; i < renders.length; i++){
+      var s = findSizeByLabel(template, renders[i].size_label);
+      if(!s) continue;
+      var a = s.w * s.h;
+      if(a > bestArea){ bestArea = a; best = renders[i]; }
+    }
+    return best || renders[0];
   }
 
   function closeCustomiseModal(){
@@ -461,13 +498,26 @@
     }
   }
 
-  // ─── Live preview debouncer ────────────────────────────────────────────────
+  // ─── Live preview / drag state ────────────────────────────────────────────
   //
-  // Every meaningful form change schedules a preview refresh 350ms in
-  // the future; subsequent changes inside that window reset the timer.
-  // Picks the smallest declared size to keep the SSE round-trip cheap;
-  // updateTileThumbnail still fires for the grid tile.
+  // previewMeta holds the most recent render's pixel-space metadata so
+  // the drag handler can map mouse coordinates back to canvas-relative
+  // dx/dy overrides.
+  //
+  // Shape:
+  //   {
+  //     templateId: 'promo.square_lobby_tile',
+  //     width:  256,
+  //     height: 256,
+  //     boxes:  [{ slot, x, y, w, h }, ...],
+  //   }
+  //
+  // The boxes array reflects the LAST fresh render (cache misses
+  // bring fresh boxes; cache hits leave the array untouched so drag
+  // still works against the previously-captured set). updatePreviewMeta
+  // is called from the SSE 'render' handler.
 
+  var previewMeta  = null;
   var previewTimer = null;
 
   function schedulePreviewRefresh(){
@@ -536,10 +586,9 @@
     return out;
   }
 
-  /** Per-slot X / Y / Scale sliders. Slot labels are friendly names;
-   *  data-slot attributes preserve the canonical asset key for
-   *  readModalVars to assemble the layerOverrides blob. The "Reset"
-   *  button zeroes a single slot's overrides and triggers a re-render. */
+  /** Per-slot Scale slider only. X/Y position is now drag-on-preview
+   *  (see attachPreviewDrag) so we don't surface dx/dy sliders. The
+   *  hidden dx/dy values are read out of state by readModalVars. */
   function renderPositionControls(slots, overrides, hasChar){
     if(!slots || slots.length === 0) return '';
     var SLOT_LABELS = {
@@ -558,13 +607,20 @@
         if(seenChar) continue;
         seenChar = true;
         displayed.push({ key: 'character', label: 'Character', hidden: !hasChar });
+      } else if(s === 'background_base'){
+        // Background is fit:cover; resizing or moving it leaves
+        // visible canvas. Leave it out of the controls — users who
+        // want a different background regenerate the asset itself.
+        continue;
       } else {
         displayed.push({ key: s, label: SLOT_LABELS[s] || s, hidden: false });
       }
     }
     if(displayed.length === 0) return '';
 
-    var html = '<div class="mkt-form-section-title">Positioning</div>';
+    var html = ''
+      + '<div class="mkt-form-section-title">Positioning</div>'
+      + '<div class="mkt-form-hint" style="margin:-4px 0 10px">Drag any asset on the preview to reposition. Scale per asset below.</div>';
     for(var j = 0; j < displayed.length; j++){
       var item = displayed[j];
       if(item.hidden) continue;
@@ -578,9 +634,10 @@
         +     '<span class="mkt-pos-label">'+escapeHtml(item.label)+'</span>'
         +     '<button type="button" class="mkt-pos-reset" data-act="pos-reset">Reset</button>'
         +   '</div>'
-        +   posSlider('dx',    'X',     dx, -1, 1, 0.01)
-        +   posSlider('dy',    'Y',     dy, -1, 1, 0.01)
-        +   posSlider('scale', 'Scale', sc,  0.25, 2.5, 0.05)
+        // Hidden dx/dy — drag-on-preview sets these; reset clears them
+        +   '<input type="hidden" data-pos-field="dx" value="'+dx+'">'
+        +   '<input type="hidden" data-pos-field="dy" value="'+dy+'">'
+        +   posSlider('scale', 'Scale', sc, 0.25, 2.5, 0.05)
         + '</div>';
     }
     return html;
@@ -804,8 +861,19 @@
             // Preview = the largest finished size (visually most useful)
             var biggest = pickBiggest(rendersBySize, template);
             if(biggest){
-              preview.innerHTML = '<img src="'+escapeAttr(biggest.url)+'" alt="" style="width:100%;display:block;border-radius:6px">';
+              showPreview(biggest);
             }
+          }
+          // Capture bbox metadata when we got a fresh render — cache
+          // hits ship empty layer_boxes (engine wasn't run); preserve
+          // the last set so drag stays functional.
+          if(ev.data.layer_boxes && ev.data.layer_boxes.length){
+            previewMeta = {
+              templateId: template.id,
+              width:      ev.data.width  || (findSizeByLabel(template, ev.data.size_label) || {}).w,
+              height:     ev.data.height || (findSizeByLabel(template, ev.data.size_label) || {}).h,
+              boxes:      ev.data.layer_boxes,
+            };
           }
           // Update tile thumbnail in the grid in real time so the user
           // sees their kit start to populate even before they close the
@@ -871,6 +939,160 @@
       +   (d.cached ? '<span class="mkt-result-cached">cached</span>' : '')
       +   '<a class="mkt-result-link" href="'+escapeAttr(d.url)+'" download target="_blank" rel="noopener">Download</a>'
       + '</div>';
+  }
+
+  function findSizeByLabel(template, label){
+    if(!template || !template.sizes) return null;
+    for(var i = 0; i < template.sizes.length; i++){
+      if(template.sizes[i].label === label) return template.sizes[i];
+    }
+    return null;
+  }
+
+  /** Render the preview pane from a single render entry (the largest
+   *  finished size). Builds:
+   *    <div class=preview-wrap>
+   *      <img>
+   *      <div class=preview-overlay>           ← receives drag events
+   *        <div class=preview-handle data-slot=character> ← per-asset
+   *      </div>
+   *    </div>
+   *  Overlay handles are positioned according to previewMeta.boxes
+   *  scaled to the displayed image size. attachPreviewDrag wires the
+   *  pointer events. */
+  function showPreview(entry){
+    var preview = document.getElementById('mkt-modal-preview');
+    if(!preview) return;
+    preview.innerHTML = ''
+      + '<div class="mkt-preview-wrap" id="mkt-preview-wrap">'
+      +   '<img class="mkt-preview-img" id="mkt-preview-img" alt="" src="'+escapeAttr(entry.url)+'">'
+      +   '<div class="mkt-preview-overlay" id="mkt-preview-overlay"></div>'
+      + '</div>';
+    var img = document.getElementById('mkt-preview-img');
+    img.onload  = renderPreviewHandles;
+    img.onerror = function(){ /* keep the empty preview div */ };
+    // Image may already be cached by the browser → onload won't fire.
+    if(img.complete) renderPreviewHandles();
+  }
+
+  /** Position one overlay rectangle per draggable asset on top of the
+   *  preview image. Bboxes are pixel coords in the rendered image; we
+   *  scale them by (display width / render width). */
+  function renderPreviewHandles(){
+    var overlay = document.getElementById('mkt-preview-overlay');
+    var img     = document.getElementById('mkt-preview-img');
+    if(!overlay || !img) return;
+    overlay.innerHTML = '';
+    if(!previewMeta || !previewMeta.boxes || !previewMeta.width || !previewMeta.height){
+      // No bbox metadata yet — drag won't work, but preview still
+      // shows the image. Hint the user via overlay caption.
+      overlay.innerHTML = '<div class="mkt-preview-hint">Render once to enable drag-to-position</div>';
+      return;
+    }
+    var dispW = img.clientWidth;
+    var dispH = img.clientHeight;
+    if(!dispW || !dispH) return;
+    var scaleX = dispW / previewMeta.width;
+    var scaleY = dispH / previewMeta.height;
+
+    // Collapse character + character.transparent — only one handle for
+    // the user to drag. Last-rendered wins (in our z-order, .transparent
+    // overrides the regular .character).
+    var seenChar = false;
+    for(var i = 0; i < previewMeta.boxes.length; i++){
+      var b = previewMeta.boxes[i];
+      var key = b.slot;
+      var isChar = (key === 'character' || key === 'character.transparent');
+      if(isChar){
+        if(seenChar) continue;
+        seenChar = true;
+        key = 'character';
+      }
+      // background_base is fit:cover and basically fills the canvas;
+      // making it draggable just lets the user push it off-screen.
+      // Skip.
+      if(b.slot === 'background_base') continue;
+
+      var label = isChar ? 'Character' : (key === 'logo' ? 'Logo' : key);
+      var h = document.createElement('div');
+      h.className = 'mkt-preview-handle';
+      h.setAttribute('data-slot', key);
+      h.style.left   = (b.x * scaleX) + 'px';
+      h.style.top    = (b.y * scaleY) + 'px';
+      h.style.width  = (b.w * scaleX) + 'px';
+      h.style.height = (b.h * scaleY) + 'px';
+      h.innerHTML    = '<span class="mkt-preview-handle-label">'+escapeHtml(label)+'</span>';
+      overlay.appendChild(h);
+    }
+    attachPreviewDrag(overlay);
+  }
+
+  /** Pointer-event drag. Click-and-hold on a handle starts a drag; mouse
+   *  move updates the handle's CSS position (instant feedback) and the
+   *  hidden dx/dy inputs in the form (server source of truth). On
+   *  release we fire a debounced re-render to commit the change. */
+  function attachPreviewDrag(overlay){
+    var dragging = null;     // { slot, startX, startY, baseDxPct, baseDyPct, handleEl, dispW, dispH }
+
+    overlay.onmousedown = function(e){
+      var handle = e.target && e.target.closest && e.target.closest('.mkt-preview-handle');
+      if(!handle) return;
+      e.preventDefault();
+      var slot = handle.getAttribute('data-slot');
+      var img  = document.getElementById('mkt-preview-img');
+      if(!img) return;
+
+      // Read the existing dx/dy off the hidden form inputs so the new
+      // drag adds onto whatever is already there (rather than resetting).
+      var form = document.getElementById('mkt-modal-form');
+      var row  = form && form.querySelector('.mkt-pos-row[data-pos-slot="'+slot+'"]');
+      var dxIn = row && row.querySelector('input[data-pos-field="dx"]');
+      var dyIn = row && row.querySelector('input[data-pos-field="dy"]');
+      var baseDx = dxIn ? parseFloat(dxIn.value) || 0 : 0;
+      var baseDy = dyIn ? parseFloat(dyIn.value) || 0 : 0;
+
+      dragging = {
+        slot:      slot,
+        startX:    e.clientX,
+        startY:    e.clientY,
+        baseDx:    baseDx,
+        baseDy:    baseDy,
+        handleEl:  handle,
+        dxIn:      dxIn,
+        dyIn:      dyIn,
+        startLeft: parseFloat(handle.style.left || 0),
+        startTop:  parseFloat(handle.style.top  || 0),
+        dispW:     img.clientWidth,
+        dispH:     img.clientHeight,
+      };
+      handle.classList.add('is-dragging');
+    };
+
+    document.addEventListener('mousemove', function(e){
+      if(!dragging) return;
+      var dx = e.clientX - dragging.startX;
+      var dy = e.clientY - dragging.startY;
+      // Move the handle visually for instant feedback
+      dragging.handleEl.style.left = (dragging.startLeft + dx) + 'px';
+      dragging.handleEl.style.top  = (dragging.startTop  + dy) + 'px';
+      // Convert pixel delta to canvas-percentage
+      var dxPct = dragging.baseDx + (dx / dragging.dispW);
+      var dyPct = dragging.baseDy + (dy / dragging.dispH);
+      // Clamp to engine-accepted range
+      dxPct = Math.max(-1, Math.min(1, dxPct));
+      dyPct = Math.max(-1, Math.min(1, dyPct));
+      if(dragging.dxIn) dragging.dxIn.value = dxPct.toFixed(4);
+      if(dragging.dyIn) dragging.dyIn.value = dyPct.toFixed(4);
+    });
+
+    document.addEventListener('mouseup', function(){
+      if(!dragging) return;
+      dragging.handleEl.classList.remove('is-dragging');
+      dragging = null;
+      // Commit the new position via a debounced re-render. The handle
+      // jumps back to the engine-computed position on next render.
+      schedulePreviewRefresh();
+    });
   }
 
   function findTile(templateId){
@@ -1009,8 +1231,17 @@
     + '.mkt-pos-slider-value{font-size:10px;color:#a0a0b0;font-family:"DM Mono",monospace;text-align:right}'
     + '#mkt-modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #2a2a3a}'
     + '#mkt-modal-actions .mkt-tile-btn{flex:1;padding:9px 14px;font-size:12px}'
-    + '#mkt-modal-preview{background:#0a0a10;border:1px solid #2a2a3a;border-radius:6px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden}'
+    + '#mkt-modal-preview{background:#0a0a10;border:1px solid #2a2a3a;border-radius:6px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}'
     + '.mkt-modal-preview-empty{color:#5a5a78;font-size:11px;padding:24px;text-align:center}'
+    + '.mkt-preview-wrap{position:relative;width:100%}'
+    + '.mkt-preview-img{width:100%;display:block;border-radius:6px;user-select:none;-webkit-user-drag:none}'
+    + '.mkt-preview-overlay{position:absolute;inset:0;pointer-events:none}'
+    + '.mkt-preview-handle{position:absolute;border:1.5px dashed rgba(201,168,76,0.0);border-radius:4px;cursor:move;pointer-events:auto;transition:border-color .15s,background-color .15s}'
+    + '.mkt-preview-handle:hover{border-color:rgba(201,168,76,0.8);background:rgba(201,168,76,0.08)}'
+    + '.mkt-preview-handle.is-dragging{border-color:#c9a84c;background:rgba(201,168,76,0.16)}'
+    + '.mkt-preview-handle-label{position:absolute;top:6px;left:6px;background:rgba(10,10,16,0.85);color:#c9a84c;font-size:10px;padding:2px 6px;border-radius:3px;font-family:"DM Mono",monospace;letter-spacing:0.04em;opacity:0;transition:opacity .15s;pointer-events:none}'
+    + '.mkt-preview-handle:hover .mkt-preview-handle-label,.mkt-preview-handle.is-dragging .mkt-preview-handle-label{opacity:1}'
+    + '.mkt-preview-hint{position:absolute;bottom:8px;left:8px;background:rgba(10,10,16,0.85);color:#7a7a94;font-size:10px;padding:4px 8px;border-radius:3px;pointer-events:none}'
     + '#mkt-modal-progress{font-size:11px;color:#a0a0b0;font-family:"DM Mono",monospace;min-height:14px}'
     + '#mkt-modal-results{display:flex;flex-direction:column;gap:6px}'
     + '.mkt-result-row{display:flex;align-items:center;gap:10px;background:#1a1a24;border:1px solid #2a2a3a;border-radius:5px;padding:8px 12px;font-size:11px}'

@@ -47,7 +47,7 @@ async function main() {
     'character.transparent': null,                              // exercise the fallback to character
   }
 
-  const buf = await renderTemplate(tpl, size, {
+  const result = await renderTemplate(tpl, size, {
     gameName:      'LUCKY BULL',
     headline:      null,
     subhead:       null,
@@ -65,8 +65,8 @@ async function main() {
   }, assets)
 
   const out = '/tmp/marketing-smoke.png'
-  await fs.writeFile(out, buf)
-  console.log(`OK — rendered ${buf.length} bytes to ${out}`)
+  await fs.writeFile(out, result.buffer)
+  console.log(`OK — rendered ${result.buffer.length} bytes to ${out} (${result.renderedLayers.length} asset layers)`)
 }
 
 main().catch(e => { console.error(e); process.exit(1) })

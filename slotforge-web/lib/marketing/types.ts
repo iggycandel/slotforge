@@ -228,6 +228,22 @@ export interface LayerPositionOverride {
   scale?: number
 }
 
+/** Where on the rendered canvas a drawn AssetLayer ended up. The engine
+ *  emits one entry per AssetLayer it actually drew (skipped layers are
+ *  not in the array). The modal uses these to overlay draggable hit
+ *  regions on the preview — drag the character, server moves it.
+ *
+ *  All units are pixels in the final render's coordinate space. The
+ *  client scales them when the preview is displayed at a different
+ *  CSS size (preview images are usually shown at ~480px max width). */
+export interface RenderedLayerBox {
+  slot: AssetSlot
+  x:    number
+  y:    number
+  w:    number
+  h:    number
+}
+
 /** What the engine actually receives at render time — every var resolved
  *  to a literal, with palette colours pre-computed against ProjectMeta
  *  and `colorMode`. */

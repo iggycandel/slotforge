@@ -46,6 +46,7 @@ import type {
   ColorRef,
   ResolvedVars,
   ResolvedAssets,
+  RenderedLayerBox,
 } from './types'
 
 // ─── Font registration ──────────────────────────────────────────────────────
@@ -91,9 +92,19 @@ function registerFontsOnce() {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
+export interface RenderTemplateResult {
+  buffer:        Buffer
+  /** One entry per AssetLayer the engine actually drew (skipped layers
+   *  are absent). Modal uses these to overlay draggable hit regions on
+   *  the preview. Pixel coords in the final render's coordinate space. */
+  renderedLayers: RenderedLayerBox[]
+}
+
 /**
  * Render a template at a specific size with resolved vars + assets.
- * Returns the encoded image buffer ready to upload to Storage.
+ * Returns the encoded image buffer ready to upload to Storage AND the
+ * per-asset bbox metadata the client uses to make the preview
+ * draggable.
  *
  * The function does not consult the cache — that's lib/marketing/cache.ts
  * (Day 3). Callers that want caching must check there first; this engine
@@ -108,7 +119,7 @@ export async function renderTemplate(
   size:     TemplateSize,
   vars:     ResolvedVars,
   assets:   ResolvedAssets,
-): Promise<Buffer> {
+): Promise<RenderTemplateResult> {
   if (size.format === 'pdf') {
     // Defensive: route handlers should dispatch PDFs to lib/marketing/pdf.ts.
     // Throwing here makes a routing bug obvious in logs instead of producing
@@ -127,26 +138,31 @@ export async function renderTemplate(
   // store.app_icon_1024).
   ctx.clearRect(0, 0, size.w, size.h)
 
+  const renderedLayers: RenderedLayerBox[] = []
+
   for (const rawLayer of template.layers) {
     const layer = applyVariant(rawLayer, vars)
-    await drawLayer(ctx, layer, vars, assets, size)
+    const box = await drawLayer(ctx, layer, vars, assets, size)
+    if (box) renderedLayers.push(box)
   }
 
+  let buffer: Buffer
   // Encoding. Canvas natively emits PNG; for JPG/WebP we hand off to
   // sharp so we can set quality + chroma subsampling. For PNG we go
   // straight from canvas to keep the alpha channel clean.
   if (size.format === 'png') {
-    return canvas.toBuffer('image/png')
-  }
-  if (size.format === 'jpg') {
+    buffer = canvas.toBuffer('image/png')
+  } else if (size.format === 'jpg') {
     const png = canvas.toBuffer('image/png')
-    return sharp(png).jpeg({ quality: 88, mozjpeg: true }).toBuffer()
-  }
-  if (size.format === 'webp') {
+    buffer = await sharp(png).jpeg({ quality: 88, mozjpeg: true }).toBuffer()
+  } else if (size.format === 'webp') {
     const png = canvas.toBuffer('image/png')
-    return sharp(png).webp({ quality: 88 }).toBuffer()
+    buffer = await sharp(png).webp({ quality: 88 }).toBuffer()
+  } else {
+    throw new Error(`[compose] unsupported format ${size.format}`)
   }
-  throw new Error(`[compose] unsupported format ${size.format}`)
+
+  return { buffer, renderedLayers }
 }
 
 // ─── Layer dispatch ─────────────────────────────────────────────────────────
@@ -157,7 +173,7 @@ async function drawLayer(
   vars:   ResolvedVars,
   assets: ResolvedAssets,
   size:   TemplateSize,
-): Promise<void> {
+): Promise<RenderedLayerBox | null> {
   switch (layer.type) {
     case 'asset':
       // Honour the user's "include character" toggle. Both
@@ -165,14 +181,14 @@ async function drawLayer(
       // the toggle is off — same template can therefore render with-
       // or without- a hero figure without authoring two layer stacks.
       if (!vars.includeCharacter && (layer.slot === 'character' || layer.slot === 'character.transparent')) {
-        return
+        return null
       }
       return drawAssetLayer(ctx, layer, assets, size, vars)
-    case 'gradient': return drawGradientLayer(ctx, layer, vars, size)
-    case 'shape':    return drawShapeLayer(ctx, layer, vars, size)
-    case 'text':     return drawTextLayer(ctx, layer, vars, size)
-    case 'cta':      return drawCtaLayer(ctx, layer, vars, size)
-    case 'overlay':  return drawOverlayLayer(ctx, layer, size)
+    case 'gradient': drawGradientLayer(ctx, layer, vars, size); return null
+    case 'shape':    drawShapeLayer(ctx, layer, vars, size);    return null
+    case 'text':     drawTextLayer(ctx, layer, vars, size);     return null
+    case 'cta':      drawCtaLayer(ctx, layer, vars, size);      return null
+    case 'overlay':  await drawOverlayLayer(ctx, layer, size);  return null
   }
 }
 
@@ -200,7 +216,7 @@ async function drawAssetLayer(
   assets: ResolvedAssets,
   size:   TemplateSize,
   vars:   ResolvedVars,
-): Promise<void> {
+): Promise<RenderedLayerBox | null> {
   // Resolve slot with bg-removed fallback. character.transparent → if
   // missing, fall back to character (the engine intentionally does NOT
   // hard-fail when the cutout isn't ready, so the workspace still works
@@ -214,7 +230,7 @@ async function drawAssetLayer(
     // missing-asset readiness check happens at the route level
     // (§10.1) so by the time we're rendering, asset absence is at
     // worst a partial-render annoyance, never a fatal error.
-    return
+    return null
   }
 
   // Decode via sharp so we get clean dimensions + handle EXIF rotation.
@@ -272,6 +288,8 @@ async function drawAssetLayer(
   if (override?.dy) pos.y += override.dy * size.h
 
   ctx.drawImage(img, pos.x, pos.y, drawW, drawH)
+
+  return { slot: layer.slot, x: pos.x, y: pos.y, w: drawW, h: drawH }
 }
 
 // ─── Gradient layer ─────────────────────────────────────────────────────────

@@ -150,7 +150,12 @@ export async function POST(req: NextRequest) {
       try {
         emit('start', { total: sizes.length, template_id, kit_id: kit.id })
 
-        const all: Array<{ size_label: string; format: string; url: string; bytes: number; cached: boolean }> = []
+        const all: Array<{
+          size_label: string; format: string; url: string; bytes: number; cached: boolean;
+          width: number; height: number;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          layer_boxes: any[];
+        }> = []
 
         // Sequential per-size — composition is already CPU-bound and
         // running in parallel just contends for the same single Vercel
@@ -167,11 +172,18 @@ export async function POST(req: NextRequest) {
               assetVersions,
             })
             const evt = {
-              size_label: size.label,
-              format:     size.format,
-              url:        r.url,
-              bytes:      r.bytes,
-              cached:     !r.rendered,
+              size_label:  size.label,
+              format:      size.format,
+              url:         r.url,
+              bytes:       r.bytes,
+              cached:      !r.rendered,
+              width:       r.width,
+              height:      r.height,
+              // Empty array on cache hits (engine wasn't run); the
+              // client preserves its previous bbox set so drag stays
+              // functional. Re-rendering a cached combo is one click
+              // away if the user hits Render again.
+              layer_boxes: r.layerBoxes,
             }
             all.push(evt)
             emit('render', evt)
