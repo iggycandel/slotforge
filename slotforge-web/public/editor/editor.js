@@ -241,15 +241,90 @@ function computeLayout(){
   EL_COMPUTED._cellSize = {portrait: cellP, landscape: cellL};
 }
 
-// ── PER-VIEWPORT USER POSITION OVERRIDES ──
+// ── PER-VIEWPORT, PER-SCREEN USER POSITION OVERRIDES ──
+//
+// Nested-bucket model added in v2 UX (Phase B follow-up):
+//   EL_VP.portrait['base']['char']  = { x, y, w, h }
+//   EL_VP.portrait['splash']['char'] = { x, y, w, h }   // independent from base
+//
+// Inheritance: when reading `getPos(k)` on a non-base screen, we look at:
+//   1. the current screen's explicit override
+//   2. the `base` screen as a fallback (so "place once on base, see
+//      everywhere" still works — the user only deviates per-screen
+//      when they explicitly do so)
+//   3. the engine-computed default
+// `resetEl(k)` clears just the current screen so the user can re-anchor
+// it to the base inheritance.
+//
+// Migration: payloads saved before this change have a flat shape
+// (EL_VP.portrait['char'] = {x,y,w,h}). On load + snapshot restore we
+// detect the leaf-shape and wrap into a `base` bucket so existing
+// projects don't lose their layouts.
 const EL_VP={portrait:{},landscape:{},desktop:{}};
-function curEL(){return EL_VP[P.viewport==='desktop'?'landscape':P.viewport];}
-function getPos(k){
-  const vp=P.viewport==='desktop'?'landscape':P.viewport;
-  return curEL()[k]||EL_COMPUTED[vp]?.[k]||PSD[k]?.[vp]||PSD[k]?.portrait||{x:0,y:0,w:100,h:100};
+
+function _curScreenKey(){
+  // P.screen is set on every switchScreen; default to 'base' when it
+  // hasn't been initialised yet (e.g. very first paint before
+  // switchScreen runs).
+  return (typeof P !== 'undefined' && P && P.screen) ? P.screen : 'base';
 }
-function setPos(k,pos){curEL()[k]=pos;}
-function resetEl(k){delete EL_VP.portrait[k];delete EL_VP.landscape[k];delete EL_VP.desktop[k];}
+
+function _ensureScreenBucket(vp, sk){
+  if(!EL_VP[vp]) EL_VP[vp] = {};
+  if(!EL_VP[vp][sk]) EL_VP[vp][sk] = {};
+  return EL_VP[vp][sk];
+}
+
+/** Detect the legacy flat-EL_VP shape and wrap into a base-screen
+ *  bucket so all the new per-screen accessors work transparently with
+ *  pre-migration payloads. Mutates the input object in place. */
+function _migrateELVPViewport(vpData){
+  if(!vpData || typeof vpData !== 'object') return vpData;
+  const keys = Object.keys(vpData);
+  if(keys.length === 0) return vpData;
+  // Sniff the first value — leaf positions have x/y/w/h fields. Screen
+  // buckets are keyed by screen name and contain element objects (no
+  // direct numeric properties at the bucket level).
+  const v = vpData[keys[0]];
+  if(v && typeof v === 'object' && (typeof v.x === 'number' || typeof v.y === 'number' || typeof v.w === 'number' || typeof v.h === 'number')){
+    // Old flat shape — clone the element map under a 'base' bucket and
+    // delete the legacy top-level entries so the same object becomes
+    // the new shape without leaving stale leaves.
+    const baseBucket = {};
+    keys.forEach(k => { baseBucket[k] = vpData[k]; delete vpData[k]; });
+    vpData.base = baseBucket;
+  }
+  return vpData;
+}
+
+function curEL(){
+  const vp = P.viewport === 'desktop' ? 'landscape' : P.viewport;
+  return _ensureScreenBucket(vp, _curScreenKey());
+}
+
+function getPos(k){
+  const vp = P.viewport === 'desktop' ? 'landscape' : P.viewport;
+  const sk = _curScreenKey();
+  // 1. current screen override
+  const here = EL_VP[vp] && EL_VP[vp][sk] && EL_VP[vp][sk][k];
+  if(here) return here;
+  // 2. inherit from base screen when not already there
+  if(sk !== 'base'){
+    const base = EL_VP[vp] && EL_VP[vp]['base'] && EL_VP[vp]['base'][k];
+    if(base) return base;
+  }
+  // 3. engine defaults
+  return EL_COMPUTED[vp]?.[k] || PSD[k]?.[vp] || PSD[k]?.portrait || {x:0,y:0,w:100,h:100};
+}
+
+function setPos(k,pos){ curEL()[k] = pos; }
+
+function resetEl(k){
+  const sk = _curScreenKey();
+  ['portrait','landscape','desktop'].forEach(vp => {
+    if(EL_VP[vp] && EL_VP[vp][sk]) delete EL_VP[vp][sk][k];
+  });
+}
 
 // ── UNDO / REDO ──
 const HIST=[];let HIDX=-1;
@@ -323,8 +398,15 @@ function restoreSnap(){
   const s=JSON.parse(HIST[HIDX].s);
   Object.keys(EL_VP.portrait).forEach(k=>delete EL_VP.portrait[k]);
   Object.keys(EL_VP.landscape).forEach(k=>delete EL_VP.landscape[k]);
-  Object.assign(EL_VP.portrait,JSON.parse(JSON.stringify(s.p)));
-  Object.assign(EL_VP.landscape,JSON.parse(JSON.stringify(s.l)));
+  // v2 UX: snapshots saved BEFORE the per-screen migration carry the
+  // old flat shape; migrate before merging so old undo/redo entries
+  // restore cleanly into the new EL_VP bucket structure.
+  const sP = JSON.parse(JSON.stringify(s.p));
+  const sL = JSON.parse(JSON.stringify(s.l));
+  _migrateELVPViewport(sP);
+  _migrateELVPViewport(sL);
+  Object.assign(EL_VP.portrait,sP);
+  Object.assign(EL_VP.landscape,sL);
   if(s.features) Object.assign(P.features,s.features);
   if(s.jackpots) Object.assign(P.jackpots,s.jackpots);
   if(s.char) Object.assign(P.char,s.char);
@@ -4005,8 +4087,17 @@ function deleteAnyLayer(key){
   if (def && def.type === 'feat_slot') {
     if (!confirm('Reset "' + label + '" to its default position and clear any uploaded asset?')) return;
     try { delete EL_ASSETS[key]; } catch(e){}
+    // v2 UX: per-screen positions — wipe the slot from EVERY screen
+    // bucket. Resetting a feat-slot is a "back to defaults" action
+    // and the user expects it to clear all overrides, not just the
+    // currently-active screen's.
     ['portrait','landscape','desktop'].forEach(vp => {
-      try { if (EL_VP[vp]) delete EL_VP[vp][key]; } catch(e){}
+      try {
+        if (!EL_VP[vp]) return;
+        Object.keys(EL_VP[vp]).forEach(sk => {
+          if (EL_VP[vp][sk]) delete EL_VP[vp][sk][key];
+        });
+      } catch(e){}
     });
     try { delete EL_BLEND_MODES[key]; } catch(e){}
     try { delete EL_ADJ[key];         } catch(e){}
@@ -4273,12 +4364,33 @@ function _restoreFilePayload(d){
   if(d.elVP){
     Object.keys(EL_VP.portrait||{}).forEach(k => delete EL_VP.portrait[k]);
     Object.keys(EL_VP.landscape||{}).forEach(k => delete EL_VP.landscape[k]);
-    if(d.elVP.portrait)  Object.assign(EL_VP.portrait,  d.elVP.portrait);
-    if(d.elVP.landscape) Object.assign(EL_VP.landscape, d.elVP.landscape);
-    
-    // [HOTFIX] Eject stuck width constraints on legacy CSS popups so they dynamically span full-width center
-    Object.keys(EL_VP.portrait).forEach(k => { if(PSD[k]?.type === 'css_ov' && EL_VP.portrait[k].w < 2000) delete EL_VP.portrait[k]; });
-    Object.keys(EL_VP.landscape).forEach(k => { if(PSD[k]?.type === 'css_ov' && EL_VP.landscape[k].w < 2000) delete EL_VP.landscape[k]; });
+    // v2 UX: migrate flat snapshots into screen-bucket shape before
+    // merging. Same logic as restoreSnap / _sfApplyPayload.
+    if(d.elVP.portrait){
+      var _vpP2 = JSON.parse(JSON.stringify(d.elVP.portrait));
+      _migrateELVPViewport(_vpP2);
+      Object.assign(EL_VP.portrait, _vpP2);
+    }
+    if(d.elVP.landscape){
+      var _vpL2 = JSON.parse(JSON.stringify(d.elVP.landscape));
+      _migrateELVPViewport(_vpL2);
+      Object.assign(EL_VP.landscape, _vpL2);
+    }
+
+    // [HOTFIX] Eject stuck width constraints on legacy CSS popups so
+    // they dynamically span full-width center. With per-screen
+    // buckets, the iteration descends into each screen and checks
+    // each element entry — top-level keys are now screen names, not
+    // element keys.
+    ['portrait','landscape'].forEach(vp => {
+      var vpData = EL_VP[vp]; if(!vpData) return;
+      Object.keys(vpData).forEach(sk => {
+        var bucket = vpData[sk]; if(!bucket || typeof bucket !== 'object') return;
+        Object.keys(bucket).forEach(k => {
+          if(PSD[k]?.type === 'css_ov' && bucket[k].w < 2000) delete bucket[k];
+        });
+      });
+    });
   }
   // Assets
   Object.keys(EL_ASSETS).forEach(k => delete EL_ASSETS[k]);
@@ -4775,16 +4887,21 @@ function applyAssetToLayer(k, dataUrl, afterFn){
   const tmpImg = new Image();
   tmpImg.onload = ()=>{
     if(tmpImg.naturalWidth>0 && tmpImg.naturalHeight>0){
+      // v2 UX: write into the CURRENT screen's bucket. Other screens
+      // inherit via getPos's base fallback when they don't have their
+      // own override.
+      const sk = _curScreenKey();
       ['portrait','landscape'].forEach(vp=>{
-        const curW = EL_VP[vp]?.[k]?.w ?? EL_COMPUTED[vp]?.[k]?.w ?? PSD[k]?.[vp]?.w;
+        const bucket = _ensureScreenBucket(vp, sk);
+        const baseBucket = (EL_VP[vp] && EL_VP[vp]['base']) || {};
+        const curW = bucket[k]?.w ?? baseBucket[k]?.w ?? EL_COMPUTED[vp]?.[k]?.w ?? PSD[k]?.[vp]?.w;
         if(!curW) return;
         const newH = Math.round(curW * tmpImg.naturalHeight / tmpImg.naturalWidth);
-        if(!EL_VP[vp]) EL_VP[vp]={};
-        if(!EL_VP[vp][k]) EL_VP[vp][k]={};
-        EL_VP[vp][k].h = newH;
-        if(EL_VP[vp][k].x===undefined) EL_VP[vp][k].x = EL_COMPUTED[vp]?.[k]?.x ?? PSD[k]?.[vp]?.x ?? 0;
-        if(EL_VP[vp][k].y===undefined) EL_VP[vp][k].y = EL_COMPUTED[vp]?.[k]?.y ?? PSD[k]?.[vp]?.y ?? 0;
-        if(EL_VP[vp][k].w===undefined) EL_VP[vp][k].w = curW;
+        if(!bucket[k]) bucket[k]={};
+        bucket[k].h = newH;
+        if(bucket[k].x===undefined) bucket[k].x = baseBucket[k]?.x ?? EL_COMPUTED[vp]?.[k]?.x ?? PSD[k]?.[vp]?.x ?? 0;
+        if(bucket[k].y===undefined) bucket[k].y = baseBucket[k]?.y ?? EL_COMPUTED[vp]?.[k]?.y ?? PSD[k]?.[vp]?.y ?? 0;
+        if(bucket[k].w===undefined) bucket[k].w = curW;
       });
     }
     _refreshCanvas();
@@ -11508,8 +11625,15 @@ function buildAssetChecklist(){
     'm-redo':       () => { if(HIDX<HIST.length-1){HIDX++;restoreSnap(HIST[HIDX]);buildCanvas();renderLayers();renderLibrary();} },
     'm-duplicate':  () => showToast('Duplicate layer — coming soon'),
     'm-delete':     () => { if(SEL_KEY) deleteAnyLayer(SEL_KEY); else showToast('Select a layer first'); },
-    'm-reset-el':   () => { if(SEL_KEY){ if(!EL_VP.portrait) EL_VP.portrait={}; if(!EL_VP.landscape) EL_VP.landscape={}; delete EL_VP.portrait[SEL_KEY]; delete EL_VP.landscape[SEL_KEY]; buildCanvas(); } else showToast('Select a layer first'); },
-    'm-reset-all':  () => { if(confirm('Reset all layer positions to defaults?')){ Object.keys(EL_VP.portrait||{}).forEach(k=>delete EL_VP.portrait[k]); Object.keys(EL_VP.landscape||{}).forEach(k=>delete EL_VP.landscape[k]); buildCanvas(); } },
+    // v2 UX: per-screen positions — "Reset Layer" deletes the active
+    // layer's override on the CURRENT screen only. Other screens keep
+    // their layouts; the current screen falls back to the base
+    // inheritance / engine default. resetEl handles both viewports.
+    'm-reset-el':   () => { if(SEL_KEY){ resetEl(SEL_KEY); buildCanvas(); } else showToast('Select a layer first'); },
+    // "Reset All" is the nuclear option — wipes overrides on every
+    // screen across both viewports. Top-level keys are screen names
+    // in the new shape, so iterating + deleting clears everything.
+    'm-reset-all':  () => { if(confirm('Reset all layer positions to defaults? This wipes overrides on every screen.')){ Object.keys(EL_VP.portrait||{}).forEach(k=>delete EL_VP.portrait[k]); Object.keys(EL_VP.landscape||{}).forEach(k=>delete EL_VP.landscape[k]); buildCanvas(); } },
     'm-lock-sel':   () => { if(SEL_KEY){ if(USER_LOCKS.has(SEL_KEY)) USER_LOCKS.delete(SEL_KEY); else USER_LOCKS.add(SEL_KEY); renderLayers(); buildCanvas(); } else showToast('Select a layer first'); },
     'm-unlock-all': () => { USER_LOCKS.clear(); renderLayers(); buildCanvas(); },
   };
@@ -11736,7 +11860,16 @@ function showToast(msg){
     if(!def) return;
     const keys = def.keys || [];
     const vp = P.viewport === 'landscape' ? 'landscape' : 'portrait';
-    const items = keys.map(k => ({k, pos: EL_VP[vp][k]})).filter(i => i.pos);
+    // v2 UX: per-screen positions — read from the current screen's
+    // bucket; getPos handles base-screen inheritance + computed
+    // defaults so we don't accidentally exclude inherited layers.
+    const sk = _curScreenKey();
+    const items = keys.map(k => {
+      // Direct override on current screen wins; otherwise inherited.
+      const here = EL_VP[vp]?.[sk]?.[k];
+      const base = sk !== 'base' ? EL_VP[vp]?.['base']?.[k] : null;
+      return { k, pos: here || base };
+    }).filter(i => i.pos);
     if(items.length < 3){ showToast('Need 3+ layers to distribute'); return; }
     const commit = beginAction('distribute ' + axis);
     if(axis === 'h'){
@@ -12116,8 +12249,21 @@ window._sfApplyPayload = function(payload){
   try { if(s.masks && typeof EL_MASKS !== 'undefined') Object.assign(EL_MASKS, s.masks); } catch(e){}
   try { if(s.blendModes && typeof EL_BLEND_MODES!=='undefined') { Object.keys(EL_BLEND_MODES).forEach(function(k){delete EL_BLEND_MODES[k];}); Object.assign(EL_BLEND_MODES, s.blendModes); } } catch(e){}
   try { if(Array.isArray(s.userLocks) && typeof USER_LOCKS !== 'undefined'){ USER_LOCKS.clear(); s.userLocks.forEach(function(k){ USER_LOCKS.add(k); }); } } catch(e){}
-  try { if(s.elVP && s.elVP.portrait)  Object.assign(EL_VP.portrait,  s.elVP.portrait);  } catch(e){}
-  try { if(s.elVP && s.elVP.landscape) Object.assign(EL_VP.landscape, s.elVP.landscape); } catch(e){}
+  // v2 UX: clone + migrate flat-shape payloads into the per-screen
+  // bucket structure before merging. Existing projects keep their
+  // layouts because the migration wraps every element into the
+  // 'base' screen bucket — getPos's base-fallback then preserves
+  // identical visual output across every screen.
+  try { if(s.elVP && s.elVP.portrait){
+    var _vpP = JSON.parse(JSON.stringify(s.elVP.portrait));
+    _migrateELVPViewport(_vpP);
+    Object.assign(EL_VP.portrait, _vpP);
+  } } catch(e){}
+  try { if(s.elVP && s.elVP.landscape){
+    var _vpL = JSON.parse(JSON.stringify(s.elVP.landscape));
+    _migrateELVPViewport(_vpL);
+    Object.assign(EL_VP.landscape, _vpL);
+  } } catch(e){}
   try { if(s.assets) Object.assign(EL_ASSETS, s.assets); } catch(e){}
   // Typography spec generated by the Typography workspace. Stored as a
   // plain JSON blob — see types/typography.ts. Null is a valid state
@@ -12773,24 +12919,32 @@ window._sfBridge = (function(){
           var tmp = new Image();
           tmp.onload = function(){
             if (!tmp.naturalWidth || !tmp.naturalHeight) return;
+            // v2 UX: per-screen positions — write into current screen's
+            // bucket. Inherited base entries fill the seed dims when
+            // the current screen has no override yet.
+            var sk = (typeof _curScreenKey === 'function') ? _curScreenKey() : 'base';
             var vps = ['portrait','landscape'];
             for (var i=0;i<vps.length;i++) {
               var vp  = vps[i];
-              var curW = (EL_VP[vp] && EL_VP[vp][elKey] && EL_VP[vp][elKey].w) ||
+              var bucket = (typeof _ensureScreenBucket === 'function') ? _ensureScreenBucket(vp, sk) : (EL_VP[vp] = EL_VP[vp] || {});
+              var baseBucket = (EL_VP[vp] && EL_VP[vp]['base']) || {};
+              var curW = (bucket[elKey] && bucket[elKey].w) ||
+                         (baseBucket[elKey] && baseBucket[elKey].w) ||
                          (typeof EL_COMPUTED!=='undefined' && EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].w) ||
                          (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].w);
               if (!curW) continue;
               var newH = Math.round(curW * tmp.naturalHeight / tmp.naturalWidth);
-              if (!EL_VP[vp])        EL_VP[vp]        = {};
-              if (!EL_VP[vp][elKey]) EL_VP[vp][elKey] = {};
-              EL_VP[vp][elKey].h = newH;
-              if (EL_VP[vp][elKey].x === undefined)
-                EL_VP[vp][elKey].x = (EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].x) ||
-                                     (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].x) || 0;
-              if (EL_VP[vp][elKey].y === undefined)
-                EL_VP[vp][elKey].y = (EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].y) ||
-                                     (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].y) || 0;
-              if (EL_VP[vp][elKey].w === undefined) EL_VP[vp][elKey].w = curW;
+              if (!bucket[elKey]) bucket[elKey] = {};
+              bucket[elKey].h = newH;
+              if (bucket[elKey].x === undefined)
+                bucket[elKey].x = (baseBucket[elKey] && baseBucket[elKey].x) ||
+                                  (EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].x) ||
+                                  (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].x) || 0;
+              if (bucket[elKey].y === undefined)
+                bucket[elKey].y = (baseBucket[elKey] && baseBucket[elKey].y) ||
+                                  (EL_COMPUTED[vp] && EL_COMPUTED[vp][elKey] && EL_COMPUTED[vp][elKey].y) ||
+                                  (PSD[elKey] && PSD[elKey][vp] && PSD[elKey][vp].y) || 0;
+              if (bucket[elKey].w === undefined) bucket[elKey].w = curW;
             }
             try { if (typeof buildCanvas === 'function') buildCanvas(); } catch(e){}
             try { _rebuildFeatureOverlay(); } catch(e){}
