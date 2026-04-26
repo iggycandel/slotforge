@@ -2123,14 +2123,17 @@ function GenerationControlBar({
         </button>
       </div>
 
-      {/* Row 2: Style status pill. The full 14-card picker used to live
-          here and again in the sidebar's Inputs panel — users flagged
-          the duplication. Keeping only a compact readout here (current
-          style + "change in Inputs" link) makes the hierarchy clear:
-          Inputs owns the prompt inputs, the bar owns the action. */}
+      {/* Row 2: Style status badge. v2 UX (Phase 4): more visual weight
+          per the UX critique §6 — "the whole generation pipeline shifts
+          when style changes; it deserves prominence". A chosen style
+          gets a thick gold-bordered badge with the style icon prominent;
+          no-style state reads as a clear call-to-action. The full
+          14-card picker still lives in PromptInputsPanel (sidebar
+          Inputs tab) so duplication is avoided — this stays a status
+          + entry point. */}
       <div style={{
-        marginTop: 10,
-        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        marginTop: 12,
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
       }}>
         <span style={{
           fontSize: 10, color: C.txMuted, fontWeight: 600,
@@ -2142,31 +2145,37 @@ function GenerationControlBar({
           onClick={onOpenInputs}
           title={currentStyle
             ? `${currentStyle.name} — click to change in Inputs`
-            : 'No style selected — click to pick one in Inputs'}
+            : 'Pick a style — click to open Inputs'}
           style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '5px 10px 5px 6px',
-            background: currentStyle ? C.goldBg : C.surfHigh,
-            border: `1px solid ${currentStyle ? 'rgba(201,168,76,.35)' : C.border}`,
-            borderRadius: 16,
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 14px 8px 10px',
+            background: currentStyle
+              ? 'linear-gradient(135deg,rgba(201,168,76,.18) 0%,rgba(201,168,76,.06) 100%)'
+              : C.surfHigh,
+            border: `1.5px ${currentStyle ? 'solid' : 'dashed'} ${currentStyle ? 'rgba(201,168,76,.6)' : 'rgba(255,255,255,.12)'}`,
+            borderRadius: 10,
             color: currentStyle ? C.gold : C.txMuted,
-            fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+            fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
             cursor: onOpenInputs ? 'pointer' : 'default',
+            boxShadow: currentStyle ? '0 0 0 1px rgba(201,168,76,.18), 0 4px 14px rgba(201,168,76,.12)' : 'none',
+            transition: 'all .15s',
           }}
         >
-          <StyleIcon id={currentStyle?.id ?? 'default'} size={14} />
-          <span>{currentStyle?.name ?? 'No style'}</span>
+          <StyleIcon id={currentStyle?.id ?? 'default'} size={20} />
+          <span>{currentStyle?.name ?? 'Pick a style'}</span>
           {onOpenInputs && (
             <span style={{
-              fontSize: 9, color: C.txFaint, fontWeight: 400,
-              paddingLeft: 6, borderLeft: `1px solid ${C.border}`,
+              fontSize: 9, color: currentStyle ? 'rgba(201,168,76,.7)' : C.txFaint,
+              fontWeight: 500,
+              paddingLeft: 8, borderLeft: `1px solid ${currentStyle ? 'rgba(201,168,76,.25)' : C.border}`,
+              letterSpacing: '.04em',
             }}>
-              change in Inputs ↗
+              {currentStyle ? 'change ↗' : 'open Inputs ↗'}
             </span>
           )}
         </button>
         {currentStyle?.description && (
-          <span style={{ fontSize: 10, color: C.txFaint }}>
+          <span style={{ fontSize: 11, color: C.txFaint, fontStyle: 'italic' }}>
             {currentStyle.description}
           </span>
         )}

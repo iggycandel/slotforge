@@ -10699,7 +10699,11 @@ function _activateMarketingWorkspace(){
 const FEATURES_STATE = {
   selectedKey: null,
   activeTab: 'trigger',
-  filter: 'all',
+  // v2 UX: default to Active so the list reads as "the features your
+  // game has" instead of "a wall of disabled rows the user hasn't
+  // chosen yet" (the prior 'all' filter showed every feature greyed
+  // out — the workspace felt 80% empty per the UX critique §5).
+  filter: 'active',
   search: '',
 };
 
@@ -11102,7 +11106,32 @@ function _feTabFlow(key,f,cfg){
 
 function _feImpactRender(key){
   const panel=document.getElementById('fe-impact'); if(!panel) return;
-  if(!key){ panel.innerHTML='<div style="font-size:10px;color:#3e3e4e;text-align:center;margin-top:40px;font-family:Inter,system-ui,sans-serif;letter-spacing:.04em">Select a feature<br>to see its impact</div>'; return; }
+  if(!key){
+    // v2 UX: pre-populate with an aggregate summary so this prime
+    // real estate isn't blank when no feature is selected. Counts
+    // active features, total registered screens, and gives the user
+    // something concrete to look at before they click into a feature.
+    const activeFeatures = FDEFS.filter(d=>P.features[d.key]);
+    const totalFeatures  = FDEFS.length;
+    const allScreens     = (typeof SDEFS !== 'undefined') ? Object.keys(SDEFS) : [];
+    panel.innerHTML = `
+      <div class="fe-impact-section">
+        <div class="fe-impact-title"><span>Active Features</span> <span style="color:${activeFeatures.length>0?'#5eca8a':'#7a7a94'};font-size:11px;font-weight:700">${activeFeatures.length} / ${totalFeatures}</span></div>
+        ${activeFeatures.length===0
+          ? '<div class="fe-impact-row" style="color:#7a7a94;font-size:9px">None enabled yet — click a feature to add it.</div>'
+          : activeFeatures.slice(0,8).map(f=>`<div class="fe-impact-row"><span style="color:#5eca8a;font-size:9px;font-weight:700">●</span> ${escH(f.label)}</div>`).join('') + (activeFeatures.length>8?`<div class="fe-impact-row" style="color:#7a7a94;font-size:9px">+${activeFeatures.length-8} more</div>`:'')}
+      </div>
+      <div class="fe-impact-section">
+        <div class="fe-impact-title"><span>Screens</span> <span style="color:#c9a84c;font-size:11px;font-weight:700">${allScreens.length}</span></div>
+        <div class="fe-impact-row" style="color:#7a7a94;font-size:9px">Across base game, win sequence, and active features</div>
+      </div>
+      <div class="fe-impact-section" style="opacity:0.65">
+        <div class="fe-impact-title" style="color:#7a7a94"><span>Tip</span></div>
+        <div class="fe-impact-row" style="color:#7a7a94;font-size:9px;line-height:1.5">Select a feature on the left to see its trigger, mechanics, and per-feature canvas screens.</div>
+      </div>
+    `;
+    return;
+  }
   const f=FDEFS.find(d=>d.key===key);
   const cfg=_feGetConfig(key);
   const isOn=!!P.features[key];
