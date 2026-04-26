@@ -5687,6 +5687,14 @@ function rebuildTabs(){
     // Insert sub-tab row right after topbar
     topbar.insertAdjacentElement('afterend', subRow);
   }
+
+  // v2 UX: keep the vertical screen-thumbs panel (Phase 3) in sync.
+  // The panel reads the same computeTabs() output, so painting it here
+  // means every existing call site (payload load, feature toggle, GDD
+  // parse, switchScreen) refreshes both views without per-site edits.
+  try {
+    if(typeof window._sfRebuildScreenThumbs === 'function') window._sfRebuildScreenThumbs();
+  } catch(e){ console.warn('[stp] rebuild failed', e); }
 }
 
 // ═══ EXPANDING WILD CANVAS OVERLAY ═══
@@ -13705,3 +13713,183 @@ setTimeout(() => {
 
   window._sfRecomputeProjectProgress = recompute;
 })();
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SCREEN THUMBS PANEL (Phase 3)
+   ─────────────────────────────────────────────────────────────────────────────
+   Vertical "slide deck" of screen tiles, replacing the horizontal #screen-tabs
+   strip. Reads the same data model as rebuildTabs() (computeTabs returns the
+   parent / children structure already), so feature toggles flow through
+   automatically — no new state.
+
+   Each tile shows:
+     • A tinted gradient using the screen's dot colour (the data model already
+       carries one per screen) — visible aesthetic preview without rendering
+       the actual canvas state
+     • The screen's label
+     • A small status chip (green / amber / grey) reflecting how filled the
+       screen is, computed from P.assets (which slots have content)
+
+   Active screen gets the gold ring (CSS .stp-tile.is-active).
+   Click → switchScreen(key) — same as the legacy tab.
+
+   Hooked from rebuildTabs() at the bottom so the existing call-sites all
+   refresh both views (legacy strip is hidden via CSS, but the function
+   contract is preserved). Toggle button collapses the panel for canvas
+   maximisation.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+(function(){
+  'use strict';
+
+  /** Heuristic readiness for a screen. We don't have a per-screen asset
+   *  registry, but we DO have a global asset map (P.assets / EL_ASSETS)
+   *  keyed by element id. The simplest meaningful chip:
+   *    green   — three or more relevant asset slots have content
+   *    amber   — at least one
+   *    grey    — none
+   *  This is intentionally loose; users can see the chip light up as
+   *  they generate/upload, which is the point. */
+  function readinessFor(screenKey){
+    try {
+      var assets = (window.P && window.P.assets) || {};
+      var keys = Object.keys(assets || {});
+      if(keys.length === 0) return 'empty';
+      // Crude "any" check — most screens benefit from any set asset
+      // (background + character + logo are usually shared).
+      var filled = 0;
+      for(var i=0; i<keys.length; i++){
+        var v = assets[keys[i]];
+        if(v && (typeof v === 'string' ? v : (v.url || v.src))) filled++;
+      }
+      if(filled >= 3) return 'ready';
+      if(filled >= 1) return 'partial';
+      return 'empty';
+      // Note: per-screen readiness (e.g. fs has feat slots that base
+      // doesn't) is a Phase 3.5 refinement; the loose check is
+      // immediately meaningful and avoids stale-data failure modes.
+      // eslint-disable-next-line no-unused-vars
+      var _swallow = screenKey;
+    } catch(e){ return 'empty'; }
+  }
+
+  function tilePreviewBg(dot){
+    // Two-stop gradient using the screen's dot colour as the warm anchor
+    // tone. Gives each tile a unique-but-quiet visual identity without
+    // requiring a real canvas render.
+    return 'linear-gradient(135deg, ' + dot + ' 0%, #0a0a10 100%)';
+  }
+
+  function buildTile(item, isChild){
+    var active = (window.P && window.P.screen === item.key) ? ' is-active' : '';
+    var cls    = isChild ? 'stp-tile-child' : 'stp-tile-parent';
+    var ready  = readinessFor(item.key);
+    return ''
+      + '<button type="button" class="stp-tile ' + cls + active + '" data-screen="'
+      +   (item.key || '') + '" title="' + (item.label || '') + '">'
+      +   '<div class="stp-tile-fill" style="background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';opacity:0.55"></div>'
+      +   '<div class="stp-tile-vignette"></div>'
+      +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
+      +   '<span class="stp-tile-label">' + (item.label || '') + '</span>'
+      + '</button>';
+  }
+
+  function buildSectionHead(label, dot){
+    return ''
+      + '<div class="stp-section-head">'
+      +   '<span class="stp-dot" style="background:' + (dot || '#3a3a4a') + '"></span>'
+      +   '<span>' + (label || '') + '</span>'
+      + '</div>';
+  }
+
+  function rebuild(){
+    var list = document.getElementById('stp-list');
+    if(!list) return;
+    if(typeof computeTabs !== 'function') return;
+
+    var tabs;
+    try { tabs = computeTabs(); } catch(e){ console.warn('[stp] computeTabs failed', e); return; }
+
+    var html = '';
+    for(var i = 0; i < tabs.length; i++){
+      var t = tabs[i];
+      if(t.isGroup){
+        // Group: section head + parent placeholder thumb + indented children.
+        // The parent thumb itself is non-clickable visually (groups don't
+        // have a single "parent screen" to switch to in the data model);
+        // we surface it as the section head only. Saves a click.
+        html += buildSectionHead(t.label, t.dot);
+        html += '<div class="stp-children">';
+        for(var j = 0; j < (t.children || []).length; j++){
+          html += buildTile(t.children[j], true);
+        }
+        html += '</div>';
+      } else {
+        // Single screen.
+        html += buildTile(t, false);
+      }
+    }
+
+    list.innerHTML = html;
+    // Auto-scroll to the active tile so opening a deep-nested screen
+    // doesn't leave the user looking at the wrong scroll position.
+    var active = list.querySelector('.stp-tile.is-active');
+    if(active && typeof active.scrollIntoView === 'function'){
+      try { active.scrollIntoView({ block: 'nearest' }); } catch(e){}
+    }
+  }
+
+  function bindOnce(){
+    var list = document.getElementById('stp-list');
+    if(list && !list._sfBound){
+      list._sfBound = true;
+      list.addEventListener('click', function(ev){
+        var btn = ev.target && ev.target.closest && ev.target.closest('.stp-tile[data-screen]');
+        if(!btn) return;
+        var key = btn.getAttribute('data-screen');
+        if(key && typeof switchScreen === 'function') switchScreen(key);
+      });
+    }
+    var toggle = document.getElementById('stp-toggle');
+    if(toggle && !toggle._sfBound){
+      toggle._sfBound = true;
+      toggle.addEventListener('click', function(){
+        var panel = document.getElementById('screen-thumbs-panel');
+        if(!panel) return;
+        panel.classList.toggle('is-collapsed');
+        // Persist the user's preference so re-opening a project doesn't
+        // collapse a panel they liked open (or vice-versa).
+        try {
+          localStorage.setItem('sf_stp_collapsed_v1',
+            panel.classList.contains('is-collapsed') ? '1' : '0');
+        } catch(e){}
+      });
+    }
+    // Restore persisted collapsed state on first init.
+    try {
+      var pref = localStorage.getItem('sf_stp_collapsed_v1');
+      if(pref === '1'){
+        document.getElementById('screen-thumbs-panel')?.classList.add('is-collapsed');
+      }
+    } catch(e){}
+  }
+
+  function init(){ bindOnce(); rebuild(); }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Public hook: rebuildTabs() at the bottom of its body calls this so the
+  // panel stays in sync with feature toggles, payload loads, etc.
+  window._sfRebuildScreenThumbs = rebuild;
+})();
+
+
+/* The hook into rebuildTabs() lives inside the function body itself
+ * (see the editor.js call to window._sfRebuildScreenThumbs at the end
+ * of rebuildTabs). Bare-identifier callers in editor.js wouldn't have
+ * gone through a window.* reassignment, so doing it inline is correct. */

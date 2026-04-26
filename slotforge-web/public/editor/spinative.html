@@ -251,6 +251,20 @@
 </div>
 
 <div id="main">
+  <!-- v2 UX: vertical screen thumbnails panel sits between tools and the
+       canvas. Replaces the horizontal #screen-tabs row with a scrollable
+       slide-deck style list (parent screens with full-width thumbs +
+       indented sub-screens). Built by rebuildScreenThumbsPanel() on every
+       rebuildTabs() call so it stays in sync with feature toggles.
+       Collapsible via the chevron at the top to maximise canvas. -->
+  <aside id="screen-thumbs-panel">
+    <div class="stp-header">
+      <span class="stp-title">Screens</span>
+      <button id="stp-toggle" class="stp-toggle" title="Collapse / expand panel">‹</button>
+    </div>
+    <div class="stp-list" id="stp-list"><!-- built by rebuildScreenThumbsPanel() --></div>
+  </aside>
+
   <div id="tools-panel">
     <!-- Move: arrow cursor -->
     <button class="tool-btn active" id="tool-move" data-tool="move" title=""><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1v12M1 7h12M4 4l-3 3 3 3M10 4l3 3-3 3"/></svg><span class="tool-tip">Move (V)</span></button>

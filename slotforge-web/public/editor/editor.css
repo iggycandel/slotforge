@@ -869,3 +869,173 @@ svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:non
 .fe-trigger-type-btn .fe-tt-label{font-size:10px;font-weight:600;color:#eeede6}
 .fe-trigger-type-btn .fe-tt-desc{font-size:8.5px;color:#5a5a7a;line-height:1.4;margin-top:1px}
 .fe-divider{height:1px;background:rgba(255,255,255,.05);margin:16px 0}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SCREEN THUMBS PANEL (v2 UX, Phase 3)
+   ----------------------------------------------------------------------------
+   Vertical slide-deck style screen list. Replaces the horizontal
+   #screen-tabs strip. Lives in #main between #tools-panel and #canvas-wrap.
+   Built by rebuildScreenThumbsPanel() in editor.js.
+   ============================================================================ */
+
+#screen-thumbs-panel {
+  width: 196px;
+  background: var(--bg-panel-solid, #0e0e14);
+  border-right: 1px solid var(--border-light, #1a1a24);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: width 0.2s ease;
+  z-index: 5;
+}
+#screen-thumbs-panel.is-collapsed {
+  width: 28px;
+}
+#screen-thumbs-panel.is-collapsed .stp-list,
+#screen-thumbs-panel.is-collapsed .stp-title {
+  display: none;
+}
+#screen-thumbs-panel.is-collapsed .stp-toggle {
+  transform: rotate(180deg);
+}
+
+.stp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border-light, #1a1a24);
+  flex-shrink: 0;
+}
+.stp-title {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  font-weight: 600;
+}
+.stp-toggle {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.4);
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s, border-color 0.12s;
+}
+.stp-toggle:hover { color: #c9a84c; border-color: rgba(201,168,76,0.4); }
+
+.stp-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 8px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stp-list::-webkit-scrollbar { width: 4px; }
+
+/* Section header — top-level screen group like Win Sequence, Free Spins */
+.stp-section-head {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: rgba(255,255,255,0.35);
+  padding: 8px 4px 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stp-section-head .stp-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* The actual thumbnail tile */
+.stp-tile {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.05);
+  background: linear-gradient(135deg, #14141c 0%, #0a0a10 100%);
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  flex-shrink: 0;
+}
+.stp-tile:hover {
+  border-color: rgba(201,168,76,0.5);
+  transform: translateY(-1px);
+}
+.stp-tile.is-active {
+  border-color: #c9a84c;
+  box-shadow: 0 0 0 1px #c9a84c, 0 4px 16px rgba(201,168,76,0.18);
+}
+
+/* Variant: full-width parent thumbnail (16:9 frame) */
+.stp-tile-parent {
+  aspect-ratio: 16 / 10;
+}
+
+/* Variant: smaller indented child thumbnail */
+.stp-tile-child {
+  aspect-ratio: 16 / 9;
+  margin-left: 12px;
+}
+.stp-children {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 4px;
+}
+
+.stp-tile-fill {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  opacity: 0.22;
+}
+.stp-tile-vignette {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.7) 100%);
+  pointer-events: none;
+}
+.stp-tile-label {
+  position: absolute;
+  left: 8px; bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+  font-family: 'Space Grotesk', sans-serif;
+  padding-right: 18px;     /* leave room for status chip */
+  pointer-events: none;
+}
+.stp-tile-child .stp-tile-label {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+/* Status chip — green/amber/grey based on per-screen asset readiness */
+.stp-tile-chip {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #444;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.4);
+}
+.stp-tile-chip.ready { background: #7ac98a; box-shadow: 0 0 0 2px rgba(122,201,138,0.18); }
+.stp-tile-chip.partial { background: #e8c060; box-shadow: 0 0 0 2px rgba(232,192,96,0.18); }
+
+/* Hide the legacy horizontal screen tabs since the vertical panel takes
+ * over their job. Keep the parent topbar slot intact (other workspaces
+ * still use it). */
+#topbar-canvas { display: none !important; }
