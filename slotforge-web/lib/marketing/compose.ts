@@ -167,7 +167,7 @@ async function drawLayer(
       if (!vars.includeCharacter && (layer.slot === 'character' || layer.slot === 'character.transparent')) {
         return
       }
-      return drawAssetLayer(ctx, layer, assets, size)
+      return drawAssetLayer(ctx, layer, assets, size, vars)
     case 'gradient': return drawGradientLayer(ctx, layer, vars, size)
     case 'shape':    return drawShapeLayer(ctx, layer, vars, size)
     case 'text':     return drawTextLayer(ctx, layer, vars, size)
@@ -199,6 +199,7 @@ async function drawAssetLayer(
   layer:  AssetLayer,
   assets: ResolvedAssets,
   size:   TemplateSize,
+  vars:   ResolvedVars,
 ): Promise<void> {
   // Resolve slot with bg-removed fallback. character.transparent → if
   // missing, fall back to character (the engine intentionally does NOT
@@ -249,10 +250,26 @@ async function drawAssetLayer(
     drawH *= layer.scale
   }
 
+  // User-supplied scale multiplier. Stacked on top of the template's
+  // own scale so the modal's "Scale" slider reads naturally as
+  // "bigger / smaller than the default" — 1.0 is no change.
+  const override = vars.layerOverrides[layer.slot]
+  if (override?.scale && override.scale > 0 && override.scale !== 1) {
+    drawW *= override.scale
+    drawH *= override.scale
+  }
+
   // Anchor inside the box (not the canvas) — padding shrinks the box
   // and the anchor positions the asset within that smaller area, which
   // is what designers expect from "padding 40, anchor bottom-center".
   const pos = anchorIn(layer.anchor, boxX, boxY, boxW, boxH, drawW, drawH)
+
+  // User-supplied positional offset. dx/dy are canvas-percentages so
+  // the override travels cleanly across all sizes the template ships
+  // — a +0.1 dx is +10% of canvas width regardless of whether we're
+  // rendering at 256² or 1024².
+  if (override?.dx) pos.x += override.dx * size.w
+  if (override?.dy) pos.y += override.dy * size.h
 
   ctx.drawImage(img, pos.x, pos.y, drawW, drawH)
 }

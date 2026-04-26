@@ -22,8 +22,11 @@
 import type {
   MarketingTemplate, ResolvedVars,
   CtaKey, Language, ColorMode, LayoutVariant,
+  AssetSlot, LayerPositionOverride,
 } from './types'
 import type { ProjectMeta } from '@/types/assets'
+
+const KNOWN_SLOTS: readonly AssetSlot[] = ['background_base','logo','character','character.transparent']
 
 /** Best-effort palette defaults for projects that haven't picked colours
  *  yet. Studio brand (#c9a84c gold + #06060a near-black) so renders
@@ -80,7 +83,48 @@ export function resolveVars(
     layoutVariant: variant,
     resolvedColors: resolvePalette(project, colorMode),
     includeCharacter,
+    layerOverrides: resolveLayerOverrides(v.layerOverrides),
   }
+}
+
+/** Sanitise the kit vars' layerOverrides blob: strip unknown slots,
+ *  clamp dx/dy/scale into safe ranges, drop empty entries. The blob
+ *  comes off the wire untrusted so we don't pass malformed numbers
+ *  into the engine where they'd produce off-canvas renders. */
+function resolveLayerOverrides(raw: unknown): Partial<Record<AssetSlot, LayerPositionOverride>> {
+  const out: Partial<Record<AssetSlot, LayerPositionOverride>> = {}
+  if (!raw || typeof raw !== 'object') return out
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const o = raw as Record<string, any>
+  for (const slot of KNOWN_SLOTS) {
+    const entry = o[slot]
+    if (!entry || typeof entry !== 'object') continue
+    const ov: LayerPositionOverride = {}
+    if (typeof entry.dx === 'number' && isFinite(entry.dx)) {
+      // dx/dy are canvas-relative percentages; clamp generously to
+      // keep the asset on-screen but allow the user to push it close
+      // to an edge.
+      ov.dx = clampNum(entry.dx, -1, 1)
+    }
+    if (typeof entry.dy === 'number' && isFinite(entry.dy)) {
+      ov.dy = clampNum(entry.dy, -1, 1)
+    }
+    if (typeof entry.scale === 'number' && isFinite(entry.scale)) {
+      // Lower bound 0.25 so the asset stays visible; upper 2.5 so it
+      // can't take over the canvas.
+      ov.scale = clampNum(entry.scale, 0.25, 2.5)
+    }
+    // Skip empty entries — leaves the cache hash stable when a user
+    // touches a slider then resets it.
+    if (ov.dx != null || ov.dy != null || ov.scale != null) {
+      out[slot] = ov
+    }
+  }
+  return out
+}
+
+function clampNum(n: number, lo: number, hi: number): number {
+  return n < lo ? lo : n > hi ? hi : n
 }
 
 /** Pull palette colours off ProjectMeta, applying any colorMode tweaks. */

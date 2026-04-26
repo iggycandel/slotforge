@@ -304,6 +304,13 @@
     var hasChar  = !!(state.readiness && state.readiness.hasCharacter);
     var charOn   = (typeof vars.includeCharacter === 'boolean') ? vars.includeCharacter : true;
 
+    var overrides = (vars.layerOverrides && typeof vars.layerOverrides === 'object') ? vars.layerOverrides : {};
+
+    // Determine which slots this template actually uses — show position
+    // controls only for those, so e.g. a template with no character
+    // layer doesn't show character sliders.
+    var usedSlots = collectUsedSlots(template);
+
     body.innerHTML = ''
       + formField('gameName',      'Game name',      'text',
           pickStr(vars.gameName, ''))
@@ -326,7 +333,8 @@
           (schema.layoutVariant && schema.layoutVariant.options) || ['A'],
           pickStr(vars.layoutVariant, schema.layoutVariant ? schema.layoutVariant.default : 'A'))
       + (hasChar ? formCheckbox('includeCharacter', 'Include character', charOn,
-          'Hides the hero figure when a tighter layout reads better.') : '');
+          'Hides the hero figure when a tighter layout reads better.') : '')
+      + renderPositionControls(usedSlots, overrides, hasChar);
 
     // Size checkboxes — default all selected.
     var sizesHtml = '<div class="mkt-form-label">Sizes</div><div class="mkt-form-sizes">';
@@ -409,6 +417,81 @@
     });
     document.getElementById('mkt-modal-save').addEventListener('click',   onModalSave);
     document.getElementById('mkt-modal-render').addEventListener('click', onModalRender);
+
+    // Live preview: re-render on slider change (debounced) so the user
+    // sees the asset move without clicking Render. The smallest size
+    // is used to keep the round-trip snappy. Cache hits make repeated
+    // tweaks near-instant once a vars combo has been seen.
+    var form = document.getElementById('mkt-modal-form');
+    if(form){
+      form.addEventListener('input', function(e){
+        var el = e.target;
+        if(!el) return;
+        // Update the slider's value label live (no debounce — it's UI).
+        if(el.getAttribute && el.getAttribute('data-pos-field')){
+          var row    = el.closest('.mkt-pos-row');
+          var label  = el.parentNode.querySelector('.mkt-pos-slider-value');
+          if(label) label.textContent = formatPosValue(el.getAttribute('data-pos-field'), el.value);
+          schedulePreviewRefresh();
+          return;
+        }
+        // Other form inputs (selects, text, checkboxes) also feed live
+        // preview — composite changes (colorMode, language, ctaText)
+        // matter as much as positioning.
+        if(el.tagName === 'SELECT' || el.type === 'checkbox'){
+          schedulePreviewRefresh();
+        }
+      });
+      form.addEventListener('click', function(e){
+        var btn = e.target && e.target.closest && e.target.closest('[data-act="pos-reset"]');
+        if(!btn) return;
+        var row = btn.closest('.mkt-pos-row');
+        if(!row) return;
+        // Zero out this row's three sliders + their labels.
+        var sliders = row.querySelectorAll('input[data-pos-field]');
+        for(var i = 0; i < sliders.length; i++){
+          var f = sliders[i].getAttribute('data-pos-field');
+          var def = (f === 'scale') ? 1 : 0;
+          sliders[i].value = def;
+          var lbl = sliders[i].parentNode.querySelector('.mkt-pos-slider-value');
+          if(lbl) lbl.textContent = formatPosValue(f, def);
+        }
+        schedulePreviewRefresh();
+      });
+    }
+  }
+
+  // ─── Live preview debouncer ────────────────────────────────────────────────
+  //
+  // Every meaningful form change schedules a preview refresh 350ms in
+  // the future; subsequent changes inside that window reset the timer.
+  // Picks the smallest declared size to keep the SSE round-trip cheap;
+  // updateTileThumbnail still fires for the grid tile.
+
+  var previewTimer = null;
+
+  function schedulePreviewRefresh(){
+    if(previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(runPreviewRefresh, 350);
+  }
+
+  function runPreviewRefresh(){
+    previewTimer = null;
+    var tid = modalState.templateId;
+    if(!tid) return;
+    var template = findTemplate(tid);
+    if(!template) return;
+    // Pick the smallest size for preview — cheapest to render and good
+    // enough at the modal preview pane's display size. The Render
+    // button still ships the full size set when clicked.
+    var smallest = template.sizes[0];
+    for(var i = 1; i < template.sizes.length; i++){
+      if(template.sizes[i].w * template.sizes[i].h < smallest.w * smallest.h){
+        smallest = template.sizes[i];
+      }
+    }
+    var vars = readModalVars();
+    runRender(template, [smallest.label], vars, /*toastOnly*/ false);
   }
 
   // ─── Form helpers ──────────────────────────────────────────────────────────
@@ -433,6 +516,88 @@
       +   '<label class="mkt-form-label" for="mkt-f-'+name+'">'+escapeHtml(label)+'</label>'
       +   '<select class="mkt-form-input" id="mkt-f-'+name+'" name="'+name+'">'+opts+'</select>'
       + '</div>';
+  }
+
+  /** Walk the template's layer stack and return the unique set of
+   *  AssetSlot values it uses. Drives which "Position" sliders the
+   *  modal renders — no point showing character controls on a template
+   *  that doesn't draw the character. */
+  function collectUsedSlots(template){
+    var seen = {};
+    var out  = [];
+    if(!template || !template.layers) return out;
+    for(var i = 0; i < template.layers.length; i++){
+      var L = template.layers[i];
+      if(L && L.type === 'asset' && L.slot && !seen[L.slot]){
+        seen[L.slot] = 1;
+        out.push(L.slot);
+      }
+    }
+    return out;
+  }
+
+  /** Per-slot X / Y / Scale sliders. Slot labels are friendly names;
+   *  data-slot attributes preserve the canonical asset key for
+   *  readModalVars to assemble the layerOverrides blob. The "Reset"
+   *  button zeroes a single slot's overrides and triggers a re-render. */
+  function renderPositionControls(slots, overrides, hasChar){
+    if(!slots || slots.length === 0) return '';
+    var SLOT_LABELS = {
+      background_base:           'Background',
+      logo:                       'Logo',
+      character:                  'Character',
+      'character.transparent':    'Character',
+    };
+    // Collapse character + character.transparent into one row — they
+    // share the same on-screen position from the user's POV.
+    var displayed = [];
+    var seenChar  = false;
+    for(var i = 0; i < slots.length; i++){
+      var s = slots[i];
+      if(s === 'character' || s === 'character.transparent'){
+        if(seenChar) continue;
+        seenChar = true;
+        displayed.push({ key: 'character', label: 'Character', hidden: !hasChar });
+      } else {
+        displayed.push({ key: s, label: SLOT_LABELS[s] || s, hidden: false });
+      }
+    }
+    if(displayed.length === 0) return '';
+
+    var html = '<div class="mkt-form-section-title">Positioning</div>';
+    for(var j = 0; j < displayed.length; j++){
+      var item = displayed[j];
+      if(item.hidden) continue;
+      var ov = (overrides && overrides[item.key]) || {};
+      var dx = (typeof ov.dx === 'number') ? ov.dx : 0;
+      var dy = (typeof ov.dy === 'number') ? ov.dy : 0;
+      var sc = (typeof ov.scale === 'number') ? ov.scale : 1;
+      html += ''
+        + '<div class="mkt-pos-row" data-pos-slot="'+escapeAttr(item.key)+'">'
+        +   '<div class="mkt-pos-head">'
+        +     '<span class="mkt-pos-label">'+escapeHtml(item.label)+'</span>'
+        +     '<button type="button" class="mkt-pos-reset" data-act="pos-reset">Reset</button>'
+        +   '</div>'
+        +   posSlider('dx',    'X',     dx, -1, 1, 0.01)
+        +   posSlider('dy',    'Y',     dy, -1, 1, 0.01)
+        +   posSlider('scale', 'Scale', sc,  0.25, 2.5, 0.05)
+        + '</div>';
+    }
+    return html;
+  }
+
+  function posSlider(field, label, value, min, max, step){
+    return ''
+      + '<div class="mkt-pos-slider">'
+      +   '<span class="mkt-pos-slider-label">'+escapeHtml(label)+'</span>'
+      +   '<input type="range" data-pos-field="'+field+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'">'
+      +   '<span class="mkt-pos-slider-value">'+formatPosValue(field, value)+'</span>'
+      + '</div>';
+  }
+
+  function formatPosValue(field, value){
+    if(field === 'scale') return (Number(value) || 1).toFixed(2) + '×';
+    return ((Number(value) || 0) * 100).toFixed(0) + '%';
   }
 
   /** Inline-style checkbox row. Read back as a boolean by readModalVars
@@ -465,6 +630,32 @@
         out[el.name] = el.value;
       }
     }
+    // Assemble layerOverrides from the per-slot slider rows. Empty
+    // entries (all three sliders at default) are stripped server-side
+    // so the cache stays stable when a user nudges then resets.
+    var posRows = form.querySelectorAll('.mkt-pos-row');
+    var overrides = {};
+    for(var p = 0; p < posRows.length; p++){
+      var row  = posRows[p];
+      var slot = row.getAttribute('data-pos-slot');
+      if(!slot) continue;
+      var dx = parseFloat(row.querySelector('input[data-pos-field="dx"]').value)    || 0;
+      var dy = parseFloat(row.querySelector('input[data-pos-field="dy"]').value)    || 0;
+      var sc = parseFloat(row.querySelector('input[data-pos-field="scale"]').value) || 1;
+      var entry = {};
+      if(dx !== 0) entry.dx = dx;
+      if(dy !== 0) entry.dy = dy;
+      if(sc !== 1) entry.scale = sc;
+      // Special case: the engine treats character + character.transparent
+      // as the same on-screen layer, so we mirror the override to both
+      // slot keys. Either layer wins on draw — the override applies
+      // identically.
+      if(Object.keys(entry).length){
+        overrides[slot] = entry;
+        if(slot === 'character') overrides['character.transparent'] = entry;
+      }
+    }
+    out.layerOverrides = overrides;
     return out;
   }
 
@@ -805,6 +996,17 @@
     + '.mkt-form-checkbox{display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:#0a0a10;border:1px solid #2a2a3a;border-radius:5px;font-size:12px;color:#e0deda}'
     + '.mkt-form-checkbox:hover{border-color:#3a3a4f}'
     + '.mkt-form-checkbox input{accent-color:#c9a84c;cursor:pointer}'
+    + '.mkt-form-section-title{font-size:10px;font-weight:600;color:#7a7a94;text-transform:uppercase;letter-spacing:0.06em;margin:18px 0 10px;padding-top:14px;border-top:1px solid #2a2a3a}'
+    + '.mkt-pos-row{background:#0a0a10;border:1px solid #2a2a3a;border-radius:5px;padding:10px 12px;margin-bottom:8px}'
+    + '.mkt-pos-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}'
+    + '.mkt-pos-label{font-size:11px;color:#e0deda;font-weight:500}'
+    + '.mkt-pos-reset{background:transparent;border:none;color:#7a7a94;font-size:10px;cursor:pointer;padding:2px 6px;border-radius:3px}'
+    + '.mkt-pos-reset:hover{color:#c9a84c;background:#1a1a24}'
+    + '.mkt-pos-slider{display:grid;grid-template-columns:48px 1fr 56px;align-items:center;gap:8px;margin-bottom:4px}'
+    + '.mkt-pos-slider:last-child{margin-bottom:0}'
+    + '.mkt-pos-slider-label{font-size:10px;color:#7a7a94;font-family:"DM Mono",monospace;letter-spacing:0.04em}'
+    + '.mkt-pos-slider input[type=range]{width:100%;accent-color:#c9a84c}'
+    + '.mkt-pos-slider-value{font-size:10px;color:#a0a0b0;font-family:"DM Mono",monospace;text-align:right}'
     + '#mkt-modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #2a2a3a}'
     + '#mkt-modal-actions .mkt-tile-btn{flex:1;padding:9px 14px;font-size:12px}'
     + '#mkt-modal-preview{background:#0a0a10;border:1px solid #2a2a3a;border-radius:6px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden}'

@@ -61,6 +61,7 @@ async function main() {
       bg:      '#06060a',
     },
     includeCharacter: true,
+    layerOverrides:   {},
   }, assets)
 
   const out = '/tmp/marketing-smoke.png'

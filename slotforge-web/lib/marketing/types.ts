@@ -213,6 +213,21 @@ export interface TemplateVarsSchema {
   layoutVariant: { default: LayoutVariant;     options: readonly LayoutVariant[] }
 }
 
+/** Per-asset positional override the user can set in the Customise
+ *  modal. `dx` and `dy` are signed offsets in PERCENTAGES of canvas
+ *  width / height (range -1..1; clamped server-side). `scale` is a
+ *  multiplier on top of the template's own scale (0.25..2.5). All
+ *  fields optional — missing means "use the template default".
+ *
+ *  Why percentage offsets and not pixels: a single set of overrides
+ *  has to render correctly at 256² and 1024² of the same template.
+ *  Pixel offsets would push the asset off-canvas at the smaller size. */
+export interface LayerPositionOverride {
+  dx?:    number
+  dy?:    number
+  scale?: number
+}
+
 /** What the engine actually receives at render time — every var resolved
  *  to a literal, with palette colours pre-computed against ProjectMeta
  *  and `colorMode`. */
@@ -233,6 +248,10 @@ export interface ResolvedVars {
    *  modal hides this control entirely when the project has no
    *  character asset; defaults to true otherwise. */
   includeCharacter: boolean
+  /** Per-slot positional overrides. Keys are AssetSlot values; the
+   *  engine merges these on top of the template's anchor/padding/scale
+   *  before drawing. Missing slots render unchanged. */
+  layerOverrides: Partial<Record<AssetSlot, LayerPositionOverride>>
 }
 
 // ─── Asset resolution ───────────────────────────────────────────────────────
