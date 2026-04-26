@@ -400,3 +400,66 @@ REVOKE ALL ON FUNCTION public.consume_credit(text, int, int) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.refund_credit(text, int)        FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.consume_credit(text, int, int) TO service_role;
 GRANT EXECUTE ON FUNCTION public.refund_credit(text, int)        TO service_role;
+
+
+-- ── 13. Marketing Workspace v1 — kits + renders + private bucket ──────────────
+-- Mirrors the v122 lockdown posture: service-role-only writes, no {public}
+-- policies, private bucket, signed URLs only. The marketing-renders bucket
+-- intentionally has NO authenticated SELECT policy — read goes through
+-- /api/marketing/render-url, which re-signs on demand using service-role.
+--
+-- Applied to production via supabase MCP as
+-- `marketing_workspace_v1_schema` — this block is the documented baseline.
+
+CREATE TABLE IF NOT EXISTS public.marketing_kits (
+  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id   uuid        NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  template_id  text        NOT NULL,
+  vars         jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (project_id, template_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketing_kits_project
+  ON public.marketing_kits (project_id);
+
+ALTER TABLE public.marketing_kits ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role manages marketing_kits" ON public.marketing_kits;
+CREATE POLICY "Service role manages marketing_kits"
+  ON public.marketing_kits FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS public.marketing_renders (
+  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  kit_id       uuid        NOT NULL REFERENCES public.marketing_kits(id) ON DELETE CASCADE,
+  size_label   text        NOT NULL,
+  format       text        NOT NULL CHECK (format IN ('png','jpg','webp','pdf','mp4','webm')),
+  -- Storage path (not URL). The render-url endpoint re-signs on demand
+  -- with a 1h TTL so we never persist an expiring URL in the DB.
+  storage_path text        NOT NULL,
+  vars_hash    text        NOT NULL,
+  bytes        integer     NOT NULL DEFAULT 0,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (kit_id, size_label, format, vars_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketing_renders_kit
+  ON public.marketing_renders (kit_id);
+
+ALTER TABLE public.marketing_renders ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role manages marketing_renders" ON public.marketing_renders;
+CREATE POLICY "Service role manages marketing_renders"
+  ON public.marketing_renders FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('marketing-renders', 'marketing-renders', false)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Service role manages marketing renders bucket" ON storage.objects;
+CREATE POLICY "Service role manages marketing renders bucket"
+  ON storage.objects FOR ALL TO service_role
+  USING (bucket_id = 'marketing-renders')
+  WITH CHECK (bucket_id = 'marketing-renders');
