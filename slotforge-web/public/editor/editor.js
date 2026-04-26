@@ -13996,10 +13996,37 @@ setTimeout(() => {
     } catch(e){ return 'empty'; }
   }
 
+  /** Resolve the bg image URL for a screen — mirrors the canvas's
+   *  bg resolver (line ~1568): feature-namespaced key (e.g.
+   *  freespins.bg) wins, then bg_<screen>, then bg_bonus for
+   *  bonus-class screens, then generic bg. Returns null when no asset
+   *  is available; the tile then falls back to its tinted gradient. */
+  function bgUrlFor(screenKey){
+    if(typeof EL_ASSETS === 'undefined') return null;
+    // Same featureBgMap as the canvas resolver — keep these in sync.
+    var FEATURE_BG = {
+      freespin:'freespins.bg', freespin_intro:'freespins.bg', freespin_outro:'freespins.bg',
+      holdnspin:'holdnspin.bg', holdnspin_intro:'holdnspin.bg', holdnspin_outro:'holdnspin.bg',
+      bonus_pick:'bonuspick.bg', bonus_pick_intro:'bonuspick.bg', bonus_pick_outro:'bonuspick.bg',
+      wheel_bonus:'wheel.bg', wheel_bonus_intro:'wheel.bg', wheel_bonus_outro:'wheel.bg',
+      ladder_bonus:'ladder.bg', ladder_bonus_intro:'ladder.bg', ladder_bonus_outro:'ladder.bg',
+      gamble:'gamble.bg', gamble_intro:'gamble.bg', gamble_outro:'gamble.bg',
+      super_gamble:'supergamble.bg', super_gamble_intro:'supergamble.bg', super_gamble_outro:'supergamble.bg',
+      popup_win:'winsequence.bg', popup_megawin:'winsequence.bg', popup_epicwin:'winsequence.bg',
+    };
+    var BONUS = { freespin:1, freespin_intro:1, freespin_outro:1, holdnspin:1, holdnspin_intro:1, holdnspin_outro:1,
+                   bonus_pick:1, bonus_pick_intro:1, bonus_pick_outro:1, wheel_bonus:1, wheel_bonus_intro:1, wheel_bonus_outro:1,
+                   ladder_bonus:1, ladder_bonus_intro:1, ladder_bonus_outro:1, gamble:1, gamble_intro:1, gamble_outro:1,
+                   super_gamble:1, super_gamble_intro:1, super_gamble_outro:1, popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1 };
+    var fk = FEATURE_BG[screenKey];
+    if(fk && EL_ASSETS[fk]) return EL_ASSETS[fk];
+    if(EL_ASSETS['bg_' + screenKey]) return EL_ASSETS['bg_' + screenKey];
+    if(BONUS[screenKey] && EL_ASSETS['bg_bonus']) return EL_ASSETS['bg_bonus'];
+    if(EL_ASSETS['bg']) return EL_ASSETS['bg'];
+    return null;
+  }
+
   function tilePreviewBg(dot){
-    // Two-stop gradient using the screen's dot colour as the warm anchor
-    // tone. Gives each tile a unique-but-quiet visual identity without
-    // requiring a real canvas render.
     return 'linear-gradient(135deg, ' + dot + ' 0%, #0a0a10 100%)';
   }
 
@@ -14007,10 +14034,17 @@ setTimeout(() => {
     var active = (window.P && window.P.screen === item.key) ? ' is-active' : '';
     var cls    = isChild ? 'stp-tile-child' : 'stp-tile-parent';
     var ready  = readinessFor(item.key);
+    // v2 UX (Phase 3.1): when the screen has a real bg asset, use it
+    // as the tile background. Falls back to the tinted gradient when
+    // no asset is present (greenfield project, asset still loading).
+    var bg = bgUrlFor(item.key);
+    var fillStyle = bg
+      ? 'background-image:url("' + (bg || '').replace(/"/g, '%22') + '");background-size:cover;background-position:center;opacity:0.95'
+      : 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';opacity:0.55';
     return ''
       + '<button type="button" class="stp-tile ' + cls + active + '" data-screen="'
       +   (item.key || '') + '" title="' + (item.label || '') + '">'
-      +   '<div class="stp-tile-fill" style="background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';opacity:0.55"></div>'
+      +   '<div class="stp-tile-fill" style="' + fillStyle + '"></div>'
       +   '<div class="stp-tile-vignette"></div>'
       +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
       +   '<span class="stp-tile-label">' + (item.label || '') + '</span>'
