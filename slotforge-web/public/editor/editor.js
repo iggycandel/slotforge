@@ -1587,8 +1587,28 @@ function buildCanvas(){
         popup_win:         'winsequence.bg', popup_megawin:        'winsequence.bg', popup_epicwin:        'winsequence.bg',
       };
       const featureBg    = featureBgMap[P.screen];
+      // v2 UX: when a screen is bonus-class and the user has only
+      // generated `background_bonus` (not the per-feature dotted key),
+      // fall through to that asset BEFORE the generic base bg. The
+      // critique called out that FS / Win Sequence / Bonus Pick all
+      // showed the base game's background — which is correct given
+      // the old resolver but wrong UX. background_bonus is the
+      // canonical "one bonus background to rule them all" the AI
+      // generator ships, so wire it as the bonus-class fallback.
+      const BONUS_SCREENS = {
+        freespin:1, freespin_intro:1, freespin_outro:1,
+        holdnspin:1, holdnspin_intro:1, holdnspin_outro:1,
+        bonus_pick:1, bonus_pick_intro:1, bonus_pick_outro:1,
+        wheel_bonus:1, wheel_bonus_intro:1, wheel_bonus_outro:1,
+        ladder_bonus:1, ladder_bonus_intro:1, ladder_bonus_outro:1,
+        gamble:1, gamble_intro:1, gamble_outro:1,
+        super_gamble:1, super_gamble_intro:1, super_gamble_outro:1,
+        popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1,
+      };
+      const isBonusScreen = !!BONUS_SCREENS[P.screen];
       const bgKey = (featureBg && EL_ASSETS[featureBg]) ? featureBg
                   : EL_ASSETS['bg_'+P.screen] ? 'bg_'+P.screen
+                  : (isBonusScreen && EL_ASSETS['bg_bonus']) ? 'bg_bonus'
                   : EL_ASSETS['bg'] ? 'bg' : null;
       if(bgKey){const img=document.createElement('img');img.src=EL_ASSETS[bgKey];img.style.cssText='width:100%;height:100%;object-fit:cover;pointer-events:none';el.appendChild(img);}else{el.appendChild(makeThemeBG(pos.w,pos.h));}
 
