@@ -356,7 +356,32 @@
   function renderLoading(){
     var el = grid();
     if(!el) return;
-    el.innerHTML = '<div class="mkt-loading" style="padding:24px;color:#7a7a94;font-size:12px">Loading marketing kit…</div>';
+    // Visible affordance: spinner + line + skeleton tile rows so the
+    // user immediately sees structure forming. Skeletons match the
+    // shape of real tiles — the transition to populated state feels
+    // continuous rather than jarring.
+    el.innerHTML = ''
+      + '<div class="mkt-bootstrap">'
+      +   '<div class="mkt-bootstrap-row">'
+      +     '<div class="mkt-spinner"></div>'
+      +     '<div>'
+      +       '<div class="mkt-bootstrap-title">Loading marketing kit</div>'
+      +       '<div class="mkt-bootstrap-sub">Reading templates and your latest renders…</div>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="mkt-bootstrap-grid">'
+      +     skeletonTile() + skeletonTile() + skeletonTile() + skeletonTile()
+      +   '</div>'
+      + '</div>';
+  }
+
+  function skeletonTile(){
+    return ''
+      + '<div class="mkt-skeleton-tile">'
+      +   '<div class="mkt-skeleton-block"></div>'
+      +   '<div class="mkt-skeleton-line w70"></div>'
+      +   '<div class="mkt-skeleton-line w40"></div>'
+      + '</div>';
   }
 
   function renderError(msg){
@@ -619,6 +644,13 @@
     // layer doesn't show character sliders.
     var usedSlots = collectUsedSlots(template);
 
+    // Form is intentionally lean — language / colorMode / layoutVariant
+    // were exposed in earlier iterations but didn't deliver visible
+    // value to the user (most templates don't have multi-language CTA
+    // strings or A/B/C layouts authored). They're still in the saved
+    // vars (with defaults) so server-side resolveVars sees them; we
+    // just don't ask the user. Future v1.1 brings back layoutVariant
+    // when more templates ship variants.
     body.innerHTML = ''
       + formField('gameName',      'Game name',      'text',
           pickStr(vars.gameName, ''))
@@ -631,15 +663,6 @@
       + formSelect('ctaText',      'Call to action',
           (schema.ctaText && schema.ctaText.options) || ['PLAY NOW'],
           pickStr(vars.ctaText, schema.ctaText ? schema.ctaText.default : 'PLAY NOW'))
-      + formSelect('language',     'Language',
-          (schema.language && schema.language.options) || ['EN'],
-          pickStr(vars.language, schema.language ? schema.language.default : 'EN'))
-      + formSelect('colorMode',    'Color mode',
-          (schema.colorMode && schema.colorMode.options) || ['auto'],
-          pickStr(vars.colorMode, schema.colorMode ? schema.colorMode.default : 'auto'))
-      + formSelect('layoutVariant','Layout variant',
-          (schema.layoutVariant && schema.layoutVariant.options) || ['A'],
-          pickStr(vars.layoutVariant, schema.layoutVariant ? schema.layoutVariant.default : 'A'))
       + (hasChar ? formCheckbox('includeCharacter', 'Include character', charOn,
           'Hides the hero figure when a tighter layout reads better.') : '')
       + renderPositionControls(usedSlots, overrides, hasChar);
@@ -1373,72 +1396,93 @@
     attachPreviewDrag(overlay);
   }
 
-  /** Pointer-event drag. Click-and-hold on a handle starts a drag; mouse
-   *  move updates the handle's CSS position (instant feedback) and the
-   *  hidden dx/dy inputs in the form (server source of truth). On
-   *  release we fire a debounced re-render to commit the change. */
+  /** Pointer-event drag with pointer capture.
+   *
+   *  Each handle owns its own pointerdown/move/up listeners and uses
+   *  setPointerCapture to pin subsequent events to itself — no global
+   *  document listeners (which were accumulating across re-renders in
+   *  the old implementation, with the closure of each instance going
+   *  stale after the next render replaced overlay.onmousedown).
+   *
+   *  Pointer events also work for touch / pen out of the box.
+   */
   function attachPreviewDrag(overlay){
-    var dragging = null;     // { slot, startX, startY, baseDxPct, baseDyPct, handleEl, dispW, dispH }
+    var img = document.getElementById('mkt-preview-img');
+    if(!img) return;
 
-    overlay.onmousedown = function(e){
-      var handle = e.target && e.target.closest && e.target.closest('.mkt-preview-handle');
-      if(!handle) return;
+    var handles = overlay.querySelectorAll('.mkt-preview-handle');
+    for(var i = 0; i < handles.length; i++){
+      bindHandle(handles[i], img);
+    }
+  }
+
+  function bindHandle(handle, img){
+    var slot = handle.getAttribute('data-slot');
+    if(!slot) return;
+
+    // Per-handle drag state — closes over the bind() call so each
+    // handle's listeners reference the same `state` and don't
+    // collide with other handles.
+    var state = null;
+
+    handle.addEventListener('pointerdown', function(e){
+      // Left-button only.
+      if(e.button !== undefined && e.button !== 0) return;
       e.preventDefault();
-      var slot = handle.getAttribute('data-slot');
-      var img  = document.getElementById('mkt-preview-img');
-      if(!img) return;
+      e.stopPropagation();
 
-      // Read the existing dx/dy off the hidden form inputs so the new
-      // drag adds onto whatever is already there (rather than resetting).
       var form = document.getElementById('mkt-modal-form');
       var row  = form && form.querySelector('.mkt-pos-row[data-pos-slot="'+slot+'"]');
       var dxIn = row && row.querySelector('input[data-pos-field="dx"]');
       var dyIn = row && row.querySelector('input[data-pos-field="dy"]');
-      var baseDx = dxIn ? parseFloat(dxIn.value) || 0 : 0;
-      var baseDy = dyIn ? parseFloat(dyIn.value) || 0 : 0;
 
-      dragging = {
-        slot:      slot,
+      state = {
         startX:    e.clientX,
         startY:    e.clientY,
-        baseDx:    baseDx,
-        baseDy:    baseDy,
-        handleEl:  handle,
-        dxIn:      dxIn,
-        dyIn:      dyIn,
+        baseDx:    dxIn ? (parseFloat(dxIn.value) || 0) : 0,
+        baseDy:    dyIn ? (parseFloat(dyIn.value) || 0) : 0,
         startLeft: parseFloat(handle.style.left || 0),
         startTop:  parseFloat(handle.style.top  || 0),
-        dispW:     img.clientWidth,
-        dispH:     img.clientHeight,
+        dispW:     img.clientWidth  || 1,
+        dispH:     img.clientHeight || 1,
+        dxIn:      dxIn,
+        dyIn:      dyIn,
       };
       handle.classList.add('is-dragging');
-    };
+      // Pin all subsequent pointer events for this gesture to this
+      // element, regardless of where the cursor goes. Standard
+      // drag-and-drop pattern in modern browsers.
+      try { handle.setPointerCapture(e.pointerId); } catch(_) {}
+    });
 
-    document.addEventListener('mousemove', function(e){
-      if(!dragging) return;
-      var dx = e.clientX - dragging.startX;
-      var dy = e.clientY - dragging.startY;
-      // Move the handle visually for instant feedback
-      dragging.handleEl.style.left = (dragging.startLeft + dx) + 'px';
-      dragging.handleEl.style.top  = (dragging.startTop  + dy) + 'px';
-      // Convert pixel delta to canvas-percentage
-      var dxPct = dragging.baseDx + (dx / dragging.dispW);
-      var dyPct = dragging.baseDy + (dy / dragging.dispH);
-      // Clamp to engine-accepted range
+    handle.addEventListener('pointermove', function(e){
+      if(!state) return;
+      var dx = e.clientX - state.startX;
+      var dy = e.clientY - state.startY;
+      handle.style.left = (state.startLeft + dx) + 'px';
+      handle.style.top  = (state.startTop  + dy) + 'px';
+
+      var dxPct = state.baseDx + (dx / state.dispW);
+      var dyPct = state.baseDy + (dy / state.dispH);
+      // Clamp to engine-accepted range so a user dragging far-off-screen
+      // doesn't push the engine override out of bounds.
       dxPct = Math.max(-1, Math.min(1, dxPct));
       dyPct = Math.max(-1, Math.min(1, dyPct));
-      if(dragging.dxIn) dragging.dxIn.value = dxPct.toFixed(4);
-      if(dragging.dyIn) dragging.dyIn.value = dyPct.toFixed(4);
+      if(state.dxIn) state.dxIn.value = dxPct.toFixed(4);
+      if(state.dyIn) state.dyIn.value = dyPct.toFixed(4);
     });
 
-    document.addEventListener('mouseup', function(){
-      if(!dragging) return;
-      dragging.handleEl.classList.remove('is-dragging');
-      dragging = null;
-      // Commit the new position via a debounced re-render. The handle
-      // jumps back to the engine-computed position on next render.
+    function end(e){
+      if(!state) return;
+      handle.classList.remove('is-dragging');
+      state = null;
+      try { handle.releasePointerCapture(e.pointerId); } catch(_) {}
+      // Commit via a debounced re-render. The handle jumps to the new
+      // engine-computed position on the next render's bbox set.
       schedulePreviewRefresh();
-    });
+    }
+    handle.addEventListener('pointerup',     end);
+    handle.addEventListener('pointercancel', end);
   }
 
   function findTile(templateId){
@@ -1583,10 +1627,15 @@
     + '.mkt-pos-slider-value{font-size:10px;color:#a0a0b0;font-family:"DM Mono",monospace;text-align:right}'
     + '#mkt-modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #2a2a3a}'
     + '#mkt-modal-actions .mkt-tile-btn{flex:1;padding:9px 14px;font-size:12px}'
-    + '#mkt-modal-preview{background:#0a0a10;border:1px solid #2a2a3a;border-radius:6px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}'
+    + '#mkt-modal-preview{background:#0a0a10;border:1px solid #2a2a3a;border-radius:6px;min-height:280px;max-height:62vh;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}'
     + '.mkt-modal-preview-empty{color:#5a5a78;font-size:11px;padding:24px;text-align:center}'
-    + '.mkt-preview-wrap{position:relative;width:100%}'
-    + '.mkt-preview-img{width:100%;display:block;border-radius:6px;user-select:none;-webkit-user-drag:none}'
+    // .mkt-preview-wrap respects the rendered image's aspect by sitting
+    // inline-block; img inside fits the available width AND height with
+    // object-fit:contain so a 9:16 TikTok cover or 3:1 banner both
+    // display fully without clipping. The wrap's computed size is what
+    // renderPreviewHandles measures for bbox scaling.
+    + '.mkt-preview-wrap{position:relative;display:inline-flex;max-width:100%;max-height:62vh}'
+    + '.mkt-preview-img{display:block;max-width:100%;max-height:62vh;width:auto;height:auto;object-fit:contain;border-radius:6px;user-select:none;-webkit-user-drag:none}'
     + '.mkt-preview-overlay{position:absolute;inset:0;pointer-events:none}'
     // Handles: always-visible faint outline so users know they can drag.
     // Hover brightens; drag locks the gold accent.
@@ -1651,5 +1700,20 @@
     + '.mkt-welcome{display:flex;gap:14px;align-items:flex-start;background:#1a1a24;border:1px solid #2a2a3a;border-left:3px solid #c9a84c;border-radius:6px;padding:14px 18px;margin:18px 22px 0}'
     + '.mkt-welcome-icon{font-size:18px;line-height:1.2;flex:0 0 auto}'
     + '.mkt-welcome-title{font-size:13px;color:#e8e6e2;font-weight:600;margin-bottom:3px}'
-    + '.mkt-welcome-sub{font-size:11px;color:#a0a0b0;line-height:1.5}';
+    + '.mkt-welcome-sub{font-size:11px;color:#a0a0b0;line-height:1.5}'
+    // Bootstrap / skeleton state shown while /templates + /kits are
+    // in flight. Visible spinner + 4 placeholder tiles so the user
+    // immediately reads "structure is loading" not "page is broken".
+    + '.mkt-bootstrap{padding:24px 22px}'
+    + '.mkt-bootstrap-row{display:flex;align-items:center;gap:14px;margin-bottom:18px}'
+    + '.mkt-bootstrap-title{font-size:13px;color:#e8e6e2;font-weight:600;margin-bottom:3px}'
+    + '.mkt-bootstrap-sub{font-size:11px;color:#7a7a94}'
+    + '.mkt-spinner{width:22px;height:22px;border-radius:50%;border:2px solid #2a2a3a;border-top-color:#c9a84c;animation:mktSpin 0.9s linear infinite;flex:0 0 auto}'
+    + '@keyframes mktSpin{to{transform:rotate(360deg)}}'
+    + '.mkt-bootstrap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}'
+    + '.mkt-skeleton-tile{background:#13131a;border:1px solid #2a2a3a;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}'
+    + '.mkt-skeleton-block{width:100%;aspect-ratio:1/1;background:linear-gradient(110deg,#1a1a24 30%,#222230 50%,#1a1a24 70%);background-size:200% 100%;border-radius:6px;animation:mktShimmer 1.4s linear infinite}'
+    + '.mkt-skeleton-line{height:10px;background:linear-gradient(110deg,#1a1a24 30%,#222230 50%,#1a1a24 70%);background-size:200% 100%;border-radius:3px;animation:mktShimmer 1.4s linear infinite}'
+    + '.mkt-skeleton-line.w70{width:70%}'
+    + '.mkt-skeleton-line.w40{width:40%}';
 })();
