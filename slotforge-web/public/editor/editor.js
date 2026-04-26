@@ -12489,6 +12489,18 @@ window._sfApplyPayload = function(payload){
   try { if(typeof renderLayers==='function')  renderLayers();  } catch(e){}
   try { if(typeof renderLibrary==='function') renderLibrary(); } catch(e){}
   try { document.getElementById('ov-props-panel')?.classList.remove('show'); } catch(e){}
+  // v2 UX: re-paint the screen-thumbs panel after a short delay so
+  // any async asset URL availability (signed URLs, image preloads)
+  // settles before the tile <img> tags resolve their src. Without
+  // this, the very first paint of the panel can land before
+  // EL_ASSETS is fully wired and tiles fall back to the gradient
+  // forever (since rebuildTabs only re-fires on screen / feature
+  // changes, not on asset arrival).
+  try {
+    setTimeout(function(){
+      if(typeof window._sfRebuildScreenThumbs === 'function') window._sfRebuildScreenThumbs();
+    }, 350);
+  } catch(e){}
   // Mark payload as fully applied so markDirty / CDN callbacks are allowed to trigger saves.
   window._sfPayloadLoaded = true;
 };
@@ -14105,17 +14117,23 @@ setTimeout(() => {
     var active = (window.P && window.P.screen === item.key) ? ' is-active' : '';
     var cls    = isChild ? 'stp-tile-child' : 'stp-tile-parent';
     var ready  = readinessFor(item.key);
-    // v2 UX (Phase 3.1): when the screen has a real bg asset, use it
-    // as the tile background. Falls back to the tinted gradient when
-    // no asset is present (greenfield project, asset still loading).
+    // Phase 3.1: when the screen has a real bg asset, render it as
+    // an <img>. Image loading is more forgiving than CSS
+    // background-image (handles HTTPS / CORS / data:URI uniformly,
+    // and onerror lets us fall back gracefully). The tinted-gradient
+    // sits in the same spot as the .stp-tile-fill backstop so the
+    // tile is never empty.
     var bg = bgUrlFor(item.key);
-    var fillStyle = bg
-      ? 'background-image:url("' + (bg || '').replace(/"/g, '%22') + '");background-size:cover;background-position:center;opacity:0.95'
-      : 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';opacity:0.55';
+    var imgEl = bg
+      ? '<img class="stp-tile-img" src="' + (bg || '').replace(/"/g, '%22') + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+      : '';
+    var gradientStyle = 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';' +
+                       (bg ? 'opacity:0.18' : 'opacity:0.55');
     return ''
       + '<button type="button" class="stp-tile ' + cls + active + '" data-screen="'
       +   (item.key || '') + '" title="' + (item.label || '') + '">'
-      +   '<div class="stp-tile-fill" style="' + fillStyle + '"></div>'
+      +   '<div class="stp-tile-fill" style="' + gradientStyle + '"></div>'
+      +   imgEl
       +   '<div class="stp-tile-vignette"></div>'
       +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
       +   '<span class="stp-tile-label">' + (item.label || '') + '</span>'
