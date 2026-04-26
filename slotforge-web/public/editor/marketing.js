@@ -82,10 +82,75 @@
       state.kits      = (results[1] && results[1].kits)      || [];
       state.readiness = (results[1] && results[1].readiness) || null;
       render();
+      // Fire the bg-removal flow lazily after the grid has painted.
+      // Idempotent server-side: a no-op when character.transparent is
+      // already cached. We don't await it — the marketing tab is
+      // usable immediately with the regular character asset (engine
+      // falls back), and the cutout streams in for the next render.
+      ensureCharacterCutout();
     }).catch(function(err){
       state.loading = false;
       state.error   = err && err.message ? err.message : 'Load failed';
       renderError(state.error);
+    });
+  }
+
+  // ─── Character bg-removal trigger ──────────────────────────────────────────
+  //
+  // The /api/marketing/character/extract endpoint is idempotent: it
+  // returns cached:true when the cutout already exists. We still call
+  // it on every workspace activation so a project that's added a
+  // character mid-session gets the cutout without a page reload.
+  //
+  // Toast + readiness-flag flip happens AFTER the call returns so the
+  // UI doesn't lie about state. If Replicate is unavailable the
+  // workspace continues working with the regular character — engine
+  // dispatcher in compose.ts falls back automatically.
+
+  function ensureCharacterCutout(){
+    var r = state.readiness || {};
+    // Skip when there's no character to extract from, or when the
+    // cutout is already in our DB. The kits endpoint's readiness probe
+    // populated both flags from generated_assets.
+    if(!r.hasCharacter || r.hasCharacterTransparent) return;
+    if(ensureCharacterCutout._inflight) return;
+    ensureCharacterCutout._inflight = true;
+
+    if(typeof showToast === 'function'){
+      showToast('Preparing character art… (one-time, ~5–8s)');
+    }
+
+    fetch('/api/marketing/character/extract', {
+      method:      'POST',
+      credentials: 'same-origin',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify({ project_id: projectId() }),
+    }).then(function(res){
+      return res.json().catch(function(){ return {}; }).then(function(body){
+        return { ok: res.ok, status: res.status, body: body };
+      });
+    }).then(function(r){
+      ensureCharacterCutout._inflight = false;
+      if(!r.ok){
+        // Soft-fail: regular character still renders. 412 = no
+        // character asset to extract from (rare race against a delete).
+        // 503 = Replicate not configured. Either way the workspace
+        // continues; we just don't get the polished cutout.
+        var msg = (r.body && r.body.message) || 'Character cutout unavailable';
+        if(typeof showToast === 'function') showToast(msg);
+        return;
+      }
+      // Success — flip the readiness flag so the next render uses the
+      // cutout. The engine swap is automatic (slot=character.transparent
+      // resolves correctly on the very next /api/marketing/render call).
+      if(state.readiness) state.readiness.hasCharacterTransparent = true;
+      if(typeof showToast === 'function'){
+        showToast(r.body && r.body.cached ? 'Character ready' : 'Character cutout ready');
+      }
+    }).catch(function(err){
+      ensureCharacterCutout._inflight = false;
+      if(typeof showToast === 'function') showToast('Character cutout failed — using original');
+      console.warn('[marketing] character/extract threw:', err);
     });
   }
 
