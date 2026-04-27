@@ -14223,36 +14223,52 @@ setTimeout(() => {
     var bgPos = thumbPos(sk, 'bg');
     var bgImg = (bgUrl && bgPos) ? positionedAssetImg(bgUrl, bgPos, vpDef, 'stp-tile-img') : '';
 
-    // ── Reel frame + symbol grid ──────────────────────────────────
-    // Always show a reel frame on screens that have one (everything
-    // except splash + popups where the reels aren't visible). The
-    // reel frame is a tinted dark rounded rect; the symbol grid sits
-    // on top filling the reelArea pos.
-    var reelHtml = '';
-    var SHOWS_REELS = { splash:0 };  // splash is the only screen without reels by default
-    var hideReelsOnPopups = { popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1 };
-    if(!hideReelsOnPopups[sk] && SHOWS_REELS[sk] !== 0){
-      var framePos = thumbPos(sk, 'reelFrame');
-      var areaPos  = thumbPos(sk, 'reelArea');
-      if(framePos){
-        reelHtml += positionedOverlay(framePos, vpDef, 'stp-tile-frame', '',
-          'background:rgba(8,8,16,0.55);border:1px solid rgba(201,168,76,0.25);border-radius:3px');
-      }
-      if(areaPos){
-        reelHtml += positionedOverlay(areaPos, vpDef, 'stp-tile-area', reelGridHtml(),
-          'overflow:hidden');
+    // ── Live elements: prefer uploaded assets over CSS placeholders ──
+    // Phase 3.4 (refinement): the previous version drew a CSS reel
+    // frame, gold JP strip, and gold spin-button circle on every tile
+    // regardless of whether those assets were uploaded. The user
+    // flagged it as "mockup-y". New rule:
+    //   • If the user has uploaded the asset → render <img>
+    //   • If not → render a SUBTLE CSS hint (translucent outline /
+    //     thin strip) rather than an attention-grabbing placeholder
+    // The bg / character / logo / symbol grid drive the visual
+    // identity; templates fade into the background until the user
+    // generates them.
+    var hideOnPopups = { popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1 };
+    var hideReels    = !!hideOnPopups[sk] || sk === 'splash';
+
+    // ── Reel frame ─────────────────────────────────────────────────
+    var reelFrameHtml = '';
+    var framePos = thumbPos(sk, 'reelFrame');
+    if(!hideReels && framePos){
+      if(typeof EL_ASSETS !== 'undefined' && EL_ASSETS.reelFrame){
+        reelFrameHtml = positionedAssetImg(EL_ASSETS.reelFrame, framePos, vpDef, 'stp-tile-asset');
+      } else {
+        // Subtle outline only — no fill — so the symbol grid below
+        // reads as the dominant element.
+        reelFrameHtml = positionedOverlay(framePos, vpDef, 'stp-tile-frame', '',
+          'border:1px solid rgba(255,255,255,0.06);border-radius:2px;background:transparent');
       }
     }
 
-    // ── Jackpot bar ───────────────────────────────────────────────
-    // jpRow spans all four jackpot tiers. Render as a single gold
-    // strip — too small to render the four sub-cells legibly at thumb
-    // scale.
+    // ── Symbol grid (always live when assets present) ─────────────
+    var reelGrid = '';
+    if(!hideReels){
+      var areaPos = thumbPos(sk, 'reelArea');
+      if(areaPos) reelGrid = positionedOverlay(areaPos, vpDef, 'stp-tile-area', reelGridHtml(), 'overflow:hidden');
+    }
+
+    // ── Jackpot bar ────────────────────────────────────────────────
+    // Subtle dark strip when not uploaded; the gold gradient was
+    // reading as a fake "branded" element. Real jackpot art replaces
+    // this when the user uploads it.
     var jpHtml = '';
     var jpPos = thumbPos(sk, 'jpRow');
-    if(jpPos && !hideReelsOnPopups[sk]){
+    if(jpPos && !hideReels){
+      // No EL_ASSETS slot for the row itself — individual tier assets
+      // would go elsewhere. Render a thin neutral strip.
       jpHtml = positionedOverlay(jpPos, vpDef, 'stp-tile-jp', '',
-        'background:linear-gradient(180deg,#3a2a08 0%,#9a7830 50%,#3a2a08 100%);border-radius:1px;opacity:0.85');
+        'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.05);border-radius:1px');
     }
 
     // ── Character ─────────────────────────────────────────────────
@@ -14265,33 +14281,28 @@ setTimeout(() => {
 
     // ── Logo ──────────────────────────────────────────────────────
     var logoImg = '';
-    if(!hideReelsOnPopups[sk] && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.logo){
+    if(!hideOnPopups[sk] && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.logo){
       var lPos = thumbPos(sk, 'logo');
       if(lPos) logoImg = positionedAssetImg(EL_ASSETS.logo, lPos, vpDef, 'stp-tile-asset');
     }
 
-    // ── Spin / aux buttons (gold circles) ─────────────────────────
+    // ── Spin / aux buttons ────────────────────────────────────────
+    // Use real img when uploaded, otherwise skip entirely. The gold
+    // radial circle was the most "fake mockup" element in the prior
+    // version — better to omit than to fake it.
     var btnsHtml = '';
-    if(!hideReelsOnPopups[sk]){
-      [['spinBtn','#c9a84c'], ['autoBtn','#7a7a94'], ['turboBtn','#7a7a94']].forEach(function(b){
-        var pos = thumbPos(sk, b[0]);
+    if(!hideReels){
+      ['spinBtn', 'autoBtn', 'turboBtn'].forEach(function(k){
+        if(typeof EL_ASSETS === 'undefined' || !EL_ASSETS[k]) return;
+        var pos = thumbPos(sk, k);
         if(!pos) return;
-        // Render as a soft circle; spin is gold, aux are grey.
-        btnsHtml += positionedOverlay(pos, vpDef, 'stp-tile-btn', '',
-          'background:radial-gradient(circle,' + b[1] + ' 0%,rgba(0,0,0,0.7) 100%);' +
-          'border-radius:50%;opacity:0.85');
+        btnsHtml += positionedAssetImg(EL_ASSETS[k], pos, vpDef, 'stp-tile-asset');
       });
     }
 
-    // ── Message label (thin top strip) ────────────────────────────
+    // Drop the message-label strip — too small to read at thumb
+    // scale and was just visual noise. msgHtml retired.
     var msgHtml = '';
-    if(!hideReelsOnPopups[sk]){
-      var mPos = thumbPos(sk, 'msgLabel');
-      if(mPos){
-        msgHtml = positionedOverlay(mPos, vpDef, 'stp-tile-msg', '',
-          'background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(201,168,76,0.15)');
-      }
-    }
 
     // Tinted gradient stays as the no-bg fallback.
     var gradientStyle = 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';' +
