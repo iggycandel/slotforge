@@ -93,6 +93,12 @@
       // usable immediately with the regular character asset (engine
       // falls back), and the cutout streams in for the next render.
       ensureCharacterCutout();
+      // Auto-render: when assets are ready AND no kit has any cached
+      // render yet, fire renderAll once so first-time users get a
+      // populated kit grid without manually clicking Render. Gated on
+      // a per-project localStorage flag so we never fire twice (e.g.
+      // a user who deletes a render shouldn't trigger a new one).
+      maybeAutoRenderAll();
     }).catch(function(err){
       state.loading = false;
       // Surface the upgrade card for plan-gated 403s; treat anything
@@ -118,6 +124,40 @@
   // UI doesn't lie about state. If Replicate is unavailable the
   // workspace continues working with the regular character — engine
   // dispatcher in compose.ts falls back automatically.
+
+  /** Auto-render the whole kit the first time a project becomes
+   *  ready (3 base assets present) AND has no cached renders. Gated
+   *  on a per-project localStorage flag so it fires exactly once
+   *  per project regardless of whether the user later deletes
+   *  renders. Runs renderAll() with skipZip=true so the user sees
+   *  tiles populating, no surprise download. */
+  function maybeAutoRenderAll(){
+    var pid = projectId();
+    if(!pid) return;
+    if(!state.readiness || !isReady(state.readiness)) return;
+    // Already auto-fired? Don't re-fire.
+    var key = 'sf_mkt_autorendered_' + pid;
+    try { if(localStorage.getItem(key) === '1') return; } catch(e){}
+    // Anything already rendered? Skip.
+    var anyRender = false;
+    for(var i = 0; i < (state.kits||[]).length; i++){
+      if(((state.kits[i].renders) || []).length > 0){ anyRender = true; break; }
+    }
+    if(anyRender){
+      // Mark flag so a returning user with renders doesn't re-trigger.
+      try { localStorage.setItem(key, '1'); } catch(e){}
+      return;
+    }
+    // Mark BEFORE firing so a quick re-init doesn't double-trigger.
+    try { localStorage.setItem(key, '1'); } catch(e){}
+    if(typeof showToast === 'function'){
+      showToast('Auto-rendering your marketing kit — tiles will fill in as they land.');
+    }
+    // Defer slightly so the page has painted; runExportAll is heavy.
+    setTimeout(function(){
+      try { runExportAll(null, /*skipZip*/ true); } catch(e){ console.warn('[mkt] auto-render failed', e); }
+    }, 600);
+  }
 
   function ensureCharacterCutout(){
     var r = state.readiness || {};
@@ -356,31 +396,23 @@
   function renderLoading(){
     var el = grid();
     if(!el) return;
-    // Visible affordance: spinner + line + skeleton tile rows so the
-    // user immediately sees structure forming. Skeletons match the
-    // shape of real tiles — the transition to populated state feels
-    // continuous rather than jarring.
+    // Premium loading state — centered hero card with gold-accent
+    // pulsing rings + pithy copy. Replaces the earlier skeleton-tile
+    // grid that read as "the page is half-broken". The loading state
+    // only flashes briefly (under 500ms in the warm-cache case);
+    // skeleton tiles previously suggested permanent structure that
+    // never arrived for the empty-state path.
     el.innerHTML = ''
-      + '<div class="mkt-bootstrap">'
-      +   '<div class="mkt-bootstrap-row">'
-      +     '<div class="mkt-spinner"></div>'
-      +     '<div>'
-      +       '<div class="mkt-bootstrap-title">Loading marketing kit</div>'
-      +       '<div class="mkt-bootstrap-sub">Reading templates and your latest renders…</div>'
-      +     '</div>'
+      + '<div class="mkt-loading-hero">'
+      +   '<div class="mkt-loading-rings">'
+      +     '<span class="mkt-loading-ring"></span>'
+      +     '<span class="mkt-loading-ring mkt-loading-ring-2"></span>'
+      +     '<span class="mkt-loading-ring mkt-loading-ring-3"></span>'
+      +     '<span class="mkt-loading-glyph">✦</span>'
       +   '</div>'
-      +   '<div class="mkt-bootstrap-grid">'
-      +     skeletonTile() + skeletonTile() + skeletonTile() + skeletonTile()
-      +   '</div>'
-      + '</div>';
-  }
-
-  function skeletonTile(){
-    return ''
-      + '<div class="mkt-skeleton-tile">'
-      +   '<div class="mkt-skeleton-block"></div>'
-      +   '<div class="mkt-skeleton-line w70"></div>'
-      +   '<div class="mkt-skeleton-line w40"></div>'
+      +   '<div class="mkt-loading-eyebrow">Marketing Kit</div>'
+      +   '<div class="mkt-loading-title">Reading your project</div>'
+      +   '<div class="mkt-loading-sub">Loading templates, asset readiness, and your previous renders…</div>'
       + '</div>';
   }
 
@@ -1029,7 +1061,7 @@
 
     var html = ''
       + '<div class="mkt-form-section-title">Positioning</div>'
-      + '<div class="mkt-form-hint" style="margin:-4px 0 10px">Drag any asset on the preview to reposition. Scale per asset below.</div>';
+      + '<div class="mkt-form-hint" style="margin:-4px 0 10px">Drag any asset on the preview, or use sliders for precise control. Reset reverts to template defaults.</div>';
     for(var j = 0; j < displayed.length; j++){
       var item = displayed[j];
       if(item.hidden) continue;
@@ -1043,9 +1075,11 @@
         +     '<span class="mkt-pos-label">'+escapeHtml(item.label)+'</span>'
         +     '<button type="button" class="mkt-pos-reset" data-act="pos-reset">Reset</button>'
         +   '</div>'
-        // Hidden dx/dy — drag-on-preview sets these; reset clears them
-        +   '<input type="hidden" data-pos-field="dx" value="'+dx+'">'
-        +   '<input type="hidden" data-pos-field="dy" value="'+dy+'">'
+        // Drag-on-preview writes to these same dx/dy inputs — they stay
+        // in sync. Sliders are now the primary mechanism since drag
+        // depends on bbox metadata that's flaky on cache-hit renders.
+        +   posSlider('dx',    'X',     dx, -1, 1, 0.01)
+        +   posSlider('dy',    'Y',     dy, -1, 1, 0.01)
         +   posSlider('scale', 'Scale', sc, 0.25, 2.5, 0.05)
         + '</div>';
     }
@@ -1759,6 +1793,21 @@
     + '.mkt-skeleton-line{height:10px;background:linear-gradient(110deg,#1a1a24 30%,#222230 50%,#1a1a24 70%);background-size:200% 100%;border-radius:3px;animation:mktShimmer 1.4s linear infinite}'
     + '.mkt-skeleton-line.w70{width:70%}'
     + '.mkt-skeleton-line.w40{width:40%}'
+    // ─── Premium loading state ───────────────────────────────────────────
+    // Hero card with gold accent + concentric pulsing rings + a
+    // single sparkle glyph at the centre. Reads as "loading" without
+    // pretending content is forming.
+    + '.mkt-loading-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px 28px;font-family:Space Grotesk,sans-serif;min-height:60vh}'
+    + '.mkt-loading-rings{position:relative;width:80px;height:80px;margin-bottom:24px}'
+    + '.mkt-loading-ring{position:absolute;inset:0;border:1.5px solid rgba(201,168,76,0.45);border-radius:50%;animation:mktRingPulse 1.6s ease-out infinite}'
+    + '.mkt-loading-ring-2{animation-delay:0.4s;opacity:0}'
+    + '.mkt-loading-ring-3{animation-delay:0.8s;opacity:0}'
+    + '.mkt-loading-glyph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c9a84c;font-size:24px;font-weight:300;animation:mktGlyphPulse 1.6s ease-in-out infinite}'
+    + '@keyframes mktRingPulse{0%{transform:scale(0.7);opacity:0.7}100%{transform:scale(1.3);opacity:0}}'
+    + '@keyframes mktGlyphPulse{0%,100%{transform:scale(1);opacity:0.8}50%{transform:scale(1.15);opacity:1}}'
+    + '.mkt-loading-eyebrow{font-size:9px;font-family:DM Mono,monospace;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:10px;font-weight:700}'
+    + '.mkt-loading-title{font-size:18px;font-weight:600;color:#e8e6e2;letter-spacing:-0.01em;margin-bottom:8px;line-height:1.2}'
+    + '.mkt-loading-sub{font-size:12px;color:#7a7a94;line-height:1.5;max-width:380px}'
     // ─── Premium empty-state for fresh projects ──────────────────────────
     // Hero card with gold accent, three asset status cards, strong CTA.
     + '.mkt-onboard{max-width:780px;margin:30px auto 60px;padding:0 28px;font-family:Space Grotesk,sans-serif}'
