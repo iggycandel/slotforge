@@ -746,7 +746,9 @@
       <button class="proj-tab active" data-ptab="import">📄 Import</button>
       <button class="proj-tab" data-ptab="theme">🎨 Theme</button>
       <button class="proj-tab" data-ptab="reels">⊞ Reels</button>
-      <button class="proj-tab" data-ptab="jackpots">💰 Jackpots</button>
+      <!-- Jackpots tab removed in Round 2 — both jackpots + ante bet
+           moved into the Reels tab as optional toggle-driven sections,
+           so users without those features see fewer tabs. -->
       <button class="proj-tab" data-ptab="features">⚡ Features</button>
       <button class="proj-tab" data-ptab="symbols">◆ Symbols</button>
       <!-- GDD tab removed: GDD generation lives on the Import tab as a
@@ -1002,7 +1004,12 @@
         </div></div>
       </div>
 
-      <!-- ══ REELS TAB ══ -->
+      <!-- ══ REELS TAB ══
+           Round 2 restructure: Jackpots + Ante Bet absorbed here (the
+           old Jackpots tab is gone). Math-model-derived fields (RTP /
+           Volatility / Scatter Pays / Min symbols on line) moved into
+           a "Math model" placeholder card so it's clear they're on the
+           roadmap rather than missing. -->
       <div class="proj-tab-pane" id="ptab-reels">
 
         <!-- Reel Configuration -->
@@ -1012,7 +1019,7 @@
             <!-- Left: dropdowns -->
             <div style="flex:1;min-width:0">
               <div class="pfr">
-                <div class="pf"><div class="lbl">Grid</div>
+                <div class="pf"><div class="lbl">Grid <span class="lbl-req" style="color:#c9a84c">*</span></div>
                   <select class="fsel" id="reel-sel">
                     <optgroup label="Standard"><option value="3x1">3×1 Single Row</option><option value="3x3">3×3 Classic</option><option value="5x3" selected>5×3 Standard</option><option value="5x4">5×4</option><option value="6x3">6×3</option><option value="6x4">6×4</option></optgroup>
                     <optgroup label="Tall / Portrait"><option value="3x5">3×5</option><option value="4x5">4×5</option><option value="5x5">5×5</option><option value="4x6">4×6</option><option value="5x6">5×6</option><option value="3x7">3×7</option></optgroup>
@@ -1023,7 +1030,7 @@
                 </div>
               </div>
               <div class="pfr" style="margin-top:6px">
-                <div class="pf"><div class="lbl">Win Mechanic</div>
+                <div class="pf"><div class="lbl">Win Mechanic <span class="lbl-req" style="color:#c9a84c">*</span></div>
                   <select class="fsel" id="mech-sel"><option>Paylines</option><option>Ways to Win</option><option>Cluster Pays</option><option>Both Ways</option><option>Megaways™</option></select>
                 </div>
               </div>
@@ -1036,22 +1043,18 @@
           </div>
         </div>
 
-        <!-- Payline / Ways config -->
+        <!-- Paylines (basic — math-derived fields trimmed) -->
         <div class="ps">
-          <div class="psh"><span class="pi">—</span><span class="pl">Paylines &amp; Ways</span></div>
+          <div class="psh"><span class="pi">—</span><span class="pl">Paylines</span></div>
           <div class="psb">
             <div class="pfr">
               <div class="pf"><div class="lbl">Number of Paylines</div><input class="fi" type="number" value="20" min="1" max="1024" placeholder="e.g. 20"></div>
               <div class="pf"><div class="lbl">Pay Direction</div><select class="fsel"><option>Left to Right</option><option>Right to Left</option><option>Both Ways</option></select></div>
             </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Min Symbols on Line</div><select class="fsel"><option>2 of a kind</option><option>3 of a kind</option></select></div>
-              <div class="pf"><div class="lbl">Scatter Pays</div><select class="fsel"><option>Anywhere</option><option>On paylines only</option></select></div>
-            </div>
           </div>
         </div>
 
-        <!-- Bet config -->
+        <!-- Bet config (basic only — RTP / Volatility moved to Math card) -->
         <div class="ps">
           <div class="psh"><span class="pi">💳</span><span class="pl">Bet Configuration</span></div>
           <div class="psb">
@@ -1060,69 +1063,62 @@
               <div class="pf"><div class="lbl">Max Bet</div><input class="fi" type="number" value="100" placeholder="100"></div>
               <div class="pf"><div class="lbl">Default Bet</div><input class="fi" type="number" value="1.00" step="0.01" placeholder="1.00"></div>
             </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">RTP Target</div><input class="fi" type="number" value="96" min="50" max="99" step="0.1" placeholder="96.0">%</div>
-              <div class="pf"><div class="lbl">Volatility</div><select class="fsel"><option>Low</option><option>Medium-Low</option><option selected>Medium</option><option>Medium-High</option><option>High</option><option>Very High</option></select></div>
-            </div>
           </div>
         </div>
 
-        <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" onclick="switchProjTab('theme')">← Theme</button>
-          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('jackpots')">Next: Jackpots →</button>
-        </div></div>
-      </div>
-
-      <!-- ══ JACKPOTS TAB ══ -->
-      <div class="proj-tab-pane" id="ptab-jackpots">
-
-        <!-- Jackpot network -->
-        <div class="ps">
-          <div class="psh"><span class="pi">💰</span><span class="pl">Jackpot Network</span></div>
+        <!-- ─── Jackpots (optional, master toggle) ──────────────────
+             Round 2: absorbed from the standalone Jackpots tab. Master
+             toggle drives both visibility AND the underlying P.jpEnabled
+             flag (see editor.js wiring). When OFF, the jp-grid below is
+             hidden and Jackpot Bar Row layers are dropped from screens. -->
+        <div class="ps s2">
+          <div class="psh"><span class="pi">💰</span><span class="pl">Jackpots <span class="lbl-opt">— optional</span></span></div>
           <div class="psb" id="s-jp">
-                    <div style="font-size:8px;color:#778;margin-bottom:4px">Toggle jackpots, edit names and display amounts. Use Excl to hide per screen.</div>
-          <div class="jp-grid">
-            <div class="lbl"></div><div class="lbl">Label</div><div class="lbl">Display Amount</div><div></div>
-            <div class="jp-tog on" data-jp="grand"></div><input class="jp-fi" id="jp-lbl-grand" value="Grand" style="color:#ef7a7a;font-weight:500"><input class="jp-fi" id="jp-val-grand" value="€10,000"><button class="jp-excl" data-jp="grand">Excl ▾</button>
-            <div class="jp-tog on" data-jp="major"></div><input class="jp-fi" id="jp-lbl-major" value="Major" style="color:#c9a84c;font-weight:500"><input class="jp-fi" id="jp-val-major" value="€2,500"><button class="jp-excl" data-jp="major">Excl ▾</button>
-            <div class="jp-tog on" data-jp="minor"></div><input class="jp-fi" id="jp-lbl-minor" value="Minor" style="color:#7a8aef;font-weight:500"><input class="jp-fi" id="jp-val-minor" value="€500"><button class="jp-excl" data-jp="minor">Excl ▾</button>
-            <div class="jp-tog on" data-jp="mini"></div><input class="jp-fi" id="jp-lbl-mini" value="Mini" style="color:#5eca8a;font-weight:500"><input class="jp-fi" id="jp-val-mini" value="€100"><button class="jp-excl" data-jp="mini">Excl ▾</button>
-          </div>
+            <div style="font-size:10px;color:#9898b8;line-height:1.6;margin-bottom:10px">
+              Optional networked or fixed jackpots. Toggle on to surface a Jackpot Bar Row on Base Game and Free-Spins screens.
+            </div>
+            <div class="tog-row"><div class="tog" id="jp-master-tog"></div><span class="tog-lbl" id="jp-master-lbl">Enable Jackpots</span></div>
+
+            <!-- The grid + type/trigger live inside #jp-master-cf so the
+                 master toggle hides them in one move. -->
+            <div class="cf" id="jp-master-cf">
+              <div style="font-size:9px;color:#778;margin:12px 0 6px">Toggle individual tiers, edit names and display amounts. Use Excl to hide per screen.</div>
+              <div class="jp-grid">
+                <div class="lbl"></div><div class="lbl">Label</div><div class="lbl">Display Amount</div><div></div>
+                <div class="jp-tog on" data-jp="grand"></div><input class="jp-fi" id="jp-lbl-grand" value="Grand" style="color:#ef7a7a;font-weight:500"><input class="jp-fi" id="jp-val-grand" value="€10,000"><button class="jp-excl" data-jp="grand">Excl ▾</button>
+                <div class="jp-tog on" data-jp="major"></div><input class="jp-fi" id="jp-lbl-major" value="Major" style="color:#c9a84c;font-weight:500"><input class="jp-fi" id="jp-val-major" value="€2,500"><button class="jp-excl" data-jp="major">Excl ▾</button>
+                <div class="jp-tog on" data-jp="minor"></div><input class="jp-fi" id="jp-lbl-minor" value="Minor" style="color:#7a8aef;font-weight:500"><input class="jp-fi" id="jp-val-minor" value="€500"><button class="jp-excl" data-jp="minor">Excl ▾</button>
+                <div class="jp-tog on" data-jp="mini"></div><input class="jp-fi" id="jp-lbl-mini" value="Mini" style="color:#5eca8a;font-weight:500"><input class="jp-fi" id="jp-val-mini" value="€100"><button class="jp-excl" data-jp="mini">Excl ▾</button>
+              </div>
+              <div class="pfr" style="margin-top:14px">
+                <div class="pf"><div class="lbl">Jackpot Type</div>
+                  <select class="fsel">
+                    <option>Fixed Jackpot</option>
+                    <option>Progressive (networked)</option>
+                    <option>Progressive (local)</option>
+                    <option>Mystery Jackpot</option>
+                  </select>
+                </div>
+                <div class="pf"><div class="lbl">Trigger</div>
+                  <select class="fsel">
+                    <option>Symbol combination</option>
+                    <option>Random (any spin)</option>
+                    <option>Bonus game</option>
+                    <option>Bet-linked probability</option>
+                  </select>
+                </div>
+              </div>
+              <div class="pfr">
+                <div class="pf"><div class="lbl">Seed Value (Grand)</div><input class="fi" type="number" value="10000" placeholder="e.g. 10000"></div>
+                <div class="pf"><div class="lbl">Contribution %</div><input class="fi" type="number" value="1.5" step="0.1" placeholder="1.5">%</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Jackpot type / trigger -->
+        <!-- ─── Ante Bet (optional, moved from Jackpots tab) ─────── -->
         <div class="ps">
-          <div class="psh"><span class="pi">⚙</span><span class="pl">Jackpot Type &amp; Trigger</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Jackpot Type</div>
-                <select class="fsel">
-                  <option>Fixed Jackpot</option>
-                  <option>Progressive (networked)</option>
-                  <option>Progressive (local)</option>
-                  <option>Mystery Jackpot</option>
-                </select>
-              </div>
-              <div class="pf"><div class="lbl">Trigger</div>
-                <select class="fsel">
-                  <option>Symbol combination</option>
-                  <option>Random (any spin)</option>
-                  <option>Bonus game</option>
-                  <option>Bet-linked probability</option>
-                </select>
-              </div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Seed Value (Grand)</div><input class="fi" type="number" value="10000" placeholder="e.g. 10000"></div>
-              <div class="pf"><div class="lbl">Contribution %</div><input class="fi" type="number" value="1.5" step="0.1" placeholder="1.5">%</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Ante Bet -->
-        <div class="ps">
-          <div class="psh"><span class="pi">♠</span><span class="pl">Ante Bet</span></div>
+          <div class="psh"><span class="pi">♠</span><span class="pl">Ante Bet <span class="lbl-opt">— optional</span></span></div>
           <div class="psb" id="s-ante">
             <div class="tog-row"><div class="tog" id="ante-tog"></div><span class="tog-lbl" id="ante-lbl">Enable Ante Bet</span></div>
             <div class="cf" id="ante-cf">
@@ -1135,11 +1131,47 @@
           </div>
         </div>
 
+        <!-- ─── Math Model preview (placeholder) ───────────────────
+             RTP / Volatility / Scatter Pays / Min-symbols-on-line all
+             belong here once the math engine ships. We surface them
+             read-only with a "Coming soon" badge so users know the
+             roadmap rather than wondering why the controls vanished. -->
+        <div class="ps" style="opacity:0.78">
+          <div class="psh">
+            <span class="pi">📊</span>
+            <span class="pl">Math Model <span class="lbl-opt" style="color:#7d8799">— preview · coming soon</span></span>
+          </div>
+          <div class="psb">
+            <div style="font-size:10px;color:#9898b8;line-height:1.6;margin-bottom:12px">
+              These outputs come from the math engine once your reel strips and symbol weights are configured. We're shipping the math engine in a future release — until then the values below are illustrative defaults the GDD will pick up.
+            </div>
+            <div class="pfr">
+              <div class="pf"><div class="lbl">RTP Target</div><input class="fi" type="number" value="96" min="50" max="99" step="0.1" placeholder="96.0" disabled style="opacity:0.55;cursor:not-allowed">%</div>
+              <div class="pf"><div class="lbl">Volatility</div>
+                <select class="fsel" disabled style="opacity:0.55;cursor:not-allowed"><option>Low</option><option>Medium-Low</option><option selected>Medium</option><option>Medium-High</option><option>High</option><option>Very High</option></select>
+              </div>
+            </div>
+            <div class="pfr">
+              <div class="pf"><div class="lbl">Min Symbols on Line</div>
+                <select class="fsel" disabled style="opacity:0.55;cursor:not-allowed"><option>2 of a kind</option><option>3 of a kind</option></select>
+              </div>
+              <div class="pf"><div class="lbl">Scatter Pays</div>
+                <select class="fsel" disabled style="opacity:0.55;cursor:not-allowed"><option>Anywhere</option><option>On paylines only</option></select>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" onclick="switchProjTab('reels')">← Reels</button>
+          <button class="ptab-nav-btn" onclick="switchProjTab('theme')">← Theme</button>
           <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('features')">Next: Features →</button>
         </div></div>
       </div>
+
+      <!-- Jackpots pane removed in Round 2 — content lives inside the
+           Reels tab now (both jackpots + ante bet as optional toggles).
+           Any switchProjTab('jackpots') call from older payloads silently
+           no-ops since the pane is gone. -->
 
       <!-- ══ FEATURES TAB ══ -->
       <div class="proj-tab-pane" id="ptab-features">

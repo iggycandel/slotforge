@@ -312,7 +312,186 @@ body {
   opacity: 0.85;
 }
 
-/* ─── 18. Toast / nudge — pill chip language. */
+/* ─── 18a. Symbol table redesign (Round 2) ────────────────────
+   Replaces the dense .sym-row / .sym-header layout. The new
+   renderSymbolTable() in editor.js groups symbols by tier with
+   .sym-tier-head section labels and .sym-card row cards. The
+   legacy .sym-* selectors are still in editor.css but are no
+   longer emitted by the renderer — leaving them as dead CSS is
+   harmless and avoids breakage if a payload restoration uses
+   an older code path. */
+
+.sym-tier-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 0 10px;
+  margin-top: 6px;
+}
+.sym-tier-head:first-child { margin-top: 0; }
+.sym-tier-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+.sym-tier-meta { flex: 1; min-width: 0; }
+.sym-tier-title {
+  font-family: var(--sf-font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--sf-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sym-tier-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--sf-radius-pill);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--sf-border);
+  color: var(--sf-muted);
+  font-family: var(--sf-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.sym-tier-blurb {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--sf-muted-2);
+  line-height: 1.5;
+}
+.sym-tier-empty {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: var(--sf-radius-md);
+  border: 1px dashed var(--sf-border);
+  background: rgba(255,255,255,0.015);
+  font-size: 10px;
+  color: var(--sf-muted-2);
+  font-style: italic;
+}
+
+.sym-card {
+  display: grid;
+  grid-template-columns: 36px 1fr auto 24px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: var(--sf-radius-md);
+  border: 1px solid var(--sf-border);
+  background: rgba(255,255,255,0.018);
+  transition: border-color .15s, background .15s;
+}
+.sym-card:hover {
+  border-color: var(--sf-border-2);
+  background: rgba(255,255,255,0.03);
+}
+
+.sym-card-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--sf-radius-sm);
+  font-family: var(--sf-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.sym-card-badge--high {
+  background: rgba(239,122,122,0.10);
+  color: #ef9a9a;
+  border: 1px solid rgba(239,122,122,0.30);
+}
+.sym-card-badge--low {
+  background: rgba(122,138,239,0.10);
+  color: #9babf2;
+  border: 1px solid rgba(122,138,239,0.30);
+}
+.sym-card-badge--special {
+  background: var(--sf-gold-soft);
+  color: var(--sf-gold-2);
+  border: 1px solid var(--sf-border-gold);
+}
+
+.sym-card-name { min-width: 0; }
+.sym-card-name-fi {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--sf-radius-sm);
+  padding: 6px 8px;
+  font-family: var(--sf-font-sans);
+  font-size: 12px;
+  color: var(--sf-text);
+  outline: none;
+  transition: border-color .15s, background .15s;
+}
+.sym-card-name-fi:hover { background: rgba(255,255,255,0.025); }
+.sym-card-name-fi:focus {
+  border-color: var(--sf-border-gold);
+  background: rgba(215,168,79,0.04);
+}
+
+.sym-card-screens {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+.sym-card-scr-btn {
+  font-family: var(--sf-font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: var(--sf-radius-sm);
+  border: 1px solid var(--sf-border);
+  background: rgba(255,255,255,0.025);
+  color: var(--sf-muted-2);
+  cursor: pointer;
+  transition: border-color .12s, background .12s, color .12s;
+  white-space: nowrap;
+}
+.sym-card-scr-btn:hover {
+  border-color: var(--sf-border-2);
+  color: var(--sf-muted);
+}
+.sym-card-scr-btn.on {
+  border-color: var(--sf-border-gold);
+  background: var(--sf-gold-soft);
+  color: var(--sf-gold-2);
+}
+
+.sym-card-del {
+  width: 22px; height: 22px;
+  border-radius: var(--sf-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sf-muted-2);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .12s;
+}
+.sym-card-del:hover {
+  border-color: rgba(239,68,68,0.35);
+  background: rgba(239,68,68,0.08);
+  color: var(--sf-red);
+}
+
+/* ─── 19. Toast / nudge — pill chip language. */
 .sf-toast,
 #sf-toast,
 .toast {

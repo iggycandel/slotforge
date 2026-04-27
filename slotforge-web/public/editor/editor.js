@@ -1,5 +1,5 @@
 // ═══ STATE ═══
-const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:false,t2:false,t3:false},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,win_sequence:true,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{},featSlotOrders:{}};
+const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:false,t2:false,t3:false},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},jpEnabled:true,msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,win_sequence:true,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{},featSlotOrders:{}};
 let LIB_CAT='All'; // active library category filter
 let LIB_TAB='uploads'; // 'uploads' or 'placeholders'
 
@@ -402,6 +402,7 @@ function serializeState(){
     l: JSON.parse(JSON.stringify(EL_VP.landscape)),
     features: JSON.parse(JSON.stringify(P.features)),
     jackpots: JSON.parse(JSON.stringify(P.jackpots)),
+    jpEnabled: !!P.jpEnabled,
     char: JSON.parse(JSON.stringify(P.char)),
     ante: JSON.parse(JSON.stringify(P.ante)),
     colors: JSON.parse(JSON.stringify(P.colors)),
@@ -469,6 +470,7 @@ function restoreSnap(){
   if(s.jackpots) Object.assign(P.jackpots,s.jackpots);
   if(s.char) Object.assign(P.char,s.char);
   if(s.ante) Object.assign(P.ante,s.ante);
+  if(s.jpEnabled !== undefined) P.jpEnabled = !!s.jpEnabled;
   if(s.colors) Object.assign(P.colors,s.colors);
   if(s.reelset) P.reelset=s.reelset;
   if(s.keyOrders) Object.entries(s.keyOrders).forEach(([sc,keys])=>{if(SDEFS[sc])SDEFS[sc].keys=[...keys];});
@@ -3472,6 +3474,36 @@ function initRV(){ renderReelViz(); }
 document.getElementById('char-tog').addEventListener('click',()=>{P.char.enabled=!P.char.enabled;document.getElementById('char-tog').classList.toggle('on',P.char.enabled);document.getElementById('char-tog-lbl').style.color=P.char.enabled?'#ccc':'#555';document.getElementById('char-cf').classList.toggle('open',P.char.enabled);refresh();markDirty();});
 document.getElementById('char-scale').addEventListener('change',e=>{P.char.scale=e.target.value;refresh();markDirty();});
 document.getElementById('ante-tog').addEventListener('click',()=>{P.ante.enabled=!P.ante.enabled;document.getElementById('ante-tog').classList.toggle('on',P.ante.enabled);document.getElementById('ante-lbl').style.color=P.ante.enabled?'#ccc':'#555';document.getElementById('ante-cf').classList.toggle('open',P.ante.enabled);refresh();markDirty();});
+
+// ─── Jackpots master toggle (Round 2) ────────────────────────────
+// Drives both visibility of the JP grid + type/trigger AND the
+// underlying P.jpEnabled flag. When OFF, the .cf body collapses and
+// any persisted jp-tog "on" state is preserved (we don't wipe tier
+// configs — the user can flip the master back on later). The
+// jp-master-cf body uses the same .cf collapse pattern as ante-cf.
+(function _wireJpMaster(){
+  var tog = document.getElementById('jp-master-tog');
+  var lbl = document.getElementById('jp-master-lbl');
+  var cf  = document.getElementById('jp-master-cf');
+  if(!tog || !cf) return;
+  // Initial reflection from P.jpEnabled (true by default for parity
+  // with pre-Round-2 projects where jackpots were always visible).
+  function apply(){
+    var on = !!P.jpEnabled;
+    tog.classList.toggle('on', on);
+    if(lbl) lbl.style.color = on ? '#ccc' : '#555';
+    cf.classList.toggle('open', on);
+  }
+  apply();
+  tog.addEventListener('click', function(){
+    P.jpEnabled = !P.jpEnabled;
+    apply();
+    refresh();
+    markDirty();
+  });
+  // Expose so _sfApplyPayload + restoreSnap can re-sync UI on load.
+  window._sfApplyJpMasterUI = apply;
+})();
 document.getElementById('ante-btn-lbl').addEventListener('input',e=>{P.ante.label=e.target.value;refresh();markDirty();});
 document.getElementById('msg-txt').addEventListener('input',()=>{refresh();markDirty();});
 document.getElementById('msg-pos').addEventListener('change',e=>{P.msgPos=e.target.value;refresh();markDirty();});
@@ -4286,6 +4318,7 @@ function buildFilePayload(){
     colors:    JSON.parse(JSON.stringify(P.colors)),
     features:  JSON.parse(JSON.stringify(P.features)),
     jackpots:  JSON.parse(JSON.stringify(P.jackpots)),
+    jpEnabled: !!P.jpEnabled,
     char:      JSON.parse(JSON.stringify(P.char)),
     ante:      JSON.parse(JSON.stringify(P.ante)),
     msgPos:    P.msgPos,
@@ -5486,44 +5519,98 @@ function buildDefaultSymbols(highN, lowN, specialN){
   return syms;
 }
 
+// Round 2 — Symbol table redesign.
+// • Symbols are grouped by tier (High → Low → Special) with a section
+//   header showing tier name + count + a one-line description tuned
+//   for first-time users.
+// • Each row is a card: tier dot + name input + screens toggles + delete,
+//   with proper breathing room and design-system tokens via editor-skin.
+// • Empty groups render an "Add symbol" hint instead of vanishing,
+//   so users understand they can still configure that tier.
 function renderSymbolTable(){
   const table = document.getElementById('sym-table'); if(!table) return;
   table.innerHTML = '';
-  // Header
-  const hdr = document.createElement('div'); hdr.className='sym-header';
-  hdr.innerHTML='<div class="sym-h">#</div><div class="sym-h">Name</div><div class="sym-h">Screens</div><div></div>';
-  table.appendChild(hdr);
 
-  P.symbols.forEach((sym,i)=>{
-    const row = document.createElement('div'); row.className='sym-row';
+  const TIER_META = {
+    high:    { label: 'High symbols',    blurb: 'Top-paying themed icons. Lower frequency, bigger payouts.', dot: '#ef7a7a' },
+    low:     { label: 'Low symbols',     blurb: 'Card-rank fillers (A · K · Q · J · 10 · 9). Higher frequency, smaller payouts.', dot: '#7a8aef' },
+    special: { label: 'Special symbols', blurb: 'Wild · Scatter · Bonus. Trigger features and substitute for paying symbols.', dot: '#c9a84c' },
+  };
 
-    const badge = document.createElement('div');
-    badge.className=`sym-badge ${sym.type}`;
-    badge.textContent={high:'High',low:'Low',special:'Spcl'}[sym.type]||sym.type;
+  ['high','low','special'].forEach(tier => {
+    const meta = TIER_META[tier];
+    const tierSyms = P.symbols.map((s,i)=>({s,i})).filter(x=>x.s.type===tier);
 
-    const nameInp = document.createElement('input');
-    nameInp.className='sym-name-fi'; nameInp.value=sym.name;
-    nameInp.addEventListener('input', ()=>{ sym.name=nameInp.value; renderLayers(); markDirty(); });
+    // Section header
+    const head = document.createElement('div');
+    head.className = 'sym-tier-head';
+    head.innerHTML =
+      '<div class="sym-tier-dot" style="background:'+meta.dot+'"></div>' +
+      '<div class="sym-tier-meta">' +
+        '<div class="sym-tier-title">'+meta.label+' <span class="sym-tier-count">'+tierSyms.length+'</span></div>' +
+        '<div class="sym-tier-blurb">'+meta.blurb+'</div>' +
+      '</div>';
+    table.appendChild(head);
 
-    const screensDiv = document.createElement('div'); screensDiv.className='sym-screens';
-    SCREEN_KEYS.forEach(sk=>{
-      const btn = document.createElement('button');
-      btn.className='sym-scr-btn'+(sym.screens.includes(sk)?' on':'');
-      btn.textContent=SCREEN_LABELS[sk]||sk;
-      btn.addEventListener('click',()=>{
-        if(sym.screens.includes(sk)) sym.screens=sym.screens.filter(s=>s!==sk);
-        else sym.screens.push(sk);
-        btn.classList.toggle('on',sym.screens.includes(sk));
-        renderLayers(); markDirty();
+    if(tierSyms.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'sym-tier-empty';
+      empty.textContent = 'None yet — bump the count above and click Apply Symbol Set.';
+      table.appendChild(empty);
+      return;
+    }
+
+    tierSyms.forEach(({s:sym,i}) => {
+      const row = document.createElement('div'); row.className='sym-card sym-card--'+tier;
+
+      const badge = document.createElement('div');
+      badge.className = 'sym-card-badge sym-card-badge--'+tier;
+      badge.textContent = ({high:'HI',low:'LO',special:'SP'}[tier])||'';
+
+      const nameWrap = document.createElement('div');
+      nameWrap.className = 'sym-card-name';
+      const nameInp = document.createElement('input');
+      nameInp.className = 'sym-card-name-fi';
+      nameInp.value = sym.name;
+      nameInp.placeholder = 'Symbol name…';
+      nameInp.addEventListener('input', ()=>{ sym.name=nameInp.value; renderLayers(); markDirty(); });
+      nameWrap.appendChild(nameInp);
+
+      const screensDiv = document.createElement('div');
+      screensDiv.className = 'sym-card-screens';
+      SCREEN_KEYS.forEach(sk=>{
+        const btn = document.createElement('button');
+        btn.className = 'sym-card-scr-btn'+(sym.screens.includes(sk)?' on':'');
+        btn.type = 'button';
+        btn.textContent = SCREEN_LABELS[sk]||sk;
+        btn.title = (SCREEN_LABELS[sk]||sk) + ' — click to toggle';
+        btn.addEventListener('click',()=>{
+          if(sym.screens.includes(sk)) sym.screens = sym.screens.filter(s=>s!==sk);
+          else sym.screens.push(sk);
+          btn.classList.toggle('on', sym.screens.includes(sk));
+          renderLayers(); markDirty();
+        });
+        screensDiv.appendChild(btn);
       });
-      screensDiv.appendChild(btn);
+
+      const del = document.createElement('button');
+      del.className = 'sym-card-del';
+      del.type = 'button';
+      del.textContent = '×';
+      del.title = 'Remove symbol';
+      del.addEventListener('click', ()=>{
+        P.symbols.splice(i,1);
+        renderSymbolTable();
+        renderLayers();
+        markDirty();
+      });
+
+      row.appendChild(badge);
+      row.appendChild(nameWrap);
+      row.appendChild(screensDiv);
+      row.appendChild(del);
+      table.appendChild(row);
     });
-
-    const del = document.createElement('button'); del.className='sym-del'; del.textContent='×';
-    del.addEventListener('click',()=>{ P.symbols.splice(i,1); renderSymbolTable(); renderLayers(); markDirty(); });
-
-    row.appendChild(badge); row.appendChild(nameInp); row.appendChild(screensDiv); row.appendChild(del);
-    table.appendChild(row);
   });
 }
 
@@ -6389,6 +6476,12 @@ async function exportZipWithJSX(){
 // ═══ PROJECT SETTINGS TABS ═══
 function switchProjTab(name){
   if(!name) name='import';
+  // Round 2: standalone Jackpots + GDD tabs were folded back into the
+  // Reels tab and Import tab respectively. Redirect any stale call
+  // (older bookmarks, in-flight payloads, etc.) so the user lands on
+  // the right pane instead of seeing an empty body.
+  if(name === 'jackpots') name = 'reels';
+  if(name === 'gdd')      name = 'import';
   document.querySelectorAll('.proj-tab').forEach(b=>b.classList.toggle('active', b.dataset.ptab===name));
   document.querySelectorAll('.proj-tab-pane').forEach(p=>p.classList.toggle('active', p.id==='ptab-'+name));
   if(name==='theme'){
@@ -12344,6 +12437,9 @@ window._sfApplyPayload = function(payload){
     }
   } catch(e){}
   try { if(s.ante) Object.assign(P.ante, s.ante); } catch(e){}
+  try { if(s.jpEnabled !== undefined) P.jpEnabled = !!s.jpEnabled; } catch(e){}
+  // Re-sync the Round-2 jackpots master toggle UI now that P.jpEnabled is set.
+  try { if(typeof window._sfApplyJpMasterUI === 'function') window._sfApplyJpMasterUI(); } catch(e){}
   try { if(s.msgPos !== undefined) P.msgPos = s.msgPos; } catch(e){}
   // Route through setViewport (when available) so the toolbar dropdown
   // label, statusbar chip, dropdown checkmarks, and screen-thumbs panel
