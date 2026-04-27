@@ -993,7 +993,11 @@
            Volatility / Scatter Pays / Min symbols on line) moved into
            a "Math model" placeholder card so it's clear they're on the
            roadmap rather than missing. -->
-      <div class="proj-tab-pane" id="ptab-reels">
+      <!-- Reels is the default landing tab (Round 3) — needs the
+           active class on initial paint so the body isn't blank
+           before the user clicks a tab. The matching .proj-tab in
+           #proj-tab-bar already has data-ptab="reels" + active. -->
+      <div class="proj-tab-pane active" id="ptab-reels">
 
         <!-- Reel Configuration -->
         <div class="ps">

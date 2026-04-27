@@ -662,15 +662,19 @@ body {
 
 /* Symbol glyph — slot-card ranks / suits / stars. Sized in cqi so
  * the type scales smoothly as the grid resizes for different reel
- * configurations (5×3 → 6×4 → megaways). */
+ * configurations (5×3 → 6×4 → megaways). 52cqi reads much closer
+ * to a real slot symbol — was 38cqi which felt undersized. */
 #reel-viz .rvc-glyph {
   font-family: var(--sf-font-sans);
   font-weight: 800;
-  font-size: 38cqi;
+  font-size: 52cqi;
   letter-spacing: -0.02em;
   line-height: 1;
   text-align: center;
 }
+/* Multi-character glyphs (only "10" in the pool) render slightly
+ * smaller so they don't outweigh single-character peers. */
+#reel-viz .rvc-glyph[data-len="2"] { font-size: 40cqi; }
 /* Tier-coloured glyphs — high pops in gold, mid uses warm text,
  * low fades to muted, special goes red for wilds/scatters. */
 #reel-viz .rvc[data-tier="high"]    .rvc-glyph {

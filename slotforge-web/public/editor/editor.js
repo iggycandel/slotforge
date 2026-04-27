@@ -3503,9 +3503,11 @@ function renderReelViz(){
   rv.innerHTML='';
   for(let i=0; i<c*r; i++){
     const s = _rvSym(i);
+    // data-len lets CSS shrink the 2-char "10" glyph so it doesn't
+    // overpower single-char peers. Avoids a manual font-size matrix.
     rv.innerHTML +=
       '<div class="rvc" data-tier="'+s.t+'" style="--rvc-i:'+i+'">' +
-        '<span class="rvc-glyph">'+s.g+'</span>' +
+        '<span class="rvc-glyph" data-len="'+s.g.length+'">'+s.g+'</span>' +
       '</div>';
   }
   const lbl=document.getElementById('reel-viz-label');
