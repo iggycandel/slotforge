@@ -14342,6 +14342,48 @@ setTimeout(() => {
     // scale and was just visual noise. msgHtml retired.
     var msgHtml = '';
 
+    // ── Popup overlays ────────────────────────────────────────────
+    // Win Sequence + Buy Bonus popups previously showed only the
+    // background, which read as identical empty frames. Render a
+    // CSS-only mock that matches the canvas composition: dim layer +
+    // tier title text + amount + collect button. We tier-color the
+    // title to match the dot used in the section ribbon so a glance
+    // distinguishes Big / Mega / Epic at thumb scale.
+    var popupHtml = '';
+    if(hideOnPopups[sk]){
+      var titleText, amountText, btnText, titleColor;
+      if(sk === 'popup_win'){
+        titleText = 'BIG WIN';      amountText = '€ 5,000'; btnText = 'COLLECT'; titleColor = '#c9a84c';
+      } else if(sk === 'popup_megawin'){
+        titleText = 'MEGA WIN!';    amountText = '€ 25,000'; btnText = 'COLLECT'; titleColor = '#e8c96d';
+      } else if(sk === 'popup_epicwin'){
+        titleText = 'EPIC WIN!';    amountText = '€ 100,000'; btnText = 'COLLECT'; titleColor = '#ff7060';
+      } else { /* popup_buy */
+        titleText = 'BUY FEATURE';  amountText = '100× BET'; btnText = 'BUY';     titleColor = '#ef7a7a';
+      }
+      popupHtml = ''
+        + '<div style="position:absolute;inset:0;background:rgba(8,8,14,0.55);pointer-events:none"></div>'
+        + '<div style="position:absolute;left:9%;right:9%;top:24%;bottom:22%;'
+        +     'border:1px solid rgba(255,255,255,0.08);border-radius:6%/3%;'
+        +     'background:linear-gradient(180deg,rgba(20,20,28,0.55) 0%,rgba(8,8,14,0.7) 100%);'
+        +     'box-shadow:0 0 18px rgba(0,0,0,0.4) inset;pointer-events:none;'
+        +     'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6%;padding:6%">'
+        +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:14px;font-weight:800;letter-spacing:0.06em;'
+        +       'color:' + titleColor + ';text-shadow:0 1px 0 rgba(0,0,0,0.45);text-align:center;line-height:1">'
+        +     titleText
+        +   '</div>'
+        +   '<div style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;color:#f8efd3;'
+        +       'text-shadow:0 1px 2px rgba(0,0,0,0.6);text-align:center;line-height:1">'
+        +     amountText
+        +   '</div>'
+        +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:8px;font-weight:700;letter-spacing:0.12em;'
+        +       'padding:5px 14px;border-radius:999px;border:1px solid rgba(201,168,76,0.55);'
+        +       'background:rgba(201,168,76,0.18);color:#f5e6b8;text-align:center">'
+        +     btnText
+        +   '</div>'
+        + '</div>';
+    }
+
     // Tinted gradient stays as the no-bg fallback.
     var gradientStyle = 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';' +
                        (bgUrl ? 'opacity:0.18' : 'opacity:0.55');
@@ -14358,6 +14400,7 @@ setTimeout(() => {
       +   logoImg
       +   charImg
       +   btnsHtml
+      +   popupHtml
       +   '<div class="stp-tile-vignette"></div>'
       +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
       +   '<span class="stp-tile-label">' + (item.label || '') + '</span>'
