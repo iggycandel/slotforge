@@ -14151,7 +14151,12 @@ setTimeout(() => {
    *  (getPos uses P.screen) so the panel can render every tile from
    *  one rebuild without mutating P.screen. */
   function thumbPos(screenKey, elementKey){
-    var vp = (window.P && P.viewport === 'desktop') ? 'landscape' : ((window.P && P.viewport) || 'portrait');
+    // Locked to portrait — see the comment in rebuild() where the
+    // panel's is-portrait class is set unconditionally. Keeping the
+    // viewport selection here in lockstep means EL_VP / EL_COMPUTED /
+    // PSD lookups all go through the portrait coordinate space, which
+    // matches what positionedAssetImg() projects against (vpDef = VP.portrait).
+    var vp = 'portrait';
     try {
       // 1. screen-specific override
       var here = EL_VP[vp] && EL_VP[vp][screenKey] && EL_VP[vp][screenKey][elementKey];
@@ -14247,8 +14252,9 @@ setTimeout(() => {
     // EL_COMPUTED → PSD), then maps canvas coords into viewport
     // percentages so the layout matches the live canvas at any tile
     // size.
-    var vp = (window.P && P.viewport === 'desktop') ? 'landscape' : ((window.P && P.viewport) || 'portrait');
-    var vpDef = (typeof VP !== 'undefined' ? VP[vp] : null) || { cx:0, cy:0, cw:2000, ch:2000 };
+    // Locked to portrait — same rationale as thumbPos().
+    var vp = 'portrait';
+    var vpDef = (typeof VP !== 'undefined' ? VP[vp] : null) || { cx:508, cy:0, cw:984, ch:2000 };
 
     // ── Background ────────────────────────────────────────────────
     var bgUrl = bgUrlFor(sk);
@@ -14371,15 +14377,19 @@ setTimeout(() => {
     if(!list) return;
     if(typeof computeTabs !== 'function') return;
 
-    // Reflect the active viewport so tile aspect ratios match what the
-    // user sees on the canvas. setViewport() also calls this rebuild
-    // so toggling Portrait ↔ Landscape from the topbar refreshes the
-    // panel automatically.
+    // Always render thumbs in portrait, regardless of canvas viewport.
+    // Rationale: a vertical strip of 9:16 tiles fits more screens at a
+    // glance, the portrait composition is the canonical layout most
+    // slots are authored against, and the wider landscape tile aspect
+    // produced visually-cramped composites that didn't faithfully
+    // reflect the canvas (the user-reported "not faithful" issue).
+    // Portrait positions inherit cleanly from base; if the project was
+    // authored landscape-only, the portrait fallbacks via PSD defaults
+    // still produce a recognizable thumb.
     var panel = document.getElementById('screen-thumbs-panel');
     if(panel){
-      var vp = (window.P && window.P.viewport) || 'portrait';
-      panel.classList.toggle('is-portrait',  vp === 'portrait');
-      panel.classList.toggle('is-landscape', vp === 'landscape' || vp === 'desktop');
+      panel.classList.add('is-portrait');
+      panel.classList.remove('is-landscape');
     }
 
     var tabs;
