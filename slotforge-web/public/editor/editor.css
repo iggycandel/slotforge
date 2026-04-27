@@ -389,6 +389,15 @@ input.rs-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;backg
 .psb.hid{display:none}
 .pf{display:flex;flex-direction:column;gap:4px}.pfr{display:flex;gap:8px}.pfr .pf{flex:1}
 .lbl{font-size:9px;color:#7a7a8a;letter-spacing:.09em;text-transform:uppercase;font-weight:700;margin-bottom:2px}
+/* Inline label badges — "— optional" hint and the gold "*" required marker.
+ * Used in Project Settings to gamify scanability so first-time users can
+ * tell at a glance which inputs are essential vs nice-to-have. */
+.lbl-opt{color:#5a5a78;font-weight:400;letter-spacing:0;text-transform:none;margin-left:4px;font-style:italic}
+.lbl-req{color:#c9a84c;font-weight:700;margin-left:3px}
+/* Off-state swatch chip — diagonal strikethrough hints the colour is not
+ * being applied. Toggle on (.sw-chip without .off) shows full background. */
+.sw-chip.off{position:relative;opacity:0.35}
+.sw-chip.off::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,transparent 0 4px,rgba(0,0,0,0.6) 4px 5px);border-radius:inherit}
 .fi,.fsel,.fta{width:100%;background:#0a0a0f;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:9px 12px;color:#eeede6;font-size:12px;font-family:'Inter',system-ui,sans-serif;outline:none;transition:border-color .2s,box-shadow .2s}
 .fi:focus,.fsel:focus,.fta:focus{border-color:rgba(201,168,76,.5);outline:none;box-shadow:0 0 0 3px rgba(201,168,76,.08),0 0 16px rgba(201,168,76,.1)}
 .fi:hover,.fsel:hover{border-color:rgba(255,255,255,.14)}

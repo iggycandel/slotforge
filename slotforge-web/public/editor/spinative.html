@@ -738,25 +738,58 @@
       <button class="proj-tab" data-ptab="jackpots">💰 Jackpots</button>
       <button class="proj-tab" data-ptab="features">⚡ Features</button>
       <button class="proj-tab" data-ptab="symbols">◆ Symbols</button>
-      <button class="proj-tab" data-ptab="gdd" style="color:#7a9ac0!important;letter-spacing:.03em">📋 GDD</button>
+      <!-- GDD tab removed: GDD generation lives on the Import tab as a
+           single "Generate GDD from these inputs" CTA. The dedicated
+           tab read as duplication and pulled focus away from configuration. -->
     </div>
     <div id="proj-tab-content">
 
-      <!-- ══ IMPORT TAB (first — populates all other tabs) ══ -->
+      <!-- ══ IMPORT TAB (first — populates all other tabs) ══
+           Two paths to a configured project:
+             A) Generate from inputs — fill the tabs manually, then
+                "Generate GDD from inputs" produces the full document
+                from your configuration (this CTA replaces the old
+                standalone GDD tab).
+             B) Import an existing GDD — drop your spec PDF/DOCX/MD
+                and the AI parses it into every tab. -->
       <div class="proj-tab-pane active" id="ptab-import">
         <div class="ps s3">
-          <div class="psh"><span class="pi">📄</span><span class="pl">Import Documents</span></div>
-          <div class="psb" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">
-            <div>
-              <div style="font-size:9px;color:#778;line-height:1.7;margin-bottom:10px">Import your GDD, Art Direction Guidelines, or spec sheets. The AI will read these documents and auto-detect game name, theme, reel config, features (Hold &amp; Spin, Buy Feature, Jackpots, etc.) and pre-fill all settings below.</div>
-              <div class="imp-zone"><input type="file" id="file-in" multiple accept=".pdf,.doc,.docx,.txt,.md"><div class="iz-ico">⬆</div><div class="iz-t">Drop files or click to browse</div><div class="iz-s">PDF · DOCX · TXT · MD</div></div>
-              <!-- AI Parse button — shown after a file is selected -->
-              <button id="parse-gdd-btn" style="display:none;margin-top:10px;width:100%;padding:9px 14px;background:#c9a84c;color:#06060a;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;gap:6px;align-items:center;justify-content:center">
-                ✦ Parse &amp; Auto-fill with AI
-              </button>
-              <div id="parse-gdd-status" style="display:none;margin-top:8px;font-size:10px;text-align:center;border-radius:6px;padding:6px 10px"></div>
+          <div class="psh"><span class="pi">✦</span><span class="pl">Start your project</span></div>
+          <div class="psb">
+            <div style="font-size:10px;color:#9898b8;line-height:1.7;margin-bottom:14px">
+              Pick how you want to begin. Both paths configure the same project — you can switch later.
             </div>
-            <div id="ifl-list" style="display:flex;flex-direction:column;gap:6px;padding-top:2px"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
+              <!-- Path A — Generate GDD from manual inputs -->
+              <div style="padding:16px;background:#0d0d16;border:1px solid #c9a84c33;border-radius:10px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+                  <span style="font-size:18px">✏️</span>
+                  <div style="font-size:13px;font-weight:600;color:#e8e6e2">Configure manually</div>
+                </div>
+                <div style="font-size:10px;color:#9898b8;line-height:1.6">Fill the Theme / Reels / Jackpots / Features / Symbols tabs at your own pace. When you're done, generate a full GDD from your inputs.</div>
+                <div style="display:flex;gap:6px;margin-top:auto;padding-top:8px">
+                  <button class="ptab-nav-btn" style="flex:1;border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('theme')">Start with Theme →</button>
+                  <button class="ptab-nav-btn" style="border-color:#c9a84c66;color:#c9a84c;background:#c9a84c14" onclick="openGDDModal()" title="Generate a Game Design Document from your current configuration">📋 Generate GDD</button>
+                </div>
+              </div>
+
+              <!-- Path B — Import an existing GDD -->
+              <div style="padding:16px;background:#0d0d16;border:1px solid #4ac8f033;border-radius:10px;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+                  <span style="font-size:18px">📄</span>
+                  <div style="font-size:13px;font-weight:600;color:#e8e6e2">Import an existing GDD</div>
+                </div>
+                <div style="font-size:10px;color:#9898b8;line-height:1.6">Have a spec already? Drop your GDD, Art Direction Guidelines or one-pager. The AI parses it and pre-fills every tab.</div>
+                <div class="imp-zone" style="margin-top:auto"><input type="file" id="file-in" multiple accept=".pdf,.doc,.docx,.txt,.md"><div class="iz-ico">⬆</div><div class="iz-t">Drop files or click to browse</div><div class="iz-s">PDF · DOCX · TXT · MD</div></div>
+                <button id="parse-gdd-btn" style="display:none;margin-top:6px;width:100%;padding:9px 14px;background:#4ac8f0;color:#06060a;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;align-items:center;justify-content:center">
+                  ✦ Parse &amp; Auto-fill with AI
+                </button>
+                <div id="parse-gdd-status" style="display:none;margin-top:6px;font-size:10px;text-align:center;border-radius:6px;padding:6px 10px"></div>
+                <div id="ifl-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
+              </div>
+
+            </div>
           </div>
         </div>
         <div class="ptab-footer"><div class="ptab-footer-inner">
@@ -785,12 +818,12 @@
             <div class="psh"><span class="pi">🎮</span><span class="pl">Game Identity</span></div>
             <div class="psb">
               <div class="pfr">
-                <div class="pf"><div class="lbl">Game Name</div><input class="fi" id="game-name" value="" placeholder="Enter game name…"></div>
-                <div class="pf"><div class="lbl">Tagline</div><input class="fi" id="game-tagline" placeholder="e.g. Ride the reels to riches"></div>
+                <div class="pf"><div class="lbl">Game Name <span class="lbl-req" style="color:#c9a84c">*</span></div><input class="fi" id="game-name" value="" placeholder="Enter game name…"></div>
+                <div class="pf"><div class="lbl">Tagline <span class="lbl-opt">— optional</span></div><input class="fi" id="game-tagline" placeholder="e.g. Ride the reels to riches"></div>
               </div>
               <div class="pfr">
-                <div class="pf"><div class="lbl">Studio / Publisher</div><input class="fi" id="game-studio" placeholder="e.g. NetEnt, Push Gaming…"></div>
-                <div class="pf"><div class="lbl">Version</div><input class="fi" id="game-version" placeholder="1.0.0" value="1.0.0"></div>
+                <div class="pf"><div class="lbl">Studio / Publisher <span class="lbl-opt">— optional</span></div><input class="fi" id="game-studio" placeholder="e.g. NetEnt, Push Gaming…"></div>
+                <div class="pf"><div class="lbl">Version <span class="lbl-opt">— optional</span></div><input class="fi" id="game-version" placeholder="1.0.0" value="1.0.0"></div>
               </div>
               <div class="pfr">
                 <!-- Theme: legacy <select> kept as source-of-truth for
@@ -820,9 +853,9 @@
             </div>
           </div>
 
-          <!-- Game Story & Narrative -->
+          <!-- Game Story & Narrative (optional) -->
           <div class="ps s2">
-            <div class="psh" data-s="story-body"><span class="pi">📖</span><span class="pl">Game Story &amp; Narrative</span><span class="pch">▾</span></div>
+            <div class="psh" data-s="story-body"><span class="pi">📖</span><span class="pl">Game Story &amp; Narrative <span class="lbl-opt">— optional</span></span><span class="pch">▾</span></div>
             <div class="psb" id="story-body">
               <div class="pf">
                 <div class="lbl">Setting / World</div>
@@ -843,7 +876,8 @@
             </div>
           </div>
 
-          <!-- Art Direction -->
+          <!-- Art Direction (Visual Inspiration + Notes are optional but
+               drive the AI prompt heavily — recommend filling at least one) -->
           <div class="ps">
             <div class="psh" data-s="art-body"><span class="pi">🎨</span><span class="pl">Art Direction</span><span class="pch">▾</span></div>
             <div class="psb" id="art-body">
@@ -877,14 +911,17 @@
             </div>
           </div>
 
-          <!-- Colour Palette -->
+          <!-- Colour Palette (optional override) -->
           <div class="ps">
-            <div class="psh"><span class="pi">🎨</span><span class="pl">Colour Palette</span></div>
+            <div class="psh"><span class="pi">🎨</span><span class="pl">Colour Palette <span style="color:#778;font-weight:400;font-size:10px;margin-left:6px">— optional</span></span></div>
             <div class="psb" id="s-palette">
+              <div style="font-size:10px;color:#9898b8;line-height:1.6;margin-bottom:10px">
+                Optional brand colours. <strong style="color:#cccccc">Off by default</strong> — leave these toggled off and the AI picks colours from your <em>Theme</em> + <em>Visual Inspiration</em>. Toggle on to override the AI for buttons, jackpot strips, and CSS UI fallbacks (no impact on generated artwork).
+              </div>
               <div class="pfr">
-                <div class="pf"><div class="lbl">Primary</div><div class="swatch-row"><input type="color" class="sw" id="col1" value="#c9a84c"><div class="sw-hex" id="hex1">#c9a84c</div><div class="tog on" id="tog1"></div><div id="sw1" class="sw-chip" style="background:#c9a84c"></div></div></div>
-                <div class="pf"><div class="lbl">Background</div><div class="swatch-row"><input type="color" class="sw" id="col2" value="#1a0a3a"><div class="sw-hex" id="hex2">#1a0a3a</div><div class="tog on" id="tog2"></div><div id="sw2" class="sw-chip" style="background:#1a0a3a"></div></div></div>
-                <div class="pf"><div class="lbl">Accent</div><div class="swatch-row"><input type="color" class="sw" id="col3" value="#e8c96d"><div class="sw-hex" id="hex3">#e8c96d</div><div class="tog on" id="tog3"></div><div id="sw3" class="sw-chip" style="background:#e8c96d"></div></div></div>
+                <div class="pf"><div class="lbl">Primary</div><div class="swatch-row"><input type="color" class="sw" id="col1" value="#c9a84c"><div class="sw-hex" id="hex1">#c9a84c</div><div class="tog" id="tog1"></div><div id="sw1" class="sw-chip off" style="background:#c9a84c"></div></div></div>
+                <div class="pf"><div class="lbl">Background</div><div class="swatch-row"><input type="color" class="sw" id="col2" value="#1a0a3a"><div class="sw-hex" id="hex2">#1a0a3a</div><div class="tog" id="tog2"></div><div id="sw2" class="sw-chip off" style="background:#1a0a3a"></div></div></div>
+                <div class="pf"><div class="lbl">Accent</div><div class="swatch-row"><input type="color" class="sw" id="col3" value="#e8c96d"><div class="sw-hex" id="hex3">#e8c96d</div><div class="tog" id="tog3"></div><div id="sw3" class="sw-chip off" style="background:#e8c96d"></div></div></div>
               </div>
             </div>
           </div>
@@ -1100,7 +1137,16 @@
         <div class="ps s2">
           <div class="psh"><span class="pi">⚡</span><span class="pl">Game Features</span></div>
           <div class="psb" id="s-feat">
-            <div style="font-size:9px;color:#778;margin-bottom:8px;line-height:1.6">Enabling a feature creates a dedicated canvas tab. Configure each feature's parameters below when enabled.</div>
+            <div style="padding:10px 12px;background:#0d0d16;border:1px solid #c9a84c33;border-radius:8px;margin-bottom:14px;font-size:10px;color:#cccccc;line-height:1.65">
+              <strong style="color:#c9a84c;letter-spacing:0.04em">What happens when you toggle a feature?</strong><br>
+              Each enabled feature unlocks <strong>three things at once</strong>:
+              <ol style="margin:6px 0 0 16px;padding:0;color:#9898b8;line-height:1.65">
+                <li>A dedicated <strong>screen group</strong> appears in the Flow workspace (intro / in-round / outro tabs as needed)</li>
+                <li>A configuration card appears below this list, where you set the feature's parameters</li>
+                <li>The feature is added to the generated GDD, math spec, and asset deliverables</li>
+              </ol>
+              <div style="margin-top:8px;color:#9898b8">Mechanics &amp; behaviour are configured in the <strong style="color:#cccccc">Features</strong> top-bar workspace — this list is just the master switch.</div>
+            </div>
             <div id="feat-list" style="display:flex;flex-direction:column;gap:0"></div>
           </div>
         </div>
@@ -1326,7 +1372,16 @@
         <div class="ps s3" id="ps-symbols">
           <div class="psh"><span class="pi">◆</span><span class="pl">Symbol Set</span></div>
           <div class="psb" id="s-symbols">
-            <div style="font-size:9px;color:#778;margin-bottom:10px;line-height:1.6">Define your paytable symbols. Use the screen toggles to control which symbols appear per game mode. Symbols populate the reel cells on canvas.</div>
+            <div style="padding:10px 12px;background:#0d0d16;border:1px solid #c9a84c33;border-radius:8px;margin-bottom:12px;font-size:10px;color:#cccccc;line-height:1.65">
+              <strong style="color:#c9a84c;letter-spacing:0.04em">What are these?</strong><br>
+              These are the icons that <strong>spin on your reels and pay out</strong>. They group into three families:
+              <ul style="margin:6px 0 0 16px;padding:0;color:#9898b8;line-height:1.7">
+                <li><strong style="color:#cccccc">High symbols</strong> — top-paying themed icons (cowboy hat, sheriff star…). Lower frequency, bigger payouts.</li>
+                <li><strong style="color:#cccccc">Low symbols</strong> — fillers (A · K · Q · J · 10 · 9). Higher frequency, smaller payouts.</li>
+                <li><strong style="color:#cccccc">Special symbols</strong> — Wild, Scatter, Bonus etc. Trigger features and substitute for paying symbols.</li>
+              </ul>
+              <div style="margin-top:8px;color:#9898b8">Set the count below, click <em>Apply Symbol Set</em>, then design each symbol in the <strong style="color:#cccccc">Art</strong> workspace.</div>
+            </div>
             <div class="pfr" style="margin-bottom:10px">
               <div class="pf"><div class="lbl">High Symbols</div><input class="fi" id="sym-high-count" type="number" min="0" max="20" value="4" style="width:100%"></div>
               <div class="pf"><div class="lbl">Low Symbols</div><input class="fi" id="sym-low-count" type="number" min="0" max="20" value="6" style="width:100%"></div>
@@ -1339,50 +1394,13 @@
 
         <div class="ptab-footer"><div class="ptab-footer-inner">
           <button class="ptab-nav-btn" onclick="switchProjTab('features')">← Features</button>
-          <button class="ptab-nav-btn" style="border-color:#7a9ac044;color:#7a9ac0;background:#1a2a3a14" onclick="switchProjTab('gdd')">📋 Generate GDD →</button>
-          <button class="ptab-save-btn" onclick="saveProject();document.getElementById('proj-close-btn').click()">💾 Save &amp; Close</button>
+          <button class="ptab-save-btn" onclick="if(window._sfBridge&&window._sfBridge.triggerSave)window._sfBridge.triggerSave();document.getElementById('proj-close-btn').click()">💾 Save &amp; Close</button>
         </div></div>
       </div>
 
-      <!-- ══ GDD TAB ══ -->
-      <div class="proj-tab-pane" id="ptab-gdd">
-        <div class="ps s3">
-          <div class="psh"><span class="pi">📋</span><span class="pl">GDD &amp; Game Flow Generator</span></div>
-          <div class="psb">
-            <div style="font-size:9px;color:#778;line-height:1.7;margin-bottom:14px">Generate a full Game Design Document, Game Flow diagram, Math Spec and Art Direction Brief based on your project configuration. Documents are generated as plain text and can be copied or downloaded.</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-              <button onclick="openGDDModal()" style="padding:14px;border-radius:10px;border:1px solid #c9a84c44;background:#c9a84c10;color:#c9a84c;font-size:11px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
-                <span style="font-size:22px">📋</span>
-                <span>Game Design Document</span>
-                <span style="font-size:9px;color:#9898b8;font-weight:400">Full GDD with all screens, features &amp; symbols</span>
-              </button>
-              <button onclick="openGDDModal();setTimeout(()=>renderGDDTab('flow'),100)" style="padding:14px;border-radius:10px;border:1px solid #4ac8f044;background:#4ac8f010;color:#4ac8f0;font-size:11px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
-                <span style="font-size:22px">🔀</span>
-                <span>Game Flow</span>
-                <span style="font-size:9px;color:#9898b8;font-weight:400">State machine: screens, transitions &amp; triggers</span>
-              </button>
-              <button onclick="openGDDModal();setTimeout(()=>renderGDDTab('math'),100)" style="padding:14px;border-radius:10px;border:1px solid #5eca8a44;background:#5eca8a10;color:#5eca8a;font-size:11px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
-                <span style="font-size:22px">📊</span>
-                <span>Math Specification</span>
-                <span style="font-size:9px;color:#9898b8;font-weight:400">RTP, volatility, symbol frequencies template</span>
-              </button>
-              <button onclick="openGDDModal();setTimeout(()=>renderGDDTab('art'),100)" style="padding:14px;border-radius:10px;border:1px solid #7c5cbf44;background:#7c5cbf10;color:#9a7cdf;font-size:11px;font-family:Space Grotesk,sans-serif;cursor:pointer;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:6px">
-                <span style="font-size:22px">🎨</span>
-                <span>Art Direction Brief</span>
-                <span style="font-size:9px;color:#9898b8;font-weight:400">Deliverables list, asset sizes &amp; style guide</span>
-              </button>
-            </div>
-            <div style="padding:10px 14px;background:#0a0a14;border:1px solid #1e1e30;border-radius:8px;font-size:9px;color:#8080a8;line-height:1.8">
-              <strong style="color:#778;display:block;margin-bottom:4px">⚡ Generated from your settings</strong>
-              Game name, theme, reel config, features, jackpots, symbols, viewport and screen list are all pulled from your current project configuration. Update your settings and regenerate at any time.
-            </div>
-          </div>
-        </div>
-        <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" onclick="switchProjTab('symbols')">← Symbols</button>
-          <button class="ptab-save-btn" onclick="saveProject();document.getElementById('proj-close-btn').click()">💾 Save &amp; Close</button>
-        </div></div>
-      </div>
+      <!-- GDD pane removed — GDD generation moved to the Import tab CTA.
+           See top of #ptab-import for the "Generate GDD from inputs" /
+           "Import existing GDD" path. -->
 
     </div><!-- /proj-tab-content -->
   </div><!-- /proj-body -->

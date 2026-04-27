@@ -1,5 +1,5 @@
 // ═══ STATE ═══
-const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:true,t2:true,t3:true},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,win_sequence:true,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{},featSlotOrders:{}};
+const P={screen:'base',activeLayer:null,gameName:'',theme:'western',viewport:'portrait',colors:{c1:'#c9a84c',c2:'#1a0a3a',c3:'#e8c96d',t1:false,t2:false,t3:false},reelset:'5x3',char:{enabled:false,scale:'Full Height'},ante:{enabled:false,label:'Ante Bet'},msgPos:'top',jackpots:{mini:{on:true,val:'€100',exclude:[]},minor:{on:true,val:'€500',exclude:[]},major:{on:true,val:'€2,500',exclude:[]},grand:{on:true,val:'€10,000',exclude:[]}},features:{freespin:true,holdnspin:false,buy_feature:false,gamble:false,megaways:false,expanding_wild:false,bonus_pick:false,wheel_bonus:false,ladder_bonus:false,sticky_wild:false,walking_wild:false,stacked_wild:false,multiplier_wild:false,colossal_wild:false,ante_bet:false,bonus_store:false,cascade:false,tumble:false,win_multiplier:false,infinity_reels:false,cluster_pays:false,ways:false,mystery_symbol:false,symbol_upgrade:false,super_gamble:false,win_sequence:true,_custom:[]},importedFiles:[],library:[],showGrid:true,ovProps:{},ovPos:{},featSlotOrders:{}};
 let LIB_CAT='All'; // active library category filter
 let LIB_TAB='uploads'; // 'uploads' or 'placeholders'
 
@@ -2477,8 +2477,23 @@ document.getElementById('canvas-wrap').addEventListener('contextmenu', e=>{
 document.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.shiftKey&&e.key==='z'){e.preventDefault();redo();return;}
   if((e.metaKey||e.ctrlKey)&&e.key==='z'){e.preventDefault();undo();return;}
-  if((e.metaKey||e.ctrlKey)&&e.shiftKey&&e.key==='s'){e.preventDefault();saveProjectFile(true);return;}
-  if((e.metaKey||e.ctrlKey)&&e.key==='s'){e.preventDefault();saveProject();return;}
+  // Cmd+S inside the iframe MUST route through the cloud-save bridge.
+  // The legacy saveProject() / saveProjectFile() helpers triggered the
+  // browser's "Save File" dialog (a local .spinative download), which
+  // had nothing to do with persisting to Supabase — the user's report
+  // that "Save saves the html" was caused by this binding. Cmd+Shift+S
+  // is intentionally unhandled here so the host shell's own listener
+  // can take over (project versions / explicit Save As). Bare Cmd+S
+  // triggers the autosave/manual-save bridge.
+  if((e.metaKey||e.ctrlKey)&&e.key==='s' && !e.shiftKey){
+    e.preventDefault();
+    try {
+      if(window._sfBridge && typeof window._sfBridge.triggerSave === 'function'){
+        window._sfBridge.triggerSave();
+      }
+    } catch(err){ console.warn('[SF] Cmd+S bridge save failed', err); }
+    return;
+  }
   // Layer z-order: ⌘] forward, ⌥⌘] bring to front, ⌘[ backward, ⌥⌘[ send to back
   if((e.metaKey||e.ctrlKey)&&(e.key===']'||e.key==='[')){
     e.preventDefault();
