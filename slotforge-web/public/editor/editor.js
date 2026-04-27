@@ -12330,7 +12330,19 @@ window._sfApplyPayload = function(payload){
   } catch(e){}
   try { if(s.ante) Object.assign(P.ante, s.ante); } catch(e){}
   try { if(s.msgPos !== undefined) P.msgPos = s.msgPos; } catch(e){}
-  try { if(s.viewport) P.viewport = s.viewport; } catch(e){}
+  // Route through setViewport (when available) so the toolbar dropdown
+  // label, statusbar chip, dropdown checkmarks, and screen-thumbs panel
+  // ALL pick up the saved orientation. Bare `P.viewport = ...` left the
+  // dropdown stuck on "Portrait" while the canvas built at landscape
+  // dimensions — the user-reported orientation-flip on project load.
+  // setViewport's own buildCanvas call here is redundant (we run another
+  // at the end of _sfApplyPayload) but harmless and idempotent.
+  try {
+    if(s.viewport){
+      if(typeof setViewport === 'function') setViewport(s.viewport);
+      else P.viewport = s.viewport;
+    }
+  } catch(e){}
   try { if(s.ovProps && typeof s.ovProps==='object') P.ovProps = s.ovProps; } catch(e){}
   try { if(s.ovPos   && typeof s.ovPos==='object')   P.ovPos   = s.ovPos;   } catch(e){}
   try { if(s.holdnspin && typeof s.holdnspin==='object') P.holdnspin = Object.assign(P.holdnspin||{}, s.holdnspin); } catch(e){}
