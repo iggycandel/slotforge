@@ -7,8 +7,19 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Spinative</title>
+<!-- Legacy fonts kept for any inline-styled text that still references
+     them; design-system.css loads Inter + JetBrains Mono which are now
+     the canonical body + mono families. -->
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Shared design-system tokens (colors, type scale, radii, shadows) — same
+     stylesheet the marketing landing page consumes, so editor + landing share
+     a single source of truth. -->
+<link rel="stylesheet" href="/design-system.css">
 <link rel="stylesheet" href="editor.css">
+<!-- Editor skin layer — sits on top of editor.css and remaps legacy tokens
+     onto the --sf-* design system + adds component-level overrides for
+     the most visible chrome (workspace tabs, save button, panels, pills). -->
+<link rel="stylesheet" href="editor-skin.css">
 <!-- DOM-to-image rasterizer used by getThumbnail() when saving. Loaded here so
      it's ready before editor.js runs; version-busted by the host shell. -->
 <script src="html2canvas.min.js"></script>

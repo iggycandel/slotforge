@@ -1,0 +1,224 @@
+/* ==========================================================================
+   Spinative — Design System tokens (shared)
+   --------------------------------------------------------------------------
+   Source of truth for colors, type, spacing, radii, shadows.
+   Mirrors spinative-design-system/project/colors_and_type.css from the
+   design package handoff (April 2026). Both the marketing landing page
+   AND the in-editor chrome should consume these — surfaces stay coherent
+   when tokens change in one place.
+
+   Loaded by:
+     • /landing.html              (marketing root — served via app/(marketing)/route.ts)
+     • /editor/spinative.html     (editor iframe shell)
+
+   Component CSS that builds on these tokens:
+     • /landing/landing.css
+     • /editor/editor-skin.css
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ─── Core surfaces (dark-only) ───────────────────────────── */
+  --sf-bg:           #07080d;   /* page background */
+  --sf-bg-2:         #0b0d14;   /* page background, elevated */
+  --sf-surface:      #0f1118;   /* card / panel */
+  --sf-overlay:      #161b27;   /* hovered or stacked surface */
+  --sf-panel:        rgba(15, 17, 24, 0.85); /* glass panel */
+  --sf-sidebar:      #080b12;   /* sidebar */
+
+  /* ─── Borders / hairlines ─────────────────────────────────── */
+  --sf-border:       rgba(255, 255, 255, 0.07);
+  --sf-border-2:     rgba(255, 255, 255, 0.13);
+  --sf-border-gold:  rgba(215, 168, 79, 0.25);
+  --sf-border-purple:rgba(123, 116, 255, 0.25);
+
+  /* ─── Brand color ramp ────────────────────────────────────── */
+  --sf-gold:         #d7a84f;   /* primary brand — slot-machine gold */
+  --sf-gold-2:       #f0ca79;   /* highlight stop in the gold gradient */
+  --sf-gold-soft:    rgba(215, 168, 79, 0.12); /* tinted backgrounds */
+  --sf-logo-orange:  #f0a828;   /* used in the Nunito wordmark only */
+
+  /* ─── Accents (sparingly used) ────────────────────────────── */
+  --sf-purple:       #7b74ff;   /* secondary brand — "in progress" */
+  --sf-green:        #57d7a1;   /* success / "ready" */
+  --sf-red:          #ef4444;   /* danger */
+  --sf-amber:        #f59e0b;   /* warning */
+  --sf-blue:         #3b82f6;   /* info */
+
+  /* ─── Foreground ramp ─────────────────────────────────────── */
+  --sf-text:         #f4efe4;   /* body text — warm off-white */
+  --sf-muted:        #a5afc0;   /* secondary text */
+  --sf-muted-2:      #7d8799;   /* tertiary */
+  --sf-subtle:       #555e6e;   /* placeholder / icon-empty */
+
+  /* ─── Brand gradient ──────────────────────────────────────── */
+  --sf-grad-gold:    linear-gradient(135deg, #d7a84f, #f0ca79);
+  --sf-grad-page:    linear-gradient(180deg, #05060a 0%, #090b12 42%, #080a11 100%);
+
+  /* ─── Shadows ─────────────────────────────────────────────── */
+  --sf-shadow-card:    0 4px 24px rgba(0,0,0,0.35);
+  --sf-shadow-overlay: 0 12px 48px rgba(0,0,0,0.55);
+  --sf-shadow-xl:      0 40px 120px rgba(0,0,0,0.55);
+  --sf-shadow-lg:      0 22px 60px rgba(0,0,0,0.38);
+  --sf-shadow-gold:    0 4px 20px rgba(215,168,79,0.28);
+  --sf-shadow-gold-lg: 0 16px 40px rgba(215,168,79,0.24);
+
+  /* ─── Radii ───────────────────────────────────────────────── */
+  --sf-radius-sm: 8px;
+  --sf-radius-md: 10px;
+  --sf-radius-lg: 14px;
+  --sf-radius-xl: 18px;
+  --sf-radius-2xl: 24px;
+  --sf-radius-3xl: 32px;
+  --sf-radius-pill: 999px;
+
+  /* ─── Spacing scale (4px base) ────────────────────────────── */
+  --sf-space-1:  4px;
+  --sf-space-2:  8px;
+  --sf-space-3:  12px;
+  --sf-space-4:  16px;
+  --sf-space-5:  20px;
+  --sf-space-6:  24px;
+  --sf-space-8:  32px;
+  --sf-space-10: 40px;
+  --sf-space-12: 48px;
+  --sf-space-16: 64px;
+  --sf-space-20: 80px;
+  --sf-space-24: 108px;
+
+  /* ─── Type families ───────────────────────────────────────── */
+  --sf-font-sans:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --sf-font-display: 'Nunito', 'Inter', system-ui, sans-serif;
+  --sf-font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ─── Type scale ──────────────────────────────────────────── */
+  --sf-text-hero:    clamp(58px, 7.7vw, 108px);
+  --sf-text-h1:      clamp(36px, 5vw, 62px);
+  --sf-text-h2:      28px;
+  --sf-text-h3:      24px;
+  --sf-text-h4:      20px;
+  --sf-text-xl:      17px;
+  --sf-text-lg:      15px;
+  --sf-text-base:    14px;
+  --sf-text-sm:      13px;
+  --sf-text-xs:      12px;
+  --sf-text-2xs:     11px;
+  --sf-text-micro:   10px;
+
+  /* ─── Letter-spacing — display is very tight, eyebrows wide ── */
+  --sf-tracking-display: -0.075em;
+  --sf-tracking-h:       -0.05em;
+  --sf-tracking-tight:   -0.04em;
+  --sf-tracking-normal:  0;
+  --sf-tracking-eyebrow: 0.18em;
+  --sf-tracking-badge:   0.14em;
+}
+
+/* ─── Base reset (scoped — does NOT override editor's body styles) ──
+   These rules are intentionally minimal so this stylesheet can be
+   imported into existing pages without breaking their own resets. */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ─── Semantic utility classes ──────────────────────────────────
+   Pages can opt into these for consistent typography. */
+
+.sf-hero {
+  font-size: var(--sf-text-hero);
+  line-height: .92;
+  letter-spacing: var(--sf-tracking-display);
+  font-weight: 800;
+  margin: 0;
+}
+.sf-h1 {
+  font-size: var(--sf-text-h1);
+  line-height: .96;
+  letter-spacing: var(--sf-tracking-h);
+  font-weight: 800;
+  margin: 0;
+}
+.sf-h2 { font-size: var(--sf-text-h2); line-height: 1.1;  letter-spacing: var(--sf-tracking-tight); font-weight: 700; margin: 0; }
+.sf-h3 { font-size: var(--sf-text-h3); line-height: 1.15; letter-spacing: var(--sf-tracking-tight); font-weight: 700; margin: 0; }
+.sf-h4 { font-size: var(--sf-text-h4); line-height: 1.2;  font-weight: 700; margin: 0; }
+
+.sf-body { font-size: var(--sf-text-xl); line-height: 1.8; color: var(--sf-muted); }
+.sf-p    { font-size: var(--sf-text-lg); line-height: 1.75; color: var(--sf-muted); }
+.sf-small{ font-size: var(--sf-text-sm); color: var(--sf-muted-2); }
+.sf-mono { font-family: var(--sf-font-mono); font-size: var(--sf-text-2xs); color: var(--sf-subtle); }
+
+.sf-eyebrow {
+  font-size: var(--sf-text-xs);
+  font-weight: 800;
+  letter-spacing: var(--sf-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--sf-gold-2);
+}
+.sf-section-label {
+  font-size: var(--sf-text-micro);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.25);
+}
+
+/* ─── Brand wordmark — Nunito 900, ONLY for the logo ─── */
+.sf-wordmark {
+  font-family: var(--sf-font-display);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--sf-logo-orange);
+}
+
+/* ─── Pill chip — primary chip pattern across surfaces ─── */
+.sf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sf-space-2);
+  padding: 6px 12px;
+  border-radius: var(--sf-radius-pill);
+  border: 1px solid var(--sf-border);
+  background: rgba(255,255,255,0.02);
+  font-size: var(--sf-text-2xs);
+  font-weight: 600;
+  color: var(--sf-muted);
+}
+.sf-pill-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--sf-gold);
+  box-shadow: 0 0 10px var(--sf-gold);
+  flex-shrink: 0;
+}
+.sf-pill-dot.green {
+  background: var(--sf-green);
+  box-shadow: 0 0 10px var(--sf-green);
+}
+.sf-pill-dot.purple {
+  background: var(--sf-purple);
+  box-shadow: 0 0 10px var(--sf-purple);
+}
+
+/* ─── Brand button — gold gradient primary ─── */
+.sf-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sf-space-2);
+  padding: 10px 18px;
+  border-radius: var(--sf-radius-pill);
+  border: none;
+  background: var(--sf-grad-gold);
+  color: #0a0c10;
+  font-family: var(--sf-font-sans);
+  font-size: var(--sf-text-sm);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  box-shadow: var(--sf-shadow-gold), inset 0 1px 0 rgba(255,255,255,0.3);
+  transition: transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s ease;
+}
+.sf-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sf-shadow-gold-lg), inset 0 1px 0 rgba(255,255,255,0.35);
+}

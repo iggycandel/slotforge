@@ -1,0 +1,326 @@
+/* =============================================================
+   Spinative Editor — Design-system skin
+   -------------------------------------------------------------
+   This file lives ON TOP of editor.css and remaps the editor's
+   legacy tokens onto the shared --sf-* design-system tokens
+   (defined in /design-system.css). Layered approach so we don't
+   have to grep through ~14k lines of editor.css to repaint every
+   selector — instead we override the variables they consume +
+   add targeted component rules for the most visible chrome:
+
+     • Body font-family (Space Grotesk → Inter)
+     • Brand gold scale (#e5bf4c → #d7a84f / #f0ca79)
+     • Warm off-white text (#f2f2f7 → #f4efe4)
+     • Workspace tabs — eyebrow letter-spacing, premium feel
+     • Save button — proper brand gradient + gold shadow
+     • Status pills (.btn-sm, jp-tog) — pill radius
+     • Top bar / menu bar — subtle gold underline accent
+
+   Loaded by spinative.html AFTER editor.css so its rules win
+   without !important pollution. Cache-busted with the same ?v=
+   query param as editor.css.
+   ============================================================= */
+
+/* ─── 1. Token remap ────────────────────────────────────────────
+   The editor declares its tokens as :root vars at the top of
+   editor.css. We override that same scope here — anywhere the
+   editor reads var(--accent-gold) etc., it gets the design-
+   system value instead. Keeps the change non-invasive. */
+:root {
+  /* Surfaces — keep existing names, point at --sf-* values */
+  --bg-base:        var(--sf-bg);
+  --bg-panel:       var(--sf-panel);
+  --bg-panel-solid: var(--sf-surface);
+  --bg-panel-hc:    rgba(22, 27, 41, 0.92);
+  --bg-raised:      var(--sf-overlay);
+  --bg-raised-hover:#1c2230;
+
+  /* Borders */
+  --border-light: var(--sf-border);
+  --border-glass: var(--sf-border-2);
+  --border-focus: var(--sf-border-gold);
+
+  /* Foreground — warm off-white */
+  --text-main:  var(--sf-text);
+  --text-muted: var(--sf-muted);
+  --text-dim:   var(--sf-muted-2);
+
+  /* Brand gold ramp — matches landing exactly */
+  --accent-gold:       var(--sf-gold);
+  --accent-gold-hover: var(--sf-gold-2);
+  --accent-gold-dim:   var(--sf-gold-soft);
+
+  /* Other accents */
+  --accent-blue:     var(--sf-blue);
+  --accent-blue-dim: rgba(59, 130, 246, 0.15);
+  --accent-green:    var(--sf-green);
+  --accent-red:      var(--sf-red);
+
+  /* Typography — Inter is the system body now; JetBrains Mono
+     replaces DM Mono so meta strings match the marketing site. */
+  --font-ui:   var(--sf-font-sans);
+  --font-mono: var(--sf-font-mono);
+}
+
+/* ─── 2. Body — explicit re-application so first paint
+   picks up Inter even if editor.css declares font-family in a
+   later, more-specific rule. ─────────────────────────────── */
+body {
+  font-family: var(--sf-font-sans);
+  color: var(--sf-text);
+  background: var(--sf-bg);
+}
+
+/* ─── 3. Menu bar + top bar — subtle gold hairline so the chrome
+   reads as part of the same brand surface as the landing page. */
+#menubar {
+  background: var(--sf-bg);
+  border-bottom: 1px solid var(--sf-border);
+}
+#topbar {
+  background: var(--sf-bg);
+  border-bottom: 1px solid var(--sf-border);
+  position: relative;
+}
+#topbar::after {
+  /* Faint horizon line — same gold mood as the landing nav glass
+     edge. Sits below the topbar, fades to nothing at the sides. */
+  content: '';
+  position: absolute;
+  left: 16%; right: 16%; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(215,168,79,0) 0%,
+    rgba(215,168,79,0.18) 30%,
+    rgba(240,202,121,0.32) 50%,
+    rgba(215,168,79,0.18) 70%,
+    rgba(215,168,79,0) 100%
+  );
+  pointer-events: none;
+}
+
+/* ─── 4. Workspace tabs — the primary nav element of the editor.
+   Pulled toward the eyebrow language used everywhere else: tight
+   uppercase for active state would be too much, so we keep mixed
+   case but lift weight + add subtle gold underline lift on hover. */
+.ws-tab {
+  font-family: var(--sf-font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--sf-muted);
+  border-radius: var(--sf-radius-md);
+  transition: color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.ws-tab:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--sf-text);
+}
+.ws-tab.ws-active {
+  background: var(--sf-gold-soft);
+  color: var(--sf-gold-2);
+  box-shadow: inset 0 0 0 1px var(--sf-border-gold);
+}
+.ws-tab.ws-active::after {
+  /* Gold underline — same accent as the landing rail items.
+     Position resets the editor.css default selector. */
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 12px; right: 12px;
+  height: 2px;
+  background: var(--sf-grad-gold);
+  border-radius: 2px;
+  box-shadow: 0 0 12px rgba(215,168,79,0.6);
+}
+
+/* ─── 5. Primary CTAs — Save / Sim / Save & Close ──────────────
+   Editor.css already gives #save-btn a gold gradient, but the
+   color-stops were the old gold (#9a7830 → #c9a84c) and the font
+   was Inter-fallback. Re-skin to the canonical brand gradient. */
+#save-btn,
+.cloud-save-btn,
+.ptab-save-btn {
+  background: var(--sf-grad-gold);
+  color: #0a0c10;
+  font-family: var(--sf-font-sans);
+  font-weight: 700;
+  border-radius: var(--sf-radius-pill);
+  border: none;
+  box-shadow: var(--sf-shadow-gold), inset 0 1px 0 rgba(255,255,255,0.3);
+  transition: transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s ease;
+  letter-spacing: -0.005em;
+}
+#save-btn:hover,
+.cloud-save-btn:hover,
+.ptab-save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sf-shadow-gold-lg), inset 0 1px 0 rgba(255,255,255,0.35);
+}
+
+/* ─── 6. Sim button — secondary CTA with brand-tinted outline ── */
+.sim-btn {
+  font-family: var(--sf-font-sans);
+  border-radius: var(--sf-radius-pill);
+  border: 1px solid var(--sf-border-2);
+  background: rgba(255,255,255,0.02);
+  color: var(--sf-muted);
+  font-weight: 600;
+  transition: border-color .2s, color .2s, background .2s;
+}
+.sim-btn:hover {
+  border-color: var(--sf-border-gold);
+  color: var(--sf-gold-2);
+  background: rgba(215,168,79,0.04);
+}
+.sim-btn.active {
+  background: var(--sf-grad-gold);
+  color: #0a0c10;
+  border-color: transparent;
+  box-shadow: var(--sf-shadow-gold);
+  font-weight: 700;
+}
+
+/* ─── 7. Save status chip — match the design system's pill
+   convention. Editor.css picks this up via #topbar-save-status. */
+#topbar-save-status {
+  font-family: var(--sf-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+#topbar-save-status.saved { color: var(--sf-green); }
+#topbar-save-status.unsaved { color: var(--sf-gold-2); }
+#topbar-save-status.dirty { color: var(--sf-muted); }
+#topbar-save-status.cloud { color: var(--sf-blue); }
+
+/* ─── 8. Status bar at bottom — same warm muted text ─── */
+#statusbar {
+  background: var(--sf-bg);
+  border-top: 1px solid var(--sf-border);
+  color: var(--sf-muted-2);
+  font-family: var(--sf-font-mono);
+}
+
+/* ─── 9. Tools panel rail — adopt the design-system overlay
+   color so it sits flush with the canvas surrounding. */
+#tools-panel {
+  background: var(--sf-bg);
+  border-right: 1px solid var(--sf-border);
+}
+
+/* ─── 10. Right panel — same surface tone as the landing's
+   .panel pattern. Layers / Assets tabs feel like part of one
+   continuous chrome rather than a separate widget. */
+#right-panel {
+  background: var(--sf-bg);
+  border-left: 1px solid var(--sf-border);
+}
+
+/* ─── 11. Eyebrow / section labels inside panels — the editor
+   has a lot of micro-labels (LAYERS, ASSETS, BASE GAME). Lift
+   them with the design system's eyebrow tracking. */
+#layers-panel .layers-header,
+.proj-section-head,
+.psh > .pl,
+.section-label,
+.ctx-title {
+  letter-spacing: 0.12em;
+}
+
+/* ─── 12. Cards / panels (.ps in proj-fs, .gfd-node, etc.) —
+   warmer panel gradient + design-system shadow scale. */
+.ps {
+  background:
+    linear-gradient(180deg, rgba(22,27,41,0.92), rgba(14,18,29,0.92));
+  border: 1px solid var(--sf-border);
+  border-radius: var(--sf-radius-lg);
+  box-shadow: var(--sf-shadow-card), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+/* ─── 13. Eyebrow-style chips in topbar / version notes. ──── */
+.ph-chip,
+.badge-spine,
+.version-chip {
+  font-family: var(--sf-font-mono);
+  font-size: 10px;
+  letter-spacing: var(--sf-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--sf-gold-2);
+  background: var(--sf-gold-soft);
+  border: 1px solid var(--sf-border-gold);
+  border-radius: var(--sf-radius-pill);
+  padding: 4px 10px;
+}
+
+/* ─── 14. Project Settings header — match landing's section head
+   typography (tight letter-spacing, warm off-white). */
+.ph-title {
+  font-family: var(--sf-font-sans);
+  font-weight: 800;
+  letter-spacing: var(--sf-tracking-tight);
+  color: var(--sf-text);
+}
+.ph-sub {
+  color: var(--sf-muted);
+}
+
+/* ─── 15. Inputs — design-system inputs feel softer + warmer ── */
+.fi, .fsel, .fta {
+  font-family: var(--sf-font-sans);
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--sf-border);
+  color: var(--sf-text);
+  border-radius: var(--sf-radius-md);
+  transition: border-color .15s, background .15s;
+}
+.fi:focus, .fsel:focus, .fta:focus {
+  outline: none;
+  border-color: var(--sf-border-gold);
+  background: rgba(215,168,79,0.04);
+}
+
+/* ─── 16. Project tab bar (.proj-tab) — premium feel matching
+   the landing's chapter rail. */
+.proj-tab {
+  font-family: var(--sf-font-sans);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--sf-muted);
+  border-radius: var(--sf-radius-md);
+  transition: color .2s, background .2s;
+}
+.proj-tab.active,
+.proj-tab[aria-selected="true"] {
+  color: var(--sf-gold-2);
+  background: var(--sf-gold-soft);
+  box-shadow: inset 0 0 0 1px var(--sf-border-gold);
+}
+
+/* ─── 17. Page tint backdrop — applies a faint twin-glow to the
+   editor canvas wrap so the dark stage feels like the same atmospheric
+   surface as the landing. Very subtle so it doesn't distract. */
+#main::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 40% at 8% 0%, rgba(215,168,79,0.06), transparent 55%),
+    radial-gradient(50% 35% at 92% 0%, rgba(123,116,255,0.05), transparent 55%);
+  opacity: 0.85;
+}
+
+/* ─── 18. Toast / nudge — pill chip language. */
+.sf-toast,
+#sf-toast,
+.toast {
+  font-family: var(--sf-font-sans);
+  border-radius: var(--sf-radius-pill);
+  border: 1px solid var(--sf-border-gold);
+  background: var(--sf-panel);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--sf-shadow-card);
+  color: var(--sf-text);
+}
