@@ -55,7 +55,23 @@
   function initOnce(){
     if(state.initialised) return;
     state.initialised = true;
+    // Inject CSS up-front so the very first frame of renderLoading()
+    // is fully styled. Previously the CSS was only injected inside
+    // render() (after the fetch resolved), which meant the loading
+    // hero painted unstyled for ~200–500ms — the "clunky loading"
+    // the user reported. Idempotent via the element id.
+    ensureMarketingCss();
     refresh();
+  }
+
+  // Centralised CSS injection — call from any render-path entry point
+  // so even error / loading / empty states get the styles immediately.
+  function ensureMarketingCss(){
+    if(document.getElementById('_sf_marketing_css')) return;
+    var s0 = document.createElement('style');
+    s0.id = '_sf_marketing_css';
+    s0.textContent = MARKETING_CSS;
+    document.head.appendChild(s0);
   }
 
   function refresh(){
@@ -396,6 +412,9 @@
   function renderLoading(){
     var el = grid();
     if(!el) return;
+    // Defensive: if refresh() was kicked before initOnce (e.g. a future
+    // caller) the CSS may not be present yet — inject before painting.
+    ensureMarketingCss();
     // Premium loading state — centered hero card with gold-accent
     // pulsing rings + pithy copy. Replaces the earlier skeleton-tile
     // grid that read as "the page is half-broken". The loading state
@@ -464,16 +483,10 @@
 
     // Inject styles BEFORE any branch — the readiness empty state and
     // the legacy GDD card both rely on the .mkt-section / .mkt-tile
-    // styles. Previous code only injected once we hit the populated
-    // grid path, which left the empty state looking unstyled (the
-    // "no premium feel" report). Idempotent — element id keeps a
-    // single style block per session.
-    if(!document.getElementById('_sf_marketing_css')){
-      var s0 = document.createElement('style');
-      s0.id = '_sf_marketing_css';
-      s0.textContent = MARKETING_CSS;
-      document.head.appendChild(s0);
-    }
+    // styles. ensureMarketingCss() is also called from initOnce() and
+    // renderLoading() so styles are present from the very first paint;
+    // calling here too keeps the call-site explicit and idempotent.
+    ensureMarketingCss();
 
     // ── Plan / auth errors are surfaced in fetchJSON; here we own the
     //    "logically allowed but missing assets" state.

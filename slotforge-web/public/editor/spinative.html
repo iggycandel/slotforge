@@ -663,12 +663,29 @@
     </div>
     <div id="mkt-body">
       <!-- Marketing Workspace v1 — populated by public/editor/marketing.js
-           on first switchWorkspace('marketing'). Until JS runs the
-           container shows a 1-line loading state; the readiness probe +
-           templates fetch happen on first activation only. -->
+           on first switchWorkspace('marketing'). Pre-paint a fully styled
+           premium loading hero here so the very first paint (before
+           marketing.js loads) is consistent with the in-JS loading state.
+           Inline styles guarantee zero FOUC even on the very first tab
+           click of a session. marketing.js calls renderLoading() which
+           overwrites this with the same hero (idempotent). -->
       <div id="mkt-grid">
-        <div class="mkt-loading" style="padding:24px;color:#7a7a94;font-size:12px">Loading marketing kit…</div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px 28px;font-family:'Space Grotesk',sans-serif;min-height:60vh">
+          <div style="position:relative;width:96px;height:96px;margin-bottom:32px">
+            <span style="position:absolute;inset:0;border:1.5px solid rgba(201,168,76,0.45);border-radius:50%;animation:mktBootRing 1.6s ease-out infinite"></span>
+            <span style="position:absolute;inset:0;border:1.5px solid rgba(201,168,76,0.45);border-radius:50%;animation:mktBootRing 1.6s ease-out infinite;animation-delay:0.4s"></span>
+            <span style="position:absolute;inset:0;border:1.5px solid rgba(201,168,76,0.45);border-radius:50%;animation:mktBootRing 1.6s ease-out infinite;animation-delay:0.8s"></span>
+            <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:32px;color:#c9a84c;animation:mktBootGlyph 2.4s ease-in-out infinite">✦</span>
+          </div>
+          <div style="font-size:9px;font-family:'DM Mono',monospace;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;font-weight:700;margin-bottom:14px">Marketing Kit</div>
+          <div style="font-size:24px;font-weight:600;color:#e8e6e2;letter-spacing:-0.01em;margin-bottom:10px">Reading your project</div>
+          <div style="font-size:13px;color:#a0a0b0;line-height:1.55;max-width:420px">Loading templates, asset readiness, and your previous renders…</div>
+        </div>
       </div>
+      <style>
+        @keyframes mktBootRing { 0%{transform:scale(0.7);opacity:0.7} 100%{transform:scale(1.3);opacity:0} }
+        @keyframes mktBootGlyph { 0%,100%{opacity:0.5;transform:scale(0.95)} 50%{opacity:1;transform:scale(1.05)} }
+      </style>
 
       <!-- GDD Export — legacy flow, preserved per design doc §13.2.
            Wrapped in a fifth visual section so it sits inside the same

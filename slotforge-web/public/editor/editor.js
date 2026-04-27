@@ -10859,6 +10859,14 @@ function updateWorkspaceUI(){
   // exploration. For now, simple visibility gate.
   const stp = document.getElementById('screen-thumbs-panel');
   if(stp) stp.style.display = isCanvas ? '' : 'none';
+  // When returning to Flow, force a rebuild — handles the case where
+  // the panel was hidden before its first paint, or where assets /
+  // viewport / active-screen changed in another workspace (e.g. a
+  // theme swap in Project) and we need fresh tiles. Idempotent and
+  // cheap: rebuild() just re-emits the innerHTML.
+  if(isCanvas){
+    try { if(typeof window._sfRebuildScreenThumbs === 'function') window._sfRebuildScreenThumbs(); } catch(e){}
+  }
   // Contextual topbar sections
   ['canvas','flow','project','marketing','features','assets'].forEach(ws => {
     const tb = document.getElementById('topbar-' + ws);
@@ -10900,7 +10908,7 @@ function _activateMarketingWorkspace(){
   if(document.getElementById('_sf_marketing_js')) return;
   var s = document.createElement('script');
   s.id  = '_sf_marketing_js';
-  s.src = '/editor/marketing.js?v=v137';
+  s.src = '/editor/marketing.js?v=v138';
   s.onload  = function(){
     if(window._sfMarketing && typeof window._sfMarketing.init === 'function'){
       window._sfMarketing.init();
