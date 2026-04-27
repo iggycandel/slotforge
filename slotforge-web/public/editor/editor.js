@@ -10847,6 +10847,18 @@ function updateWorkspaceUI(){
   if(tp) tp.style.display = isCanvas ? '' : 'none';
   if(cw) cw.style.display = isCanvas ? '' : 'none';
   if(rp) rp.style.display = isCanvas ? '' : 'none';
+  // v2 UX: the vertical screen-thumbs panel was originally Flow-only
+  // but was leaking into Logic / Features / Marketing because it
+  // lives in #main (the same container most workspaces re-use). It
+  // doesn't have a meaningful action in those other workspaces — a
+  // click would switch the underlying P.screen but the canvas isn't
+  // visible to confirm the change. Hide it except on Flow.
+  // Future: a "live changes view" — re-purposing the panel per
+  // workspace (e.g. Logic could highlight the corresponding logic
+  // node when a screen tile is clicked) — is tracked as a separate
+  // exploration. For now, simple visibility gate.
+  const stp = document.getElementById('screen-thumbs-panel');
+  if(stp) stp.style.display = isCanvas ? '' : 'none';
   // Contextual topbar sections
   ['canvas','flow','project','marketing','features','assets'].forEach(ws => {
     const tb = document.getElementById('topbar-' + ws);
