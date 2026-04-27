@@ -986,6 +986,11 @@ svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:non
   background: linear-gradient(135deg, #14141c 0%, #0a0a10 100%);
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   flex-shrink: 0;
+  /* Make cqi units inside the tile resolve against the tile's own
+   * width — buildTile uses cqi for mirrored ov-* font sizes so they
+   * scale proportionally as the thumb width changes (collapsed rail
+   * → full panel). 100cqi == tile inline size. */
+  container-type: inline-size;
 }
 .stp-tile:hover {
   border-color: rgba(201,168,76,0.5);

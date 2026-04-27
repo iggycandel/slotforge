@@ -14239,22 +14239,130 @@ setTimeout(() => {
     return '<div class="stp-grid" style="--cols:' + cols + ';--rows:' + rows + '">' + cellHtml + '</div>';
   }
 
+  // ─── Canvas-mirroring helpers ───────────────────────────────────────
+  // Render the exact same css_ov sub-elements (text + buttons) the
+  // canvas renders for a screen, reading text/color/size/weight/spacing
+  // from P.ovProps with OV_SUBS defaults — same fallback chain as
+  // _buildOvSubEl in the live renderer. The thumb becomes a true
+  // mirror of what the user sees on the canvas, not a hand-faked mock.
+  function _stpEscape(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function _stpOvProp(ov, sub, key, subDef){
+    var stored;
+    try { stored = (window.P && P.ovProps && P.ovProps[ov] && P.ovProps[ov][sub] && P.ovProps[ov][sub][key]); } catch(e){}
+    if(stored !== undefined) return stored;
+    return subDef && subDef[key];
+  }
+  /** Render one ov-* sub element (text or button) at scaled coords +
+   *  cqi font-size. Pure mirror of the canvas's _buildOvSubEl. */
+  function mirrorOvSub(sk, layerKey, vpDef){
+    var underscore = layerKey.lastIndexOf('_');
+    if(underscore < 4) return '';
+    var ov  = layerKey.substring(0, underscore);
+    var sub = layerKey.substring(underscore + 1);
+    if(typeof OV_SUBS === 'undefined' || !OV_SUBS[ov]) return '';
+    var subDef = null;
+    for(var i = 0; i < OV_SUBS[ov].length; i++){
+      if(OV_SUBS[ov][i].id === sub){ subDef = OV_SUBS[ov][i]; break; }
+    }
+    if(!subDef) return '';
+
+    // Resolve text — special-case ov-splash_title which uses gameName
+    var text;
+    if(ov === 'ov-splash' && sub === 'title'){
+      text = ((window.P && P.gameName) || 'GAME TITLE').toUpperCase();
+    } else {
+      text = _stpOvProp(ov, sub, 'dText', subDef) || '';
+    }
+    var color   = _stpOvProp(ov, sub, 'dColor',   subDef) || '#fff';
+    var size    = _stpOvProp(ov, sub, 'dSize',    subDef) || 40;
+    var weight  = _stpOvProp(ov, sub, 'dWeight',  subDef) || 600;
+    var spacing = _stpOvProp(ov, sub, 'dSpacing', subDef) || '0';
+    var font    = _stpOvProp(ov, sub, 'dFont',    subDef) || '';
+    var family  = font || 'Space Grotesk,sans-serif';
+
+    var pos = thumbPos(sk, layerKey);
+    if(!pos) return '';
+
+    // Project canvas coords into viewport %
+    var leftPct   = ((pos.x - vpDef.cx) / vpDef.cw) * 100;
+    var topPct    = ((pos.y - vpDef.cy) / vpDef.ch) * 100;
+    var widthPct  = (pos.w / vpDef.cw) * 100;
+    var heightPct = (pos.h / vpDef.ch) * 100;
+    // Canvas px → cqi (1cqi = 1% of tile width). The tile uses
+    // container-type:inline-size (see editor.css .stp-tile rule), so
+    // 100cqi == tile width == projection of vpDef.cw on the thumb.
+    var fontCqi = (size * 100 / vpDef.cw);
+
+    var isBtn = (subDef.type === 'button' || sub === 'btnCancel' || sub === 'btnBuy');
+    if(isBtn){
+      var bg1 = _stpOvProp(ov, sub, 'dBg1', subDef) || (window.P && P.colors && P.colors.c1) || '#c9a84c';
+      var bg2 = _stpOvProp(ov, sub, 'dBg2', subDef) || (window.P && P.colors && P.colors.c3) || '#e8c96d';
+      var rd  = _stpOvProp(ov, sub, 'dRadius', subDef);
+      if(rd === undefined || rd === null) rd = (sub === 'btnCancel' || sub === 'btnBuy') ? 12 : 40;
+      var rdCqi = (rd * 100 / vpDef.cw);
+      return '<div style="position:absolute;left:' + leftPct.toFixed(2) + '%;top:' + topPct.toFixed(2) +
+        '%;width:' + widthPct.toFixed(2) + '%;height:' + heightPct.toFixed(2) +
+        '%;display:flex;align-items:center;justify-content:center;border-radius:' + rdCqi.toFixed(2) +
+        'cqi;color:' + color + ';background:linear-gradient(135deg,' + bg1 + ',' + bg2 +
+        ');font-family:' + family + ';font-size:' + fontCqi.toFixed(2) +
+        'cqi;font-weight:' + weight + ';white-space:nowrap;pointer-events:none;overflow:hidden">' +
+        _stpEscape(text) + '</div>';
+    }
+    // Text element — mirror the per-tier shadow effects from _buildOvSubEl
+    var shadow = '';
+    if(ov === 'ov-epicwin'   && sub === 'title') shadow = 'text-shadow:0 0 2cqi #ff706088,0 0 1cqi #ff300066;';
+    else if(ov === 'ov-bigwin'   && sub === 'title') shadow = 'text-shadow:0 0 1.5cqi ' + color + '88;';
+    else if(ov === 'ov-fstrigger'&& sub === 'title') shadow = 'text-shadow:0 0 1.2cqi ' + color + '88;';
+    else if(ov === 'ov-hnstrigger'&&sub === 'title') shadow = 'text-shadow:0 0 1.2cqi ' + color + '88;';
+    else if(ov === 'ov-jpwin'    && sub === 'title') shadow = 'text-shadow:0 0 1.5cqi ' + color + '88;';
+    return '<div style="position:absolute;left:' + leftPct.toFixed(2) + '%;top:' + topPct.toFixed(2) +
+      '%;width:' + widthPct.toFixed(2) + '%;height:' + heightPct.toFixed(2) +
+      '%;display:flex;align-items:center;justify-content:center;color:' + color +
+      ';font-family:' + family + ';font-size:' + fontCqi.toFixed(2) + 'cqi;font-weight:' + weight +
+      ';letter-spacing:' + spacing + ';line-height:1.1;white-space:nowrap;pointer-events:none;text-align:center;overflow:hidden;' +
+      shadow + '">' + _stpEscape(text) + '</div>';
+  }
+  /** Aggregate every ov-* sub key from SDEFS[sk].keys into a positioned
+   *  block. Empty for screens without any css_ov layers. */
+  function mirrorScreenOverlays(sk, vpDef){
+    if(typeof SDEFS === 'undefined' || !SDEFS[sk] || !SDEFS[sk].keys) return '';
+    var keys = SDEFS[sk].keys;
+    var html = '';
+    for(var i = 0; i < keys.length; i++){
+      if(/^ov-.+_.+$/.test(keys[i])) html += mirrorOvSub(sk, keys[i], vpDef);
+    }
+    return html;
+  }
+  /** Translucent dim layer matching the canvas's dimLayer when the
+   *  screen's keys list it. */
+  function dimLayerHtml(sk){
+    if(typeof SDEFS === 'undefined' || !SDEFS[sk] || !SDEFS[sk].keys) return '';
+    if(SDEFS[sk].keys.indexOf('dimLayer') < 0) return '';
+    return '<div style="position:absolute;inset:0;background:rgba(0,0,0,0.55);pointer-events:none"></div>';
+  }
+  /** True when the screen has any ov-* sub keys — i.e. mirroring
+   *  produces real content. Used to suppress the CSS feature-mock
+   *  fallbacks (intro/outro mocks) so we don't render both. */
+  function hasMirroredOvs(sk){
+    if(typeof SDEFS === 'undefined' || !SDEFS[sk] || !SDEFS[sk].keys) return false;
+    var keys = SDEFS[sk].keys;
+    for(var i = 0; i < keys.length; i++){
+      if(/^ov-.+_.+$/.test(keys[i])) return true;
+    }
+    return false;
+  }
+
   /** Per-screen-kind feature mock. Returns CSS-only HTML overlaid on the
-   *  bg so each thumb reflects what the user sees on the canvas. Pure
-   *  CSS — no asset dependencies — so even a fresh project gets a
-   *  recognisable composition for every screen kind. Uses the screen
-   *  key to dispatch:
-   *    • intro screens  → eyebrow + title + start CTA
-   *    • outro screens  → "COMPLETE" eyebrow + title + amount + COLLECT
-   *    • wheel_bonus    → conic-gradient wheel disc + pointer
-   *    • bonus_pick     → 3×2 grid of "?" pick cards
-   *    • ladder_bonus   → vertical ladder rungs (filled bottom-up)
-   *    • gamble / super → red/black card pair
-   *    • freespin       → counter pill ("10/15 SPINS")
-   *    • holdnspin      → counter pill ("3 SPINS LEFT")
-   *    • splash         → "TAP TO PLAY" CTA pill
-   *    • EW screens     → "WILD" badge top-right
-   *  Popup_* (Big/Mega/Epic/Buy) is handled separately below. */
+   *  bg so each thumb reflects what the user sees on the canvas. Used
+   *  for screens whose unique compositions aren't expressible via
+   *  css_ov mirroring (wheel disc, pick grid, ladder rungs, gamble
+   *  cards) and for thumb-only hint pills (counter pills, splash CTA,
+   *  EW badge). Intros/outros/popups now go through mirrorScreenOverlays
+   *  instead of fake CSS text. */
   var INTRO_TEXT = {
     freespin_intro:    { eyebrow:'BONUS',  title:'FREE SPINS',     hint:'TAP TO START',   color:'#4ac8f0' },
     holdnspin_intro:   { eyebrow:'BONUS',  title:'HOLD & SPIN',    hint:'GET 3 SPINS',    color:'#5eca8a' },
@@ -14338,16 +14446,18 @@ setTimeout(() => {
     return '<div style="position:absolute;bottom:12%;left:50%;transform:translateX(-50%);padding:5px 14px;border-radius:999px;background:rgba(201,168,76,0.20);border:1px solid rgba(201,168,76,0.55);color:' + c + ';font-family:Space Grotesk,sans-serif;font-size:7px;font-weight:700;letter-spacing:0.16em;text-shadow:0 1px 2px rgba(0,0,0,0.6);white-space:nowrap">' + label + '</div>';
   }
 
-  /** Returns the feature-specific mock HTML for a given screen, or
-   *  empty string when the screen kind is base/EW/etc. and the
-   *  default reel composition is appropriate. */
+  /** Returns CSS-only mock HTML for screens whose composition can't be
+   *  faithfully expressed via css_ov mirroring (unique shapes — wheel,
+   *  pick, ladder, gamble) and for thumb-only hint pills.
+   *  Intros / outros / popups go through mirrorScreenOverlays instead
+   *  so they show the user's real text/colors. */
   function featureMockHtml(sk){
-    if(INTRO_TEXT[sk])  return introMockHtml(INTRO_TEXT[sk]);
-    if(OUTRO_TEXT[sk])  return outroMockHtml(OUTRO_TEXT[sk]);
     if(sk === 'wheel_bonus')   return wheelMockHtml();
     if(sk === 'bonus_pick')    return pickMockHtml();
     if(sk === 'ladder_bonus')  return ladderMockHtml();
     if(sk === 'gamble' || sk === 'super_gamble') return gambleMockHtml();
+    // Counter pills + splash CTA + EW badge are decorative thumb-only
+    // hints, not on-canvas elements — keep them as a visual aid.
     if(sk === 'freespin')  return counterPillHtml('10 / 15 SPINS', '#88dcf0');
     if(sk === 'holdnspin') return counterPillHtml('3 SPINS LEFT',  '#90e0aa');
     if(sk === 'splash')    return ctaPillHtml('TAP TO PLAY');
@@ -14444,16 +14554,22 @@ setTimeout(() => {
     }
 
     // ── Character ─────────────────────────────────────────────────
+    // Mirror the canvas: only render character on screens whose
+    // SDEFS.keys includes 'char'. Popups / intros / outros don't list
+    // it and previously bled the character into thumbs that the canvas
+    // doesn't actually show it on.
     var charImg = '';
+    var sdefKeys = (typeof SDEFS !== 'undefined' && SDEFS[sk] && SDEFS[sk].keys) || [];
     var charEnabled = !!(window.P && P.char && P.char.enabled);
-    if(charEnabled && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.char){
+    if(charEnabled && sdefKeys.indexOf('char') >= 0 && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.char){
       var cPos = thumbPos(sk, 'char');
       if(cPos) charImg = positionedAssetImg(EL_ASSETS.char, cPos, vpDef, 'stp-tile-asset');
     }
 
     // ── Logo ──────────────────────────────────────────────────────
+    // Same gating — only render when the canvas would.
     var logoImg = '';
-    if(!hideOnPopups[sk] && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.logo){
+    if(sdefKeys.indexOf('logo') >= 0 && typeof EL_ASSETS !== 'undefined' && EL_ASSETS.logo){
       var lPos = thumbPos(sk, 'logo');
       if(lPos) logoImg = positionedAssetImg(EL_ASSETS.logo, lPos, vpDef, 'stp-tile-asset');
     }
@@ -14476,51 +14592,16 @@ setTimeout(() => {
     // scale and was just visual noise. msgHtml retired.
     var msgHtml = '';
 
-    // ── Popup + feature mock overlays ────────────────────────────
-    // Win Sequence + Buy Bonus popups + every intro/outro/feature
-    // screen need their own composition — base reel + bg alone read
-    // as identical empty frames. featureMockHtml dispatches by screen
-    // key; popupHtml stays inline for the 4 popup screens since they
-    // share a single styled card that benefits from holding the title
-    // colour locally. Both blocks are pure CSS with no asset deps so
-    // empty new projects still get distinguishable thumbs.
-    var popupHtml = '';
-    if(hideOnPopups[sk]){
-      var titleText, amountText, btnText, titleColor;
-      if(sk === 'popup_win'){
-        titleText = 'BIG WIN';      amountText = '€ 5,000'; btnText = 'COLLECT'; titleColor = '#c9a84c';
-      } else if(sk === 'popup_megawin'){
-        titleText = 'MEGA WIN!';    amountText = '€ 25,000'; btnText = 'COLLECT'; titleColor = '#e8c96d';
-      } else if(sk === 'popup_epicwin'){
-        titleText = 'EPIC WIN!';    amountText = '€ 100,000'; btnText = 'COLLECT'; titleColor = '#ff7060';
-      } else { /* popup_buy */
-        titleText = 'BUY FEATURE';  amountText = '100× BET'; btnText = 'BUY';     titleColor = '#ef7a7a';
-      }
-      popupHtml = ''
-        + '<div style="position:absolute;inset:0;background:rgba(8,8,14,0.55);pointer-events:none"></div>'
-        + '<div style="position:absolute;left:9%;right:9%;top:24%;bottom:22%;'
-        +     'border:1px solid rgba(255,255,255,0.08);border-radius:6%/3%;'
-        +     'background:linear-gradient(180deg,rgba(20,20,28,0.55) 0%,rgba(8,8,14,0.7) 100%);'
-        +     'box-shadow:0 0 18px rgba(0,0,0,0.4) inset;pointer-events:none;'
-        +     'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6%;padding:6%">'
-        +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:14px;font-weight:800;letter-spacing:0.06em;'
-        +       'color:' + titleColor + ';text-shadow:0 1px 0 rgba(0,0,0,0.45);text-align:center;line-height:1">'
-        +     titleText
-        +   '</div>'
-        +   '<div style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;color:#f8efd3;'
-        +       'text-shadow:0 1px 2px rgba(0,0,0,0.6);text-align:center;line-height:1">'
-        +     amountText
-        +   '</div>'
-        +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:8px;font-weight:700;letter-spacing:0.12em;'
-        +       'padding:5px 14px;border-radius:999px;border:1px solid rgba(201,168,76,0.55);'
-        +       'background:rgba(201,168,76,0.18);color:#f5e6b8;text-align:center">'
-        +     btnText
-        +   '</div>'
-        + '</div>';
-    }
-    // Feature mock (intros / outros / wheel / pick / ladder / gamble /
-    // counter pills / EW badge / splash CTA). Empty string when the
-    // screen kind doesn't need a mock (e.g. base game).
+    // ── Canvas-mirrored overlays ──────────────────────────────────
+    // dimLayer + every css_ov sub-element from SDEFS[sk].keys, read
+    // straight from P.ovProps with OV_SUBS defaults. This renders the
+    // user's ACTUAL text/colors/sizes — the thumb becomes a true
+    // mirror of the canvas instead of a hand-faked mock.
+    var dimHtml      = dimLayerHtml(sk);
+    var mirroredHtml = mirrorScreenOverlays(sk, vpDef);
+    // Feature mock — only for unique-shape screens (wheel/pick/ladder/
+    // gamble) and decorative thumb-only hints (counter pills, splash
+    // CTA, EW badge). Intros/outros/popups go through mirroredHtml.
     var featureHtml = featureMockHtml(sk);
 
     // Tinted gradient stays as the no-bg fallback.
@@ -14539,7 +14620,8 @@ setTimeout(() => {
       +   logoImg
       +   charImg
       +   btnsHtml
-      +   popupHtml
+      +   dimHtml
+      +   mirroredHtml
       +   featureHtml
       +   '<div class="stp-tile-vignette"></div>'
       +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
