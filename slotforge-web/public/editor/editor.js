@@ -14239,6 +14239,136 @@ setTimeout(() => {
     return '<div class="stp-grid" style="--cols:' + cols + ';--rows:' + rows + '">' + cellHtml + '</div>';
   }
 
+  /** Per-screen-kind feature mock. Returns CSS-only HTML overlaid on the
+   *  bg so each thumb reflects what the user sees on the canvas. Pure
+   *  CSS — no asset dependencies — so even a fresh project gets a
+   *  recognisable composition for every screen kind. Uses the screen
+   *  key to dispatch:
+   *    • intro screens  → eyebrow + title + start CTA
+   *    • outro screens  → "COMPLETE" eyebrow + title + amount + COLLECT
+   *    • wheel_bonus    → conic-gradient wheel disc + pointer
+   *    • bonus_pick     → 3×2 grid of "?" pick cards
+   *    • ladder_bonus   → vertical ladder rungs (filled bottom-up)
+   *    • gamble / super → red/black card pair
+   *    • freespin       → counter pill ("10/15 SPINS")
+   *    • holdnspin      → counter pill ("3 SPINS LEFT")
+   *    • splash         → "TAP TO PLAY" CTA pill
+   *    • EW screens     → "WILD" badge top-right
+   *  Popup_* (Big/Mega/Epic/Buy) is handled separately below. */
+  var INTRO_TEXT = {
+    freespin_intro:    { eyebrow:'BONUS',  title:'FREE SPINS',     hint:'TAP TO START',   color:'#4ac8f0' },
+    holdnspin_intro:   { eyebrow:'BONUS',  title:'HOLD & SPIN',    hint:'GET 3 SPINS',    color:'#5eca8a' },
+    bonus_pick_intro:  { eyebrow:'BONUS',  title:'PICK BONUS',     hint:'PICK ITEMS',     color:'#f0a84c' },
+    wheel_bonus_intro: { eyebrow:'BONUS',  title:'WHEEL BONUS',    hint:'SPIN THE WHEEL', color:'#ef7a7a' },
+    ladder_bonus_intro:{ eyebrow:'BONUS',  title:'LADDER BONUS',   hint:'CLIMB UP',       color:'#b07aef' },
+    gamble_intro:      { eyebrow:'GAMBLE', title:'DOUBLE OR LOSE', hint:'PICK A CARD',    color:'#7a8aef' },
+    super_gamble_intro:{ eyebrow:'GAMBLE', title:'SUPER GAMBLE',   hint:'4× OR LOSE',     color:'#6060df' },
+  };
+  var OUTRO_TEXT = {
+    freespin_outro:    { eyebrow:'COMPLETE', title:'FREE SPINS',   amount:'€ 12,345', color:'#4ac8f0' },
+    holdnspin_outro:   { eyebrow:'COMPLETE', title:'HOLD & SPIN',  amount:'€ 8,500',  color:'#5eca8a' },
+    bonus_pick_outro:  { eyebrow:'COMPLETE', title:'BONUS PICK',   amount:'€ 5,000',  color:'#f0a84c' },
+    wheel_bonus_outro: { eyebrow:'COMPLETE', title:'WHEEL BONUS',  amount:'€ 3,200',  color:'#ef7a7a' },
+    ladder_bonus_outro:{ eyebrow:'COMPLETE', title:'LADDER BONUS', amount:'€ 4,800',  color:'#b07aef' },
+    gamble_outro:      { eyebrow:'COMPLETE', title:'GAMBLE',       amount:'€ 1,000',  color:'#7a8aef' },
+    super_gamble_outro:{ eyebrow:'COMPLETE', title:'SUPER GAMBLE', amount:'€ 4,000',  color:'#6060df' },
+  };
+
+  function introMockHtml(t){
+    return ''
+      + '<div style="position:absolute;inset:0;background:rgba(8,8,14,0.55);pointer-events:none"></div>'
+      + '<div style="position:absolute;left:8%;right:8%;top:28%;bottom:24%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8%;text-align:center;pointer-events:none">'
+      +   '<div style="font-family:\'DM Mono\',monospace;font-size:7px;letter-spacing:0.18em;color:' + t.color + ';font-weight:700">' + t.eyebrow + '</div>'
+      +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:13px;font-weight:800;letter-spacing:0.04em;color:#f8efd3;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,0.6)">' + t.title + '</div>'
+      +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:7px;font-weight:700;color:#f5e6b8;letter-spacing:0.12em;padding:4px 11px;border-radius:999px;border:1px solid rgba(201,168,76,0.55);background:rgba(201,168,76,0.18)">' + t.hint + '</div>'
+      + '</div>';
+  }
+  function outroMockHtml(o){
+    return ''
+      + '<div style="position:absolute;inset:0;background:rgba(8,8,14,0.55);pointer-events:none"></div>'
+      + '<div style="position:absolute;left:8%;right:8%;top:24%;bottom:22%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6%;text-align:center;pointer-events:none">'
+      +   '<div style="font-family:\'DM Mono\',monospace;font-size:7px;letter-spacing:0.18em;color:' + o.color + ';font-weight:700">' + o.eyebrow + '</div>'
+      +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:10px;font-weight:700;color:#cccccc;line-height:1">' + o.title + '</div>'
+      +   '<div style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;color:#f8efd3;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,0.6)">' + o.amount + '</div>'
+      +   '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:7px;font-weight:700;color:#f5e6b8;letter-spacing:0.12em;padding:4px 11px;border-radius:999px;border:1px solid rgba(201,168,76,0.55);background:rgba(201,168,76,0.18)">COLLECT</div>'
+      + '</div>';
+  }
+  function wheelMockHtml(){
+    return ''
+      + '<div style="position:absolute;left:50%;top:50%;width:60%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;'
+      +   'background:conic-gradient(from 0deg,#c9a84c 0deg 45deg,#2a2a3a 45deg 90deg,#e8c96d 90deg 135deg,#2a2a3a 135deg 180deg,#c9a84c 180deg 225deg,#2a2a3a 225deg 270deg,#e8c96d 270deg 315deg,#2a2a3a 315deg 360deg);'
+      +   'border:2px solid rgba(255,255,255,0.18);box-shadow:0 4px 16px rgba(0,0,0,0.6)"></div>'
+      + '<div style="position:absolute;left:50%;top:50%;width:14%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;background:#1a1a24;border:2px solid #c9a84c"></div>'
+      + '<div style="position:absolute;left:50%;top:18%;transform:translate(-50%,0);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:12px solid #c9a84c;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6))"></div>';
+  }
+  function pickMockHtml(){
+    var card = '<div style="background:linear-gradient(180deg,#2a2a3a,#14141c);border:1px solid rgba(201,168,76,0.45);border-radius:8%;display:flex;align-items:center;justify-content:center;color:#c9a84c;font-weight:800;font-family:Space Grotesk,sans-serif;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.4)">?</div>';
+    return '<div style="position:absolute;left:14%;right:14%;top:30%;bottom:24%;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:7%">'
+      + card + card + card + card + card + card
+      + '</div>';
+  }
+  function ladderMockHtml(){
+    return ''
+      + '<div style="position:absolute;left:38%;right:38%;top:14%;bottom:18%;display:flex;flex-direction:column-reverse;justify-content:flex-start;gap:6%">'
+      +   '<div style="height:8%;background:#5eca8a;border-radius:2px;box-shadow:0 0 10px rgba(94,202,138,0.7)"></div>'
+      +   '<div style="height:8%;background:#c9a84c;border-radius:2px"></div>'
+      +   '<div style="height:8%;background:#c9a84c;border-radius:2px"></div>'
+      +   '<div style="height:8%;background:#c9a84c;border-radius:2px"></div>'
+      +   '<div style="height:8%;background:rgba(201,168,76,0.30);border-radius:2px"></div>'
+      +   '<div style="height:8%;background:rgba(201,168,76,0.18);border-radius:2px"></div>'
+      +   '<div style="height:8%;background:rgba(201,168,76,0.10);border-radius:2px"></div>'
+      + '</div>';
+  }
+  function gambleMockHtml(){
+    return ''
+      + '<div style="position:absolute;left:18%;right:18%;top:32%;bottom:32%;display:flex;gap:10%;align-items:center;justify-content:center">'
+      +   '<div style="flex:1;aspect-ratio:5/7;background:linear-gradient(180deg,#a0203a,#5a0010);border-radius:6%;border:1px solid rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:800;box-shadow:0 3px 8px rgba(0,0,0,0.5)">♥</div>'
+      +   '<div style="flex:1;aspect-ratio:5/7;background:linear-gradient(180deg,#1a1a24,#08080c);border-radius:6%;border:1px solid rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:800;box-shadow:0 3px 8px rgba(0,0,0,0.5)">♠</div>'
+      + '</div>';
+  }
+  function counterPillHtml(label, color){
+    return '<div style="position:absolute;top:6%;left:50%;transform:translateX(-50%);padding:3px 10px;border-radius:999px;background:' + color + '2e;border:1px solid ' + color + '8c;color:' + color + ';font-family:DM Mono,monospace;font-size:7px;font-weight:700;letter-spacing:0.12em;white-space:nowrap;text-shadow:0 1px 1px rgba(0,0,0,0.6)">' + label + '</div>';
+  }
+  function badgeHtml(label, color, position){
+    var pos = position === 'tr' ? 'top:6%;right:6%' : 'top:6%;left:6%';
+    return '<div style="position:absolute;' + pos + ';padding:3px 7px;border-radius:4px;background:' + color + '2e;border:1px solid ' + color + 'aa;color:' + color + ';font-family:Space Grotesk,sans-serif;font-size:7px;font-weight:800;letter-spacing:0.10em">' + label + '</div>';
+  }
+  function ctaPillHtml(label, color){
+    var c = color || '#f5e6b8';
+    return '<div style="position:absolute;bottom:12%;left:50%;transform:translateX(-50%);padding:5px 14px;border-radius:999px;background:rgba(201,168,76,0.20);border:1px solid rgba(201,168,76,0.55);color:' + c + ';font-family:Space Grotesk,sans-serif;font-size:7px;font-weight:700;letter-spacing:0.16em;text-shadow:0 1px 2px rgba(0,0,0,0.6);white-space:nowrap">' + label + '</div>';
+  }
+
+  /** Returns the feature-specific mock HTML for a given screen, or
+   *  empty string when the screen kind is base/EW/etc. and the
+   *  default reel composition is appropriate. */
+  function featureMockHtml(sk){
+    if(INTRO_TEXT[sk])  return introMockHtml(INTRO_TEXT[sk]);
+    if(OUTRO_TEXT[sk])  return outroMockHtml(OUTRO_TEXT[sk]);
+    if(sk === 'wheel_bonus')   return wheelMockHtml();
+    if(sk === 'bonus_pick')    return pickMockHtml();
+    if(sk === 'ladder_bonus')  return ladderMockHtml();
+    if(sk === 'gamble' || sk === 'super_gamble') return gambleMockHtml();
+    if(sk === 'freespin')  return counterPillHtml('10 / 15 SPINS', '#88dcf0');
+    if(sk === 'holdnspin') return counterPillHtml('3 SPINS LEFT',  '#90e0aa');
+    if(sk === 'splash')    return ctaPillHtml('TAP TO PLAY');
+    if(/^ew_/.test(sk))    return badgeHtml('WILD', '#e8c96d', 'tr');
+    return '';
+  }
+
+  /** Should the default reel composition (frame + symbol grid + JP +
+   *  buttons) be suppressed for this screen? Popups + splash were
+   *  already excluded; intros / outros / unique-comp features (wheel,
+   *  pick, ladder, gamble) need to be too — otherwise the feature
+   *  mock sits on top of a wrong-looking base game. */
+  function suppressReelsFor(sk){
+    if(sk === 'splash') return true;
+    if(/^popup_/.test(sk)) return true;
+    if(/_(intro|outro)$/.test(sk)) return true;
+    if(sk === 'wheel_bonus' || sk === 'bonus_pick' || sk === 'ladder_bonus') return true;
+    if(sk === 'gamble' || sk === 'super_gamble') return true;
+    return false;
+  }
+
   function buildTile(item, isChild){
     var sk     = item.key;
     var active = (window.P && window.P.screen === sk) ? ' is-active' : '';
@@ -14273,7 +14403,11 @@ setTimeout(() => {
     // identity; templates fade into the background until the user
     // generates them.
     var hideOnPopups = { popup_win:1, popup_megawin:1, popup_epicwin:1, popup_buy:1 };
-    var hideReels    = !!hideOnPopups[sk] || sk === 'splash';
+    // Suppress base reels on popups, splash, intros, outros, and
+    // unique-comp feature screens (wheel/pick/ladder/gamble) so the
+    // feature mock isn't rendered on top of a wrong-looking base game.
+    // featureMockHtml below provides the screen-appropriate composition.
+    var hideReels    = suppressReelsFor(sk);
 
     // ── Reel frame ─────────────────────────────────────────────────
     var reelFrameHtml = '';
@@ -14342,13 +14476,14 @@ setTimeout(() => {
     // scale and was just visual noise. msgHtml retired.
     var msgHtml = '';
 
-    // ── Popup overlays ────────────────────────────────────────────
-    // Win Sequence + Buy Bonus popups previously showed only the
-    // background, which read as identical empty frames. Render a
-    // CSS-only mock that matches the canvas composition: dim layer +
-    // tier title text + amount + collect button. We tier-color the
-    // title to match the dot used in the section ribbon so a glance
-    // distinguishes Big / Mega / Epic at thumb scale.
+    // ── Popup + feature mock overlays ────────────────────────────
+    // Win Sequence + Buy Bonus popups + every intro/outro/feature
+    // screen need their own composition — base reel + bg alone read
+    // as identical empty frames. featureMockHtml dispatches by screen
+    // key; popupHtml stays inline for the 4 popup screens since they
+    // share a single styled card that benefits from holding the title
+    // colour locally. Both blocks are pure CSS with no asset deps so
+    // empty new projects still get distinguishable thumbs.
     var popupHtml = '';
     if(hideOnPopups[sk]){
       var titleText, amountText, btnText, titleColor;
@@ -14383,6 +14518,10 @@ setTimeout(() => {
         +   '</div>'
         + '</div>';
     }
+    // Feature mock (intros / outros / wheel / pick / ladder / gamble /
+    // counter pills / EW badge / splash CTA). Empty string when the
+    // screen kind doesn't need a mock (e.g. base game).
+    var featureHtml = featureMockHtml(sk);
 
     // Tinted gradient stays as the no-bg fallback.
     var gradientStyle = 'background:' + tilePreviewBg(item.dot || '#3a3a4a') + ';' +
@@ -14401,6 +14540,7 @@ setTimeout(() => {
       +   charImg
       +   btnsHtml
       +   popupHtml
+      +   featureHtml
       +   '<div class="stp-tile-vignette"></div>'
       +   '<span class="stp-tile-chip ' + (ready === 'ready' ? 'ready' : ready === 'partial' ? 'partial' : '') + '"></span>'
       +   '<span class="stp-tile-label">' + (item.label || '') + '</span>'
