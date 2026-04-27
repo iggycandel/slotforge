@@ -14335,7 +14335,8 @@ setTimeout(() => {
       +   bgImg
       +   msgHtml
       +   jpHtml
-      +   reelHtml
+      +   reelFrameHtml
+      +   reelGrid
       +   logoImg
       +   charImg
       +   btnsHtml
@@ -14372,6 +14373,15 @@ setTimeout(() => {
     var tabs;
     try { tabs = computeTabs(); } catch(e){ console.warn('[stp] computeTabs failed', e); return; }
 
+    // Per-tile try/catch: prior regressions (e.g. an undefined var ref
+    // inside buildTile) used to throw on the first tile and silently
+    // empty the entire panel. Now a broken tile is skipped with a
+    // console warning while the rest of the list still renders.
+    function safeTile(item, isChild){
+      try { return buildTile(item, isChild); }
+      catch(e){ console.warn('[stp] buildTile failed for', item && item.key, e); return ''; }
+    }
+
     var html = '';
     for(var i = 0; i < tabs.length; i++){
       var t = tabs[i];
@@ -14383,12 +14393,12 @@ setTimeout(() => {
         html += buildSectionHead(t.label, t.dot);
         html += '<div class="stp-children">';
         for(var j = 0; j < (t.children || []).length; j++){
-          html += buildTile(t.children[j], true);
+          html += safeTile(t.children[j], true);
         }
         html += '</div>';
       } else {
         // Single screen.
-        html += buildTile(t, false);
+        html += safeTile(t, false);
       }
     }
 
