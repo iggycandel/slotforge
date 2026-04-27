@@ -608,23 +608,38 @@ body {
     radial-gradient(60% 40% at 100% 0%, rgba(125,119,255,0.12), transparent 60%);
   opacity: 0.85;
 }
-/* The grid itself — overrides the legacy editor.css .rv rule. */
+/* The grid itself — overrides the legacy editor.css .rv rule.
+ * Round 3.1 fix: aspect-ratio lives on the GRID, not on cells.
+ * The grid letterboxes inside the stage (max-w/h: 100%) and the
+ * stage flex-centers it so any reel-set (5×3 / 6×3 / 5×6 / etc.)
+ * stays nicely centered without overflowing right or bottom. */
 #reel-viz.rv {
   position: relative;
   z-index: 1;
   display: grid;
-  width: 100%;
-  height: 100%;
+  /* Width/height adapt to whichever axis is the binding constraint
+   * given --rv-aspect (set per-render in renderReelViz). The fallback
+   * 5/3 matches the most common reel-set so the very first paint
+   * never collapses while JS catches up. */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: var(--rv-aspect, 5/3);
   gap: 4px;
   padding: 0;
   background: transparent;
   border: none;
   border-radius: 0;
+  margin: auto; /* belt-and-braces centering inside the stage flex */
 }
 #reel-viz .rvc {
-  width: auto;
-  height: auto;
-  aspect-ratio: 1;
+  /* No per-cell aspect-ratio — the grid's aspect + 1fr×1fr layout
+   * makes each cell naturally square (or near-square for non-square
+   * grids). Removes the overflow bug on wider-than-tall grids. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--sf-radius-sm);
   background:
     radial-gradient(circle at 35% 30%, rgba(241,203,123,0.18), rgba(20,16,8,0.95) 78%);
@@ -636,9 +651,42 @@ body {
   transform: translateY(4px) scale(0.96);
   animation: rvCellIn .42s cubic-bezier(.2,.8,.2,1) forwards;
   animation-delay: calc(var(--rvc-i, 0) * 18ms);
+  overflow: hidden;
+  /* container-type lets .rvc-glyph use cqi for fluid font sizing
+   * relative to the cell width — no manual font-size matrix needed. */
+  container-type: inline-size;
 }
 @keyframes rvCellIn {
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Symbol glyph — slot-card ranks / suits / stars. Sized in cqi so
+ * the type scales smoothly as the grid resizes for different reel
+ * configurations (5×3 → 6×4 → megaways). */
+#reel-viz .rvc-glyph {
+  font-family: var(--sf-font-sans);
+  font-weight: 800;
+  font-size: 38cqi;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-align: center;
+}
+/* Tier-coloured glyphs — high pops in gold, mid uses warm text,
+ * low fades to muted, special goes red for wilds/scatters. */
+#reel-viz .rvc[data-tier="high"]    .rvc-glyph {
+  color: var(--sf-gold-2);
+  text-shadow: 0 0 12cqi rgba(241,203,123,0.32);
+}
+#reel-viz .rvc[data-tier="mid"]     .rvc-glyph {
+  color: rgba(244,239,228,0.94);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+}
+#reel-viz .rvc[data-tier="low"]     .rvc-glyph {
+  color: var(--sf-muted-2);
+}
+#reel-viz .rvc[data-tier="special"] .rvc-glyph {
+  color: #ff7060;
+  text-shadow: 0 0 10cqi rgba(255,112,96,0.45);
 }
 .rv-meta {
   display: flex;

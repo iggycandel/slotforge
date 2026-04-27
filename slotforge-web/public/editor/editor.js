@@ -3461,18 +3461,53 @@ document.getElementById('theme-sel').addEventListener('change',e=>{P.theme=e.tar
   document.getElementById('tog'+n).addEventListener('click',()=>{P.colors['t'+n]=!P.colors['t'+n];document.getElementById('tog'+n).classList.toggle('on',P.colors['t'+n]);document.getElementById('sw'+n).classList.toggle('off',!P.colors['t'+n]);refresh();markDirty();});
 });
 document.getElementById('reel-sel').addEventListener('change',e=>{P.reelset=e.target.value;renderReelViz();document.getElementById('sb-reel').textContent=P.reelset.replace('x','×').replace(/[ch]/g,'');refresh();markDirty();});
+// Round 3.1: aspect-ratio moved to the GRID container (was on cells).
+// On a 6×3 grid inside a 9:11 portrait stage, the previous approach
+// forced cells to use the taller-row height as their width — they
+// overflowed past the right edge. Now the grid itself adopts the
+// c/r aspect-ratio and letterboxes inside the stage; cells use plain
+// 1fr × 1fr so they're naturally proportional to the grid.
+//
+// Cells also get an illustrative glyph (card ranks + suits + stars)
+// with a tier marker so the mockup reads as an actual slot rather
+// than empty placeholders. Symbol picker is deterministic per index
+// so the rendered grid is stable across re-renders.
+const RV_SYMBOL_POOL = [
+  { g:'A',  t:'mid'     },
+  { g:'K',  t:'mid'     },
+  { g:'Q',  t:'mid'     },
+  { g:'J',  t:'low'     },
+  { g:'10', t:'low'     },
+  { g:'9',  t:'low'     },
+  { g:'♥',  t:'high'    },
+  { g:'♦',  t:'high'    },
+  { g:'♠',  t:'mid'     },
+  { g:'♣',  t:'low'     },
+  { g:'★',  t:'special' },
+  { g:'✦',  t:'high'    },
+];
+function _rvSym(i){
+  // Simple deterministic mix — i*7+3 stays inside the pool length
+  // and produces a varied-looking sequence without runs of the
+  // same symbol.
+  return RV_SYMBOL_POOL[(i * 7 + 3) % RV_SYMBOL_POOL.length];
+}
 function renderReelViz(){
   const rv=document.getElementById('reel-viz');if(!rv)return;
   const[c,r]=parseReel(P.reelset);
-  // Round 3: cells use 1fr so the whole grid fills the premium-styled
-  // container (.rv) — sized via CSS in editor-skin.css. Aspect-ratio
-  // on .rvc keeps cells square at any column count.
+  // Grid sizes itself; max-w/h keeps it inside the stage; aspect c/r
+  // keeps cells naturally square without per-cell aspect-ratio.
   rv.style.gridTemplateColumns='repeat('+c+',1fr)';
   rv.style.gridTemplateRows='repeat('+r+',1fr)';
+  rv.style.setProperty('--rv-aspect', c+'/'+r);
   rv.innerHTML='';
-  // Stagger the cells slightly so the grid feels alive on first render.
-  // Pure CSS animation kicks in via .rvc — no JS scheduling needed.
-  for(let i=0;i<c*r;i++) rv.innerHTML += '<div class="rvc" style="--rvc-i:'+i+'"></div>';
+  for(let i=0; i<c*r; i++){
+    const s = _rvSym(i);
+    rv.innerHTML +=
+      '<div class="rvc" data-tier="'+s.t+'" style="--rvc-i:'+i+'">' +
+        '<span class="rvc-glyph">'+s.g+'</span>' +
+      '</div>';
+  }
   const lbl=document.getElementById('reel-viz-label');
   if(lbl) lbl.textContent = c+' × '+r;
 }
