@@ -491,6 +491,267 @@ body {
   color: var(--sf-red);
 }
 
+/* ─── Project-Settings header CTA strip (Round 3) ──────────────────
+   Replaces the standalone Import tab. Sits between the project
+   header and the tab bar; primary action opens the import modal,
+   secondary kicks off Generate-GDD. */
+#proj-cta-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  margin: 0 24px 14px;
+  border-radius: var(--sf-radius-lg);
+  background:
+    radial-gradient(120% 80% at 0% 50%, rgba(74,200,240,0.08), transparent 60%),
+    linear-gradient(180deg, rgba(22,27,41,0.85), rgba(14,18,29,0.85));
+  border: 1px solid var(--sf-border);
+  box-shadow: var(--sf-shadow-card), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.proj-cta-copy { flex: 1; min-width: 0; }
+.proj-cta-eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: var(--sf-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--sf-blue);
+  margin-bottom: 4px;
+  font-family: var(--sf-font-mono);
+}
+.proj-cta-title {
+  font-family: var(--sf-font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sf-text);
+  margin-bottom: 4px;
+}
+.proj-cta-sub {
+  font-size: 11px;
+  color: var(--sf-muted);
+  line-height: 1.55;
+  max-width: 56ch;
+}
+.proj-cta-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.proj-cta-btn {
+  font-family: var(--sf-font-sans);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  padding: 9px 16px;
+  border-radius: var(--sf-radius-pill);
+  border: 1px solid var(--sf-border-2);
+  background: rgba(255,255,255,0.03);
+  color: var(--sf-text);
+  cursor: pointer;
+  transition: transform .2s, border-color .2s, background .2s, box-shadow .2s;
+  white-space: nowrap;
+}
+.proj-cta-btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--sf-border-gold);
+  background: rgba(215,168,79,0.06);
+}
+.proj-cta-btn-primary {
+  border: none;
+  background: var(--sf-grad-gold);
+  color: #0a0c10;
+  box-shadow: var(--sf-shadow-gold), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.proj-cta-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sf-shadow-gold-lg), inset 0 1px 0 rgba(255,255,255,0.35);
+  background: var(--sf-grad-gold);
+}
+@media (max-width: 880px) {
+  #proj-cta-strip { flex-direction: column; align-items: flex-start; }
+  .proj-cta-actions { width: 100%; }
+  .proj-cta-btn { flex: 1; justify-content: center; }
+}
+
+/* ─── Reel Configuration two-column stage ──────────────────────────
+   Left form, right premium grid mockup. The mockup is the visual
+   anchor of the Reels tab — sized to feel like an asset, not a
+   utility widget. */
+.reel-cfg-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: stretch;
+}
+.reel-cfg-form { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.reel-cfg-stage { display: flex; flex-direction: column; gap: 12px; }
+.rv-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 11;
+  padding: 18px;
+  border-radius: var(--sf-radius-xl);
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(215,168,79,0.10), transparent 55%),
+    linear-gradient(180deg, rgba(20,24,36,0.92), rgba(10,12,20,0.96));
+  border: 1px solid var(--sf-border-gold);
+  box-shadow: var(--sf-shadow-overlay), inset 0 1px 0 rgba(255,255,255,0.05);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rv-stage-glow {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 50% at 0% 100%, rgba(217,168,79,0.18), transparent 60%),
+    radial-gradient(60% 40% at 100% 0%, rgba(125,119,255,0.12), transparent 60%);
+  opacity: 0.85;
+}
+/* The grid itself — overrides the legacy editor.css .rv rule. */
+#reel-viz.rv {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+#reel-viz .rvc {
+  width: auto;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: var(--sf-radius-sm);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(241,203,123,0.18), rgba(20,16,8,0.95) 78%);
+  border: 1px solid rgba(215,168,79,0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 1px 4px rgba(0,0,0,0.4);
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+  animation: rvCellIn .42s cubic-bezier(.2,.8,.2,1) forwards;
+  animation-delay: calc(var(--rvc-i, 0) * 18ms);
+}
+@keyframes rvCellIn {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.rv-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+.rv-eyebrow {
+  font-family: var(--sf-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: var(--sf-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--sf-muted-2);
+}
+.rv-dim {
+  font-family: var(--sf-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sf-gold-2);
+  letter-spacing: -0.005em;
+}
+@media (max-width: 760px) {
+  .reel-cfg-grid { grid-template-columns: 1fr; }
+  .rv-stage { aspect-ratio: 5 / 4; max-width: 360px; }
+}
+
+/* ─── Import-GDD modal (Round 3) ──────────────────────────────────
+   Opened from the header CTA. Backdrop fades in, card slides up. */
+#proj-import-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+#proj-import-modal[hidden] { display: none !important; }
+#proj-import-modal .pim-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 6, 11, 0.65);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity .22s ease;
+}
+#proj-import-modal .pim-card {
+  position: relative;
+  width: min(560px, calc(100% - 48px));
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  border-radius: var(--sf-radius-2xl);
+  background: linear-gradient(180deg, rgba(22,27,41,0.96), rgba(10,12,20,0.98));
+  border: 1px solid var(--sf-border-2);
+  box-shadow: var(--sf-shadow-xl), inset 0 1px 0 rgba(255,255,255,0.04);
+  padding: 24px 26px 22px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity .26s cubic-bezier(.2,.8,.2,1), transform .26s cubic-bezier(.2,.8,.2,1);
+}
+#proj-import-modal.show { pointer-events: auto; }
+#proj-import-modal.show .pim-backdrop { opacity: 1; }
+#proj-import-modal.show .pim-card { opacity: 1; transform: translateY(0); }
+
+#proj-import-modal .pim-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+#proj-import-modal .pim-eyebrow {
+  font-family: var(--sf-font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: var(--sf-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--sf-blue);
+  margin-bottom: 6px;
+}
+#proj-import-modal .pim-title {
+  font-family: var(--sf-font-sans);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sf-text);
+  margin-bottom: 6px;
+}
+#proj-import-modal .pim-sub {
+  font-size: 12px;
+  color: var(--sf-muted);
+  line-height: 1.6;
+}
+#proj-import-modal .pim-close {
+  width: 28px; height: 28px;
+  border: 1px solid var(--sf-border);
+  border-radius: var(--sf-radius-pill);
+  background: rgba(255,255,255,0.03);
+  color: var(--sf-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color .15s, background .15s, border-color .15s;
+}
+#proj-import-modal .pim-close:hover {
+  color: var(--sf-text);
+  border-color: var(--sf-border-2);
+  background: rgba(255,255,255,0.06);
+}
+
 /* ─── 19. Toast / nudge — pill chip language. */
 .sf-toast,
 #sf-toast,

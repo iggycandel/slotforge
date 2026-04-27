@@ -3464,11 +3464,17 @@ document.getElementById('reel-sel').addEventListener('change',e=>{P.reelset=e.ta
 function renderReelViz(){
   const rv=document.getElementById('reel-viz');if(!rv)return;
   const[c,r]=parseReel(P.reelset);
-  rv.style.gridTemplateColumns='repeat('+c+',18px)';
+  // Round 3: cells use 1fr so the whole grid fills the premium-styled
+  // container (.rv) — sized via CSS in editor-skin.css. Aspect-ratio
+  // on .rvc keeps cells square at any column count.
+  rv.style.gridTemplateColumns='repeat('+c+',1fr)';
+  rv.style.gridTemplateRows='repeat('+r+',1fr)';
   rv.innerHTML='';
-  for(let i=0;i<c*r;i++)rv.innerHTML+='<div class="rvc"></div>';
+  // Stagger the cells slightly so the grid feels alive on first render.
+  // Pure CSS animation kicks in via .rvc — no JS scheduling needed.
+  for(let i=0;i<c*r;i++) rv.innerHTML += '<div class="rvc" style="--rvc-i:'+i+'"></div>';
   const lbl=document.getElementById('reel-viz-label');
-  if(lbl)lbl.textContent=c+'×'+r;
+  if(lbl) lbl.textContent = c+' × '+r;
 }
 function initRV(){ renderReelViz(); }
 document.getElementById('char-tog').addEventListener('click',()=>{P.char.enabled=!P.char.enabled;document.getElementById('char-tog').classList.toggle('on',P.char.enabled);document.getElementById('char-tog-lbl').style.color=P.char.enabled?'#ccc':'#555';document.getElementById('char-cf').classList.toggle('open',P.char.enabled);refresh();markDirty();});
@@ -6472,16 +6478,45 @@ async function exportZipWithJSX(){
   }
 }
 
+// ═══ IMPORT MODAL (Round 3) ═══
+// Opened from the header CTA strip. The DOM ids inside the modal
+// (#file-in, #parse-gdd-btn, #parse-gdd-status, #ifl-list) match
+// what the legacy import-tab pane used so all existing wiring keeps
+// working — we only moved the markup, didn't rename anything.
+function openProjImportModal(){
+  var m = document.getElementById('proj-import-modal');
+  if(!m) return;
+  m.removeAttribute('hidden');
+  // Defer the visible class one frame so the CSS transition runs.
+  requestAnimationFrame(function(){ m.classList.add('show'); });
+  // Close on Escape — tear down listener after close.
+  function _esc(ev){
+    if(ev.key === 'Escape'){ closeProjImportModal(); document.removeEventListener('keydown', _esc); }
+  }
+  document.addEventListener('keydown', _esc);
+}
+function closeProjImportModal(){
+  var m = document.getElementById('proj-import-modal');
+  if(!m) return;
+  m.classList.remove('show');
+  // Hide after the transition finishes so the backdrop doesn't trap
+  // pointer events while fading out.
+  setTimeout(function(){ if(!m.classList.contains('show')) m.setAttribute('hidden',''); }, 220);
+}
+window.openProjImportModal  = openProjImportModal;
+window.closeProjImportModal = closeProjImportModal;
+
 // ═══ PHONE FRAME ═══
 // ═══ PROJECT SETTINGS TABS ═══
 function switchProjTab(name){
-  if(!name) name='import';
-  // Round 2: standalone Jackpots + GDD tabs were folded back into the
-  // Reels tab and Import tab respectively. Redirect any stale call
-  // (older bookmarks, in-flight payloads, etc.) so the user lands on
-  // the right pane instead of seeing an empty body.
+  // Round 3: Reels is now the default landing tab (was 'import').
+  // Import is no longer a tab — it's a modal opened from the header CTA.
+  if(!name) name='reels';
+  // Redirect stale tab names from earlier rounds so they land on the
+  // closest remaining surface instead of showing an empty pane.
   if(name === 'jackpots') name = 'reels';
-  if(name === 'gdd')      name = 'import';
+  if(name === 'gdd')      name = 'reels';
+  if(name === 'import')   { openProjImportModal(); return; }
   document.querySelectorAll('.proj-tab').forEach(b=>b.classList.toggle('active', b.dataset.ptab===name));
   document.querySelectorAll('.proj-tab-pane').forEach(p=>p.classList.toggle('active', p.id==='ptab-'+name));
   if(name==='theme'){

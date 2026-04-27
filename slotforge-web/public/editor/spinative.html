@@ -741,19 +741,36 @@
     <div id="save-status" style="display:none"></div>
   </div>
   <div id="proj-body">
-    <!-- Tab bar -->
+
+    <!-- ─── Project-Settings header CTA (Round 3) ───────────────────────
+         Import + Generate-GDD demoted from the tab bar to a single
+         persistent CTA strip. Rationale: Import is an alternative
+         entry point, not a configuration step — and the Generate
+         action belongs at the end of any tab, not as its own tab. -->
+    <div id="proj-cta-strip">
+      <div class="proj-cta-copy">
+        <div class="proj-cta-eyebrow">Shortcut</div>
+        <div class="proj-cta-title">Have a GDD or spec sheet already?</div>
+        <div class="proj-cta-sub">Drop it in and the AI auto-fills every tab below — theme, reels, features, jackpots, symbols.</div>
+      </div>
+      <div class="proj-cta-actions">
+        <button class="proj-cta-btn proj-cta-btn-primary" type="button" onclick="openProjImportModal()">📄 Import GDD</button>
+        <button class="proj-cta-btn" type="button" onclick="openGDDModal()" title="Generate a Game Design Document from your current configuration">📋 Generate GDD</button>
+      </div>
+    </div>
+
+    <!-- Tab bar — Round 3 reorder. Reels first since it's the most
+         fundamental decision (everything else depends on the grid +
+         win mechanic); Theme last because the visual treatment can
+         iterate in parallel once the gameplay structure is set. -->
     <div id="proj-tab-bar">
-      <button class="proj-tab active" data-ptab="import">📄 Import</button>
-      <button class="proj-tab" data-ptab="theme">🎨 Theme</button>
-      <button class="proj-tab" data-ptab="reels">⊞ Reels</button>
-      <!-- Jackpots tab removed in Round 2 — both jackpots + ante bet
-           moved into the Reels tab as optional toggle-driven sections,
-           so users without those features see fewer tabs. -->
-      <button class="proj-tab" data-ptab="features">⚡ Features</button>
+      <button class="proj-tab active" data-ptab="reels">⊞ Reels</button>
       <button class="proj-tab" data-ptab="symbols">◆ Symbols</button>
-      <!-- GDD tab removed: GDD generation lives on the Import tab as a
-           single "Generate GDD from these inputs" CTA. The dedicated
-           tab read as duplication and pulled focus away from configuration. -->
+      <button class="proj-tab" data-ptab="features">⚡ Features</button>
+      <button class="proj-tab" data-ptab="theme">🎨 Theme</button>
+      <!-- GDD + Import + Jackpots tabs all removed in earlier rounds.
+           Import lives in the CTA strip above; Generate GDD too;
+           Jackpots live as an optional section inside the Reels tab. -->
     </div>
     <div id="proj-tab-content">
 
@@ -765,50 +782,13 @@
                 standalone GDD tab).
              B) Import an existing GDD — drop your spec PDF/DOCX/MD
                 and the AI parses it into every tab. -->
-      <div class="proj-tab-pane active" id="ptab-import">
-        <div class="ps s3">
-          <div class="psh"><span class="pi">✦</span><span class="pl">Start your project</span></div>
-          <div class="psb">
-            <div style="font-size:10px;color:#9898b8;line-height:1.7;margin-bottom:14px">
-              Pick how you want to begin. Both paths configure the same project — you can switch later.
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-
-              <!-- Path A — Generate GDD from manual inputs -->
-              <div style="padding:16px;background:#0d0d16;border:1px solid #c9a84c33;border-radius:10px;display:flex;flex-direction:column;gap:8px">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-                  <span style="font-size:18px">✏️</span>
-                  <div style="font-size:13px;font-weight:600;color:#e8e6e2">Configure manually</div>
-                </div>
-                <div style="font-size:10px;color:#9898b8;line-height:1.6">Fill the Theme / Reels / Jackpots / Features / Symbols tabs at your own pace. When you're done, generate a full GDD from your inputs.</div>
-                <div style="display:flex;gap:6px;margin-top:auto;padding-top:8px">
-                  <button class="ptab-nav-btn" style="flex:1;border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('theme')">Start with Theme →</button>
-                  <button class="ptab-nav-btn" style="border-color:#c9a84c66;color:#c9a84c;background:#c9a84c14" onclick="openGDDModal()" title="Generate a Game Design Document from your current configuration">📋 Generate GDD</button>
-                </div>
-              </div>
-
-              <!-- Path B — Import an existing GDD -->
-              <div style="padding:16px;background:#0d0d16;border:1px solid #4ac8f033;border-radius:10px;display:flex;flex-direction:column;gap:8px">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-                  <span style="font-size:18px">📄</span>
-                  <div style="font-size:13px;font-weight:600;color:#e8e6e2">Import an existing GDD</div>
-                </div>
-                <div style="font-size:10px;color:#9898b8;line-height:1.6">Have a spec already? Drop your GDD, Art Direction Guidelines or one-pager. The AI parses it and pre-fills every tab.</div>
-                <div class="imp-zone" style="margin-top:auto"><input type="file" id="file-in" multiple accept=".pdf,.doc,.docx,.txt,.md"><div class="iz-ico">⬆</div><div class="iz-t">Drop files or click to browse</div><div class="iz-s">PDF · DOCX · TXT · MD</div></div>
-                <button id="parse-gdd-btn" style="display:none;margin-top:6px;width:100%;padding:9px 14px;background:#4ac8f0;color:#06060a;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;align-items:center;justify-content:center">
-                  ✦ Parse &amp; Auto-fill with AI
-                </button>
-                <div id="parse-gdd-status" style="display:none;margin-top:6px;font-size:10px;text-align:center;border-radius:6px;padding:6px 10px"></div>
-                <div id="ifl-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-        <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('theme')">Next: Theme →</button>
-        </div></div>
-      </div>
+      <!-- Import is no longer a tab pane (Round 3) — the file picker
+           + AI parse panel now lives in #proj-import-modal at the
+           end of #proj-fs and is opened by openProjImportModal()
+           from the header CTA strip. The DOM ids (#file-in,
+           #parse-gdd-btn, #parse-gdd-status, #ifl-list) are
+           preserved exactly so the existing wiring in editor.js
+           keeps working without any changes. -->
 
       <!-- ══ THEME TAB ══ -->
       <div class="proj-tab-pane" id="ptab-theme">
@@ -998,9 +978,12 @@
             </div>
           </div>
 
+        <!-- Theme is now the LAST tab (Round 3). Footer becomes
+             ← Features / Save & Close — no Next, this is the end of
+             the configuration flow. -->
         <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" onclick="switchProjTab('import')">← Import</button>
-          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('reels')">Next: Reels →</button>
+          <button class="ptab-nav-btn" onclick="switchProjTab('features')">← Features</button>
+          <button class="ptab-save-btn" onclick="if(window._sfBridge&&window._sfBridge.triggerSave)window._sfBridge.triggerSave();document.getElementById('proj-close-btn').click()">💾 Save &amp; Close</button>
         </div></div>
       </div>
 
@@ -1015,30 +998,41 @@
         <!-- Reel Configuration -->
         <div class="ps">
           <div class="psh"><span class="pi">⊞</span><span class="pl">Reel Configuration</span></div>
-          <div class="psb" id="s-reel" style="display:flex;flex-direction:row;gap:16px;align-items:flex-start">
-            <!-- Left: dropdowns -->
-            <div style="flex:1;min-width:0">
-              <div class="pfr">
-                <div class="pf"><div class="lbl">Grid <span class="lbl-req" style="color:#c9a84c">*</span></div>
-                  <select class="fsel" id="reel-sel">
-                    <optgroup label="Standard"><option value="3x1">3×1 Single Row</option><option value="3x3">3×3 Classic</option><option value="5x3" selected>5×3 Standard</option><option value="5x4">5×4</option><option value="6x3">6×3</option><option value="6x4">6×4</option></optgroup>
-                    <optgroup label="Tall / Portrait"><option value="3x5">3×5</option><option value="4x5">4×5</option><option value="5x5">5×5</option><option value="4x6">4×6</option><option value="5x6">5×6</option><option value="3x7">3×7</option></optgroup>
-                    <optgroup label="Wide / Landscape"><option value="7x3">7×3</option><option value="8x3">8×3</option><option value="9x3">9×3</option><option value="6x5">6×5</option><option value="7x4">7×4</option><option value="8x4">8×4</option></optgroup>
-                    <optgroup label="Cluster Pays"><option value="5x5c">5×5 Cluster</option><option value="6x6c">6×6 Cluster</option><option value="7x7c">7×7 Cluster</option><option value="8x8c">8×8 Cluster</option></optgroup>
-                    <optgroup label="Special Mechanics"><option value="243">243 Ways (5×3)</option><option value="1024">1024 Ways (5×4)</option><option value="megaways">Megaways™</option></optgroup>
-                  </select>
+          <div class="psb" id="s-reel">
+            <!-- Round 3: two-column layout with the right-side grid mockup
+                 promoted to a premium asset. Form fields stay narrow so
+                 the grid stage gets the visual weight it deserves. -->
+            <div class="reel-cfg-grid">
+              <!-- Left: form fields -->
+              <div class="reel-cfg-form">
+                <div class="pfr">
+                  <div class="pf"><div class="lbl">Grid <span class="lbl-req" style="color:#c9a84c">*</span></div>
+                    <select class="fsel" id="reel-sel">
+                      <optgroup label="Standard"><option value="3x1">3×1 Single Row</option><option value="3x3">3×3 Classic</option><option value="5x3" selected>5×3 Standard</option><option value="5x4">5×4</option><option value="6x3">6×3</option><option value="6x4">6×4</option></optgroup>
+                      <optgroup label="Tall / Portrait"><option value="3x5">3×5</option><option value="4x5">4×5</option><option value="5x5">5×5</option><option value="4x6">4×6</option><option value="5x6">5×6</option><option value="3x7">3×7</option></optgroup>
+                      <optgroup label="Wide / Landscape"><option value="7x3">7×3</option><option value="8x3">8×3</option><option value="9x3">9×3</option><option value="6x5">6×5</option><option value="7x4">7×4</option><option value="8x4">8×4</option></optgroup>
+                      <optgroup label="Cluster Pays"><option value="5x5c">5×5 Cluster</option><option value="6x6c">6×6 Cluster</option><option value="7x7c">7×7 Cluster</option><option value="8x8c">8×8 Cluster</option></optgroup>
+                      <optgroup label="Special Mechanics"><option value="243">243 Ways (5×3)</option><option value="1024">1024 Ways (5×4)</option><option value="megaways">Megaways™</option></optgroup>
+                    </select>
+                  </div>
+                </div>
+                <div class="pfr" style="margin-top:8px">
+                  <div class="pf"><div class="lbl">Win Mechanic <span class="lbl-req" style="color:#c9a84c">*</span></div>
+                    <select class="fsel" id="mech-sel"><option>Paylines</option><option>Ways to Win</option><option>Cluster Pays</option><option>Both Ways</option><option>Megaways™</option></select>
+                  </div>
                 </div>
               </div>
-              <div class="pfr" style="margin-top:6px">
-                <div class="pf"><div class="lbl">Win Mechanic <span class="lbl-req" style="color:#c9a84c">*</span></div>
-                  <select class="fsel" id="mech-sel"><option>Paylines</option><option>Ways to Win</option><option>Cluster Pays</option><option>Both Ways</option><option>Megaways™</option></select>
+              <!-- Right: premium grid mockup (asset-style stage) -->
+              <div class="reel-cfg-stage">
+                <div class="rv-stage">
+                  <div class="rv-stage-glow" aria-hidden="true"></div>
+                  <div id="reel-viz" class="rv"></div>
+                </div>
+                <div class="rv-meta">
+                  <span class="rv-eyebrow">Slot grid</span>
+                  <span id="reel-viz-label" class="rv-dim"></span>
                 </div>
               </div>
-            </div>
-            <!-- Right: grid visualisation -->
-            <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:5px">
-              <div id="reel-viz" class="rv"></div>
-              <div id="reel-viz-label" style="font-size:9px;color:#5a5a7a;font-family:'DM Mono',monospace;letter-spacing:.06em"></div>
             </div>
           </div>
         </div>
@@ -1162,9 +1156,11 @@
           </div>
         </div>
 
+        <!-- Reels is now the FIRST tab (Round 3). No "← Previous"
+             button — Next: Symbols. -->
         <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" onclick="switchProjTab('theme')">← Theme</button>
-          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('features')">Next: Features →</button>
+          <span></span>
+          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('symbols')">Next: Symbols →</button>
         </div></div>
       </div>
 
@@ -1405,8 +1401,8 @@
         </div>
 
         <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" onclick="switchProjTab('jackpots')">← Jackpots</button>
-          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('symbols')">Next: Symbols →</button>
+          <button class="ptab-nav-btn" onclick="switchProjTab('symbols')">← Symbols</button>
+          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('theme')">Next: Theme →</button>
         </div></div>
       </div>
 
@@ -1435,9 +1431,10 @@
           </div>
         </div>
 
+        <!-- Symbols sits between Reels and Features in the Round-3 order. -->
         <div class="ptab-footer"><div class="ptab-footer-inner">
-          <button class="ptab-nav-btn" onclick="switchProjTab('features')">← Features</button>
-          <button class="ptab-save-btn" onclick="if(window._sfBridge&&window._sfBridge.triggerSave)window._sfBridge.triggerSave();document.getElementById('proj-close-btn').click()">💾 Save &amp; Close</button>
+          <button class="ptab-nav-btn" onclick="switchProjTab('reels')">← Reels</button>
+          <button class="ptab-nav-btn" style="border-color:#c9a84c44;color:#c9a84c;background:#c9a84c08" onclick="switchProjTab('features')">Next: Features →</button>
         </div></div>
       </div>
 
@@ -1447,6 +1444,40 @@
 
     </div><!-- /proj-tab-content -->
   </div><!-- /proj-body -->
+
+  <!-- ─── Import GDD modal (Round 3) ────────────────────────────────
+       Opened from the header CTA strip via openProjImportModal().
+       The DOM ids inside (#file-in, #parse-gdd-btn, #parse-gdd-status,
+       #ifl-list) are preserved verbatim from the old #ptab-import pane
+       so the existing wiring in editor.js keeps working — we only
+       moved the markup, didn't rename anything. -->
+  <div id="proj-import-modal" hidden>
+    <div class="pim-backdrop" onclick="closeProjImportModal()"></div>
+    <div class="pim-card" role="dialog" aria-modal="true" aria-labelledby="pim-title">
+      <div class="pim-head">
+        <div>
+          <div class="pim-eyebrow">Shortcut</div>
+          <div class="pim-title" id="pim-title">Import an existing GDD</div>
+          <div class="pim-sub">Drop your GDD, Art Direction Guidelines or one-pager. The AI parses it and pre-fills every tab — theme, reels, features, jackpots, symbols.</div>
+        </div>
+        <button class="pim-close" type="button" onclick="closeProjImportModal()" title="Close">&times;</button>
+      </div>
+      <div class="pim-body">
+        <div class="imp-zone">
+          <input type="file" id="file-in" multiple accept=".pdf,.doc,.docx,.txt,.md">
+          <div class="iz-ico">⬆</div>
+          <div class="iz-t">Drop files or click to browse</div>
+          <div class="iz-s">PDF · DOCX · TXT · MD</div>
+        </div>
+        <button id="parse-gdd-btn" style="display:none;margin-top:14px;width:100%;padding:11px 16px;background:linear-gradient(135deg,var(--sf-gold,#d7a84f),var(--sf-gold-2,#f0ca79));color:#06060a;border:none;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sf-font-sans,Inter,sans-serif);box-shadow:var(--sf-shadow-gold,0 4px 20px rgba(215,168,79,0.28))">
+          ✦ Parse &amp; Auto-fill with AI
+        </button>
+        <div id="parse-gdd-status" style="display:none;margin-top:10px;font-size:11px;text-align:center;border-radius:8px;padding:8px 12px"></div>
+        <div id="ifl-list" style="display:flex;flex-direction:column;gap:8px;margin-top:14px"></div>
+      </div>
+    </div>
+  </div>
+
 </div>
 </div>
 
