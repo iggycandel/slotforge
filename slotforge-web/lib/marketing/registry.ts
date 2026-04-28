@@ -207,17 +207,41 @@ export interface TemplateSummary {
    *  "256² · 512² · 1024² PNG". */
   sizes:     Array<{ w: number; h: number; label: string; format: string }>
   previewPath: string
+  /** Distinct slot names this template's asset layers reference
+   *  (e.g. ["background_base", "character.transparent", "logo"]).
+   *  Phase 2 of the marketing UX overhaul: the iframe needs this to
+   *  decide which X/Y/Scale slider rows to render in the Customise
+   *  modal — previously it tried to read template.layers, which is
+   *  intentionally NOT shipped in the catalogue, so collectUsedSlots
+   *  always returned [] and the position controls silently disappeared.
+   *  Cheap to compute server-side and tiny on the wire. */
+  slots:     string[]
 }
 
 export function listTemplateSummaries(): TemplateSummary[] {
-  return TEMPLATES.map(t => ({
-    id:          t.id,
-    name:        t.name,
-    category:    t.category,
-    version:     t.version,
-    sizes:       t.sizes.map(s => ({ w: s.w, h: s.h, label: s.label, format: s.format })),
-    previewPath: t.previewPath,
-  }))
+  return TEMPLATES.map(t => {
+    // Pull the unique set of asset-slot names. Order preserved from
+    // the layer stack so the UI lists slots top-down (background first,
+    // character/logo on top) — matches the rendering order users will
+    // see in the final composition.
+    const slotsSeen = new Set<string>()
+    const slots: string[] = []
+    for (const L of t.layers) {
+      if (L.type === 'asset' && typeof L.slot === 'string' && !slotsSeen.has(L.slot)) {
+        slotsSeen.add(L.slot)
+        slots.push(L.slot)
+      }
+    }
+    return {
+      id:          t.id,
+      name:        t.name,
+      category:    t.category,
+      version:     t.version,
+      sizes:       t.sizes.map(s => ({ w: s.w, h: s.h, label: s.label, format: s.format })),
+      previewPath: t.previewPath,
+      slots,
+    }
+  })
 }
 
 // ─── Module-init bootstrap ──────────────────────────────────────────────────

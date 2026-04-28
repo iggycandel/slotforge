@@ -717,12 +717,21 @@
   // ─── Grid event delegation ─────────────────────────────────────────────────
 
   function onGridClick(ev){
+    // Two paths into the customise flow:
+    //   1. Explicit button click on .mkt-tile-btn[data-act="customise|render"]
+    //   2. Click anywhere on the tile preview area (Phase 2 — the small
+    //      action buttons were hard to discover; users want to interact
+    //      with the tile itself). The preview slot is the natural target;
+    //      clicking it opens Customise just like the button. We exclude
+    //      the action-bar zone so the per-tile Render button still runs
+    //      a render rather than diverting to the modal.
     var btn = ev.target && ev.target.closest && ev.target.closest('.mkt-tile-btn');
-    if(!btn) return;
-    var tile = btn.closest('.mkt-tile');
+    var tilePreview = !btn && ev.target && ev.target.closest && ev.target.closest('.mkt-tile-preview-slot');
+    var tile = (btn && btn.closest('.mkt-tile')) || (tilePreview && tilePreview.closest('.mkt-tile'));
     var tid  = tile && tile.getAttribute('data-template-id');
-    var act  = btn.getAttribute('data-act');
-    if(!tid || !act) return;
+    if(!tid) return;
+    var act = btn ? btn.getAttribute('data-act') : 'customise';
+    if(!act) return;
 
     var t = findTemplate(tid);
     if(!t){
@@ -821,7 +830,9 @@
           pickStr(vars.ctaText, schema.ctaText ? schema.ctaText.default : 'PLAY NOW'))
       + (hasChar ? formCheckbox('includeCharacter', 'Include character', charOn,
           'Hides the hero figure when a tighter layout reads better.') : '')
-      + renderPositionControls(usedSlots, overrides, hasChar);
+      // hasRender flag drives the right copy under the Positioning header
+      // (drag overlay only appears once a render has supplied layer_boxes).
+      + renderPositionControls(usedSlots, overrides, hasChar, /*hasRender*/ ((kit && kit.renders && kit.renders.length) > 0));
 
     // Size checkboxes — default all selected.
     var sizesHtml = '<div class="mkt-form-label">Sizes</div><div class="mkt-form-sizes">';
@@ -1095,9 +1106,17 @@
    *  modal renders — no point showing character controls on a template
    *  that doesn't draw the character. */
   function collectUsedSlots(template){
+    if(!template) return [];
+    // Phase 2 (Round 5) — the marketing/templates endpoint ships
+    // TemplateSummary, which intentionally omits the heavy `layers`
+    // array but now includes a thin `slots: string[]` derived
+    // server-side from the same layer stack. Prefer that. Fallback to
+    // the legacy `template.layers` walk for any caller that hands us
+    // a fully-hydrated template (e.g. unit tests / future endpoints).
+    if(Array.isArray(template.slots)) return template.slots.slice();
     var seen = {};
     var out  = [];
-    if(!template || !template.layers) return out;
+    if(!template.layers) return out;
     for(var i = 0; i < template.layers.length; i++){
       var L = template.layers[i];
       if(L && L.type === 'asset' && L.slot && !seen[L.slot]){
@@ -1111,7 +1130,7 @@
   /** Per-slot Scale slider only. X/Y position is now drag-on-preview
    *  (see attachPreviewDrag) so we don't surface dx/dy sliders. The
    *  hidden dx/dy values are read out of state by readModalVars. */
-  function renderPositionControls(slots, overrides, hasChar){
+  function renderPositionControls(slots, overrides, hasChar, hasRender){
     if(!slots || slots.length === 0) return '';
     var SLOT_LABELS = {
       background_base:           'Background',
@@ -1140,9 +1159,15 @@
     }
     if(displayed.length === 0) return '';
 
+    // Hint copy adapts to whether a render exists — drag handles need
+    // server-supplied layer_boxes to paint, so before the first render
+    // the only positioning mechanism is the sliders below.
+    var posHint = hasRender
+      ? 'Drag any asset on the preview, or use sliders for precise control. Reset reverts to template defaults.'
+      : 'No render yet — use the sliders below to position. Drag handles appear after the first render. Reset reverts to template defaults.';
     var html = ''
       + '<div class="mkt-form-section-title">Positioning</div>'
-      + '<div class="mkt-form-hint" style="margin:-4px 0 10px">Drag any asset on the preview, or use sliders for precise control. Reset reverts to template defaults.</div>';
+      + '<div class="mkt-form-hint" style="margin:-4px 0 10px">' + posHint + '</div>';
     for(var j = 0; j < displayed.length; j++){
       var item = displayed[j];
       if(item.hidden) continue;
@@ -1908,6 +1933,11 @@
     // the slot then becomes the rendered creative, no need to overlay
     // a "Preview" hint anymore.
     + '.mkt-tile-preview-slot:has(img) .mkt-tile-badge{display:none}'
+    // Click-to-customise affordance — the preview slot is the natural
+    // hit target for opening the modal. Cursor + subtle border lift on
+    // hover so users know it's interactive.
+    + '.mkt-tile-preview-slot{cursor:pointer;transition:border-color .18s,box-shadow .18s}'
+    + '.mkt-tile:hover .mkt-tile-preview-slot{border-color:rgba(201,168,76,0.32);box-shadow:0 0 0 1px rgba(201,168,76,0.18) inset}'
     // ─── Premium empty-state for fresh projects ──────────────────────────
     // Hero card with gold accent, three asset status cards, strong CTA.
     + '.mkt-onboard{max-width:780px;margin:30px auto 60px;padding:0 28px;font-family:Space Grotesk,sans-serif}'
