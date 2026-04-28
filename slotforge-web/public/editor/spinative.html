@@ -1527,6 +1527,12 @@
     <div class="ctx-title" id="ctx-el-name" style="margin:0;padding:0;border:none">Layer</div>
     <button id="ctx-close-btn" style="background:transparent;border:none;color:#778;font-size:16px;cursor:pointer;padding:0 2px;line-height:1" title="Close">&times;</button>
   </div>
+  <!-- Reel-area-only shortcut. openCtxPanel() shows this button when the
+       right-clicked layer is reelArea and hides it for everything else,
+       so the regular layers (bg, logo, char, …) keep their normal
+       upload / AI / adjustment options unchanged. Double-click on the
+       reel area still works — this is just the right-click counterpart. -->
+  <button class="ctx-btn" id="ctx-reel-cfg-btn" style="display:none"><span class="ctx-ico">⊞</span>Reel area config&hellip;</button>
   <label class="ctx-btn" id="ctx-upload-btn" style="cursor:pointer"><span class="ctx-ico">⬆</span>Upload / Replace Asset<input type="file" id="ctx-file-inp" accept="image/*" style="display:none"></label>
   <button class="ctx-btn" id="ctx-ai-btn"><span class="ctx-ico">✦</span>Generate with AI&hellip;</button>
   <div class="ctx-sep"></div>

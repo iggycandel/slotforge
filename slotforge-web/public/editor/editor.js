@@ -1795,11 +1795,20 @@ function buildCanvas(){
       // Cell size comes from computeLayout() — fits reel config in viewport
       const[cols,rows]=parseReel(P.reelset);
       const vp=P.viewport==='desktop'?'landscape':P.viewport;
-      const RS=P.reelSettings||{scale:1,padX:8,padY:8,overlap:{id:null,amount:0}};
-      const BASE_CELL=EL_COMPUTED._cellSize?.[vp]||164;
-      const CELL=Math.round(BASE_CELL*(RS.scale||1));
-      const GAP_X=RS.padX??8;
-      const GAP_Y=RS.padY??8;
+      const RS=P.reelSettings||{scale:1,padX:0,padY:0,overlap:{id:null,amount:0}};
+      // Round-3.2 rule: cells fit the reelArea bounds at scale=1, so
+      // default (padX=0, padY=0, scale=1) makes symbols adjacent + the
+      // grid fills the area edge-to-edge. User-added gaps shrink cells
+      // to stay inside the bounds; user-set scale>1 still overflows.
+      // Falls back to EL_COMPUTED._cellSize when reelArea has 0 size
+      // (rare — mid-layout race) so we never compute NaN cells.
+      const GAP_X=RS.padX??0;
+      const GAP_Y=RS.padY??0;
+      const _fitW = (pos.w - (cols-1)*GAP_X) / Math.max(1, cols);
+      const _fitH = (pos.h - (rows-1)*GAP_Y) / Math.max(1, rows);
+      const _fitCell = Math.floor(Math.min(_fitW, _fitH));
+      const FIT_CELL = _fitCell > 0 ? _fitCell : (EL_COMPUTED._cellSize?.[vp] || 164);
+      const CELL = Math.round(FIT_CELL * (RS.scale || 1));
       const OV=RS.overlap||{id:null,amount:0};
       // Allow scaled/overlapped content to bleed outside the reelArea bounds
       const _needsOverflow = (RS.scale||1) !== 1 || (OV.id && OV.amount > 0);
@@ -2823,6 +2832,18 @@ function openLayerCtxMenu(key, cx, cy){
   }
 
   var isCustom = key && key.startsWith('custom_');
+
+  // Reel-area shortcut — only inserted when the right-clicked layer is
+  // the reelArea. Same target as the canvas right-click + double-click
+  // gestures: openReelSettings(). Placed at the top so it's the first
+  // thing users see when the menu fires on reelArea, since it's the
+  // most contextually relevant action for that layer.
+  if(key === 'reelArea'){
+    menu.appendChild(item('⊞  Reel area config…', function(){
+      if(typeof openReelSettings === 'function') openReelSettings();
+    }));
+    menu.appendChild(sep());
+  }
 
   // New Layer
   menu.appendChild(item('＋ New Layer', function(){
@@ -5185,6 +5206,20 @@ function openCtxPanel(k, clientX, clientY){
     if(vl){ vl.textContent = adj[a]; }
   });
 
+  // Reel-area shortcut — only visible when right-clicking the reelArea
+  // layer. Calls the same openReelSettings() as the double-click gesture
+  // so users have two ways in: dbl-click on canvas OR right-click → menu.
+  const reelCfgBtn = document.getElementById('ctx-reel-cfg-btn');
+  if(reelCfgBtn){
+    if(k === 'reelArea'){
+      reelCfgBtn.style.display = '';
+      reelCfgBtn.onclick = ()=>{ closeCtxPanel(); if(typeof openReelSettings==='function') openReelSettings(); };
+    } else {
+      reelCfgBtn.style.display = 'none';
+      reelCfgBtn.onclick = null;
+    }
+  }
+
   // Wire copy button for this specific key
   const copyBtn = document.getElementById('ctx-copy-btn');
   if(copyBtn){
@@ -5449,10 +5484,16 @@ P.symbols = [
 ];
 
 // ═══ REEL SETTINGS ═══
+// Defaults: symbols adjacent (no gap) and sized to fill the reel area
+// edge-to-edge. The render path computes cell size from the reelArea
+// bounds at scale=1, so default config has cells touching each other
+// and the grid filling reelArea exactly. Users add padding via the
+// Reel Settings modal — that shrinks cells to keep the grid inside
+// the bounds. Scale > 1 still overflows the bounds (same as before).
 P.reelSettings = {
   scale:   1.0,   // multiplier on cell size  (0.4 – 2.0)
-  padX:    8,     // horizontal gap between columns, px in canvas space (0–120)
-  padY:    8,     // vertical gap between rows (0–120)
+  padX:    0,     // horizontal gap between columns, px in canvas space (0–120)
+  padY:    0,     // vertical gap between rows (0–120)
   overlap: { id: null, amount: 0 }  // which symbol id overlaps neighbours + by how much (0–100%)
 };
 
