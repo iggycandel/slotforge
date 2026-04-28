@@ -92,29 +92,55 @@
     state.loading = true;
     state.error   = null;
     state.upgradeRequired = false;
-    renderLoading();
 
-    Promise.all([
-      fetchJSON('/api/marketing/templates'),
-      fetchJSON('/api/marketing/kits?project_id=' + encodeURIComponent(projectId())),
-    ]).then(function(results){
+    // Step-based loading UI (replaces the indeterminate spinner). Each
+    // stage flips from 'running' → 'done' as its work completes; the
+    // user sees concrete progress instead of an opaque "thinking" state.
+    var stages = [
+      { id: 'templates', label: 'Loading template catalogue', state: 'running' },
+      { id: 'kits',      label: 'Reading project kit + cached renders', state: 'pending' },
+      { id: 'paint',     label: 'Composing previews', state: 'pending' },
+    ];
+    function setStage(id, st){
+      for(var i = 0; i < stages.length; i++){ if(stages[i].id === id) stages[i].state = st; }
+      paintLoadingStages(stages);
+    }
+    renderLoading(stages);
+
+    // Fetch templates + kits in parallel but track them independently so
+    // each ticks its own checkmark. Whichever lands first lights up first;
+    // the next remaining one switches to 'running' so the user sees
+    // continuous forward motion even when one fetch is much faster.
+    var pTemplates = fetchJSON('/api/marketing/templates');
+    var pKits      = fetchJSON('/api/marketing/kits?project_id=' + encodeURIComponent(projectId()));
+    pTemplates.then(function(){ setStage('templates', 'done');
+      // Promote kits to 'running' if it hasn't already finished.
+      if(stages[1].state === 'pending') setStage('kits', 'running');
+    }, function(){});
+    pKits.then(function(){ setStage('kits', 'done');
+      if(stages[0].state === 'pending') setStage('templates', 'running');
+    }, function(){});
+
+    Promise.all([pTemplates, pKits]).then(function(results){
       state.loading   = false;
       state.templates = (results[0] && results[0].templates) || [];
       state.kits      = (results[1] && results[1].kits)      || [];
       state.readiness = (results[1] && results[1].readiness) || null;
-      render();
-      // Fire the bg-removal flow lazily after the grid has painted.
-      // Idempotent server-side: a no-op when character.transparent is
-      // already cached. We don't await it — the marketing tab is
-      // usable immediately with the regular character asset (engine
-      // falls back), and the cutout streams in for the next render.
-      ensureCharacterCutout();
-      // Auto-render: when assets are ready AND no kit has any cached
-      // render yet, fire renderAll once so first-time users get a
-      // populated kit grid without manually clicking Render. Gated on
-      // a per-project localStorage flag so we never fire twice (e.g.
-      // a user who deletes a render shouldn't trigger a new one).
-      maybeAutoRenderAll();
+      // Brief 'paint' stage flip so users see the third checkmark land
+      // before the grid actually replaces the loading body. Without
+      // this they go from "2/3 done" straight to the populated grid
+      // and the third row reads as if it never ran.
+      setStage('paint', 'running');
+      requestAnimationFrame(function(){
+        setStage('paint', 'done');
+        // 120 ms after the last checkmark so the eye registers the
+        // transition before the grid paint reflows the surface.
+        setTimeout(function(){
+          render();
+          ensureCharacterCutout();
+          maybeAutoRenderAll();
+        }, 120);
+      });
     }).catch(function(err){
       state.loading = false;
       // Surface the upgrade card for plan-gated 403s; treat anything
@@ -409,18 +435,16 @@
 
   function grid(){ return document.getElementById('mkt-grid'); }
 
-  function renderLoading(){
+  function renderLoading(stages){
     var el = grid();
     if(!el) return;
     // Defensive: if refresh() was kicked before initOnce (e.g. a future
     // caller) the CSS may not be present yet — inject before painting.
     ensureMarketingCss();
-    // Premium loading state — centered hero card with gold-accent
-    // pulsing rings + pithy copy. Replaces the earlier skeleton-tile
-    // grid that read as "the page is half-broken". The loading state
-    // only flashes briefly (under 500ms in the warm-cache case);
-    // skeleton tiles previously suggested permanent structure that
-    // never arrived for the empty-state path.
+    // Premium loading hero + step strip. The strip turns the previously
+    // opaque "Reading your project" wait into something that visibly
+    // ticks forward — checkmarks land as each fetch completes, then the
+    // grid paint stage flips before the surface reflows.
     el.innerHTML = ''
       + '<div class="mkt-loading-hero">'
       +   '<div class="mkt-loading-rings">'
@@ -431,8 +455,36 @@
       +   '</div>'
       +   '<div class="mkt-loading-eyebrow">Marketing Kit</div>'
       +   '<div class="mkt-loading-title">Reading your project</div>'
-      +   '<div class="mkt-loading-sub">Loading templates, asset readiness, and your previous renders…</div>'
+      +   '<div class="mkt-loading-sub">Each step ticks below as it lands — typically &lt;1s on a warm cache.</div>'
+      +   '<div class="mkt-loading-progress" id="mkt-loading-progress"></div>'
+      +   '<ul class="mkt-loading-steps" id="mkt-loading-steps"></ul>'
       + '</div>';
+    paintLoadingStages(stages || []);
+  }
+  /** Re-render only the steps + progress rail (cheap — no full innerHTML
+   *  swap). Called from setStage() inside refresh() each time a fetch
+   *  resolves. */
+  function paintLoadingStages(stages){
+    var stepsEl = document.getElementById('mkt-loading-steps');
+    var barEl   = document.getElementById('mkt-loading-progress');
+    if(!stepsEl || !barEl || !stages || !stages.length) return;
+    var done = 0;
+    for(var i = 0; i < stages.length; i++) if(stages[i].state === 'done') done++;
+    var pct = Math.round((done / stages.length) * 100);
+    barEl.innerHTML = '<span class="mkt-loading-progress-fill" style="width:' + pct + '%"></span>';
+    var html = '';
+    for(var j = 0; j < stages.length; j++){
+      var s = stages[j];
+      var icon = s.state === 'done'
+        ? '<span class="mkt-loading-step-tick">✓</span>'
+        : s.state === 'running'
+          ? '<span class="mkt-loading-step-spin"></span>'
+          : '<span class="mkt-loading-step-dot"></span>';
+      html += '<li class="mkt-loading-step is-' + s.state + '">' +
+                icon + '<span class="mkt-loading-step-lbl">' + escapeHtml(s.label) + '</span>' +
+              '</li>';
+    }
+    stepsEl.innerHTML = html;
   }
 
   function renderError(msg){
@@ -1821,6 +1873,18 @@
     + '.mkt-loading-eyebrow{font-size:9px;font-family:DM Mono,monospace;letter-spacing:0.18em;text-transform:uppercase;color:#c9a84c;margin-bottom:10px;font-weight:700}'
     + '.mkt-loading-title{font-size:18px;font-weight:600;color:#e8e6e2;letter-spacing:-0.01em;margin-bottom:8px;line-height:1.2}'
     + '.mkt-loading-sub{font-size:12px;color:#7a7a94;line-height:1.5;max-width:380px}'
+    // ─── Stage strip + progress bar (Round 5 — replaces opaque spinner) ──
+    + '.mkt-loading-progress{margin-top:22px;width:280px;max-width:80%;height:3px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden;position:relative}'
+    + '.mkt-loading-progress-fill{display:block;height:100%;background:linear-gradient(90deg,#c9a84c,#e8c96d);border-radius:999px;transition:width .35s cubic-bezier(.2,.8,.2,1);box-shadow:0 0 12px rgba(201,168,76,.45)}'
+    + '.mkt-loading-steps{margin:18px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;text-align:left;width:280px;max-width:80%}'
+    + '.mkt-loading-step{display:flex;align-items:center;gap:10px;font-size:11px;font-family:DM Mono,monospace;letter-spacing:.04em;color:#5a5a78;transition:color .3s}'
+    + '.mkt-loading-step.is-running{color:#c9a84c}'
+    + '.mkt-loading-step.is-done{color:#9898b8}'
+    + '.mkt-loading-step-lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '.mkt-loading-step-dot{width:14px;height:14px;border-radius:50%;border:1px solid rgba(255,255,255,0.10);background:transparent;flex-shrink:0;display:inline-block}'
+    + '.mkt-loading-step-spin{width:14px;height:14px;border-radius:50%;border:1.5px solid rgba(201,168,76,0.20);border-top-color:#c9a84c;animation:mktStepSpin .8s linear infinite;flex-shrink:0;display:inline-block}'
+    + '.mkt-loading-step-tick{width:14px;height:14px;border-radius:50%;background:rgba(94,202,138,0.15);border:1px solid rgba(94,202,138,0.45);color:#5eca8a;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}'
+    + '@keyframes mktStepSpin{to{transform:rotate(360deg)}}'
     // ─── Premium empty-state for fresh projects ──────────────────────────
     // Hero card with gold accent, three asset status cards, strong CTA.
     + '.mkt-onboard{max-width:780px;margin:30px auto 60px;padding:0 28px;font-family:Space Grotesk,sans-serif}'
