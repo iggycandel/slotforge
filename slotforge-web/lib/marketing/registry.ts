@@ -216,6 +216,20 @@ export interface TemplateSummary {
    *  always returned [] and the position controls silently disappeared.
    *  Cheap to compute server-side and tiny on the wire. */
   slots:     string[]
+  /** Phase 3 — minimal asset-layer specs the iframe needs to derive
+   *  default bboxes client-side, BEFORE any server render has supplied
+   *  layer_boxes. Lets drag handles paint on a brand-new tile (the
+   *  previewPath PNG as backdrop) so the user can position character +
+   *  logo without first burning credits on a render. Mirrors the same
+   *  fields the server's compose.ts reads (anchor / scale / padding /
+   *  fit) — kept thin so the catalogue payload stays small. */
+  assetLayers: Array<{
+    slot:    string
+    anchor:  string
+    scale?:  number
+    padding?: number | [number, number, number, number]
+    fit?:    'cover' | 'contain' | 'fill'
+  }>
 }
 
 export function listTemplateSummaries(): TemplateSummary[] {
@@ -226,10 +240,23 @@ export function listTemplateSummaries(): TemplateSummary[] {
     // see in the final composition.
     const slotsSeen = new Set<string>()
     const slots: string[] = []
+    // Asset-layer specs for client-side bbox derivation (Phase 3).
+    // Kept minimal — only the fields the client compose-mirror actually
+    // needs. Order preserved (matches render z-order).
+    const assetLayers: TemplateSummary['assetLayers'] = []
     for (const L of t.layers) {
-      if (L.type === 'asset' && typeof L.slot === 'string' && !slotsSeen.has(L.slot)) {
-        slotsSeen.add(L.slot)
-        slots.push(L.slot)
+      if (L.type === 'asset' && typeof L.slot === 'string') {
+        if (!slotsSeen.has(L.slot)) {
+          slotsSeen.add(L.slot)
+          slots.push(L.slot)
+        }
+        assetLayers.push({
+          slot:    L.slot,
+          anchor:  L.anchor,
+          scale:   L.scale,
+          padding: L.padding,
+          fit:     L.fit,
+        })
       }
     }
     return {
@@ -240,6 +267,7 @@ export function listTemplateSummaries(): TemplateSummary[] {
       sizes:       t.sizes.map(s => ({ w: s.w, h: s.h, label: s.label, format: s.format })),
       previewPath: t.previewPath,
       slots,
+      assetLayers,
     }
   })
 }

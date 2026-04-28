@@ -893,11 +893,128 @@
         }
       }
     } else {
-      if(preview) preview.innerHTML = '<div class="mkt-modal-preview-empty">Click <b>Render selected sizes</b> to see your kit</div>';
+      // Phase 3 (Round 5) — pre-render preview path. No server render
+      // exists yet, so we synthesize previewMeta from the template's
+      // own asset-layer specs (anchor / scale / padding / fit) using
+      // assumed natural dimensions per slot. Drag handles paint over
+      // the previewPath PNG; sliders + drag both update dx/dy state
+      // without ever calling the render endpoint until the user
+      // explicitly hits Render.
+      var defaults = computeDefaultPreviewMeta(template, overrides);
+      if(defaults && template.previewPath){
+        previewMeta = defaults;
+        if(preview){
+          showPreview({ url: template.previewPath });
+        }
+      } else if(preview){
+        // Older templates (no assetLayers / no previewPath) gracefully
+        // fall back to the prior placeholder.
+        preview.innerHTML = '<div class="mkt-modal-preview-empty">Click <b>Render selected sizes</b> to see your kit</div>';
+      }
       if(results) results.innerHTML = '';
     }
 
     document.getElementById('mkt-modal-overlay').style.display = 'flex';
+  }
+
+  // ─── Client-side bbox derivation (Phase 3) ──────────────────────────────────
+  //
+  // Mirrors lib/marketing/compose.ts:drawAssetLayer() so drag handles
+  // can paint without a server render. The math is identical; only the
+  // image-natural-size lookup differs (the client doesn't have the user's
+  // actual asset bytes, so it assumes a typical aspect per slot — close
+  // enough that the handle landing positions feel right relative to the
+  // previewPath backdrop, which itself is a stylistic mockup).
+
+  /** Typical natural dimensions per slot. Slot-specific so anchor +
+   *  fit:contain math produces something visually correct on the
+   *  previewPath backdrop. Real asset dims override on first render. */
+  function _assumedNat(slot, sizeW, sizeH){
+    if(slot === 'background_base')         return { w: sizeW, h: sizeH };  // matches canvas; cover fills
+    if(slot === 'character')               return { w: 1024, h: 1365 };    // 3:4 portrait illustration
+    if(slot === 'character.transparent')   return { w: 1024, h: 1365 };
+    if(slot === 'logo')                    return { w: 1024, h: 256 };     // wide wordmark
+    return { w: sizeW, h: sizeH };
+  }
+
+  function _resolvePadding(pad){
+    if(pad == null)                return { top: 0, right: 0, bottom: 0, left: 0 };
+    if(typeof pad === 'number')    return { top: pad, right: pad, bottom: pad, left: pad };
+    if(Array.isArray(pad))         return { top: pad[0]||0, right: pad[1]||0, bottom: pad[2]||0, left: pad[3]||0 };
+    return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+
+  function _anchorIn(anchor, bx, by, bw, bh, cw, ch){
+    var parts = String(anchor || 'top-left').split('-');
+    var v = parts[0];
+    var h = parts[1];
+    var x = bx;
+    var y = by;
+    if(h === 'center') x = bx + (bw - cw) / 2;
+    if(h === 'right')  x = bx + bw - cw;
+    if(v === 'middle') y = by + (bh - ch) / 2;
+    if(v === 'bottom') y = by + bh - ch;
+    return { x: x, y: y };
+  }
+
+  function _computeAssetBbox(layer, nat, sizeW, sizeH, override){
+    var pad   = _resolvePadding(layer.padding);
+    var boxX  = pad.left;
+    var boxY  = pad.top;
+    var boxW  = sizeW - pad.left - pad.right;
+    var boxH  = sizeH - pad.top  - pad.bottom;
+    var drawW = boxW;
+    var drawH = boxH;
+    if(layer.fit === 'cover'){
+      var rC = Math.max(boxW / nat.w, boxH / nat.h);
+      drawW = nat.w * rC; drawH = nat.h * rC;
+    } else if(layer.fit === 'contain'){
+      var rN = Math.min(boxW / nat.w, boxH / nat.h);
+      drawW = nat.w * rN; drawH = nat.h * rN;
+    }
+    if(layer.scale && layer.scale > 0 && layer.scale !== 1){
+      drawW *= layer.scale; drawH *= layer.scale;
+    }
+    if(override && override.scale && override.scale > 0 && override.scale !== 1){
+      drawW *= override.scale; drawH *= override.scale;
+    }
+    var pos = _anchorIn(layer.anchor, boxX, boxY, boxW, boxH, drawW, drawH);
+    if(override && override.dx) pos.x += override.dx * sizeW;
+    if(override && override.dy) pos.y += override.dy * sizeH;
+    return { x: pos.x, y: pos.y, w: drawW, h: drawH };
+  }
+
+  /** Pick the biggest IMAGE size (skip PDFs) as the canonical bbox
+   *  coordinate space. Matches how the previewPath PNG is rendered. */
+  function _pickBiggestImageSize(template){
+    var sizes = template && template.sizes ? template.sizes : [];
+    var best = null;
+    for(var i = 0; i < sizes.length; i++){
+      var s = sizes[i];
+      var f = (s.format || '').toLowerCase();
+      if(f !== 'png' && f !== 'jpg' && f !== 'jpeg' && f !== 'webp') continue;
+      if(!best || (s.w * s.h) > (best.w * best.h)) best = s;
+    }
+    return best || sizes[0] || null;
+  }
+
+  /** Build a previewMeta-shaped object from the template's own asset
+   *  layer specs + current dx/dy/scale overrides. Returns null when
+   *  the template has no assetLayers (older payloads) or no image
+   *  size (PDF-only). */
+  function computeDefaultPreviewMeta(template, overrides){
+    if(!template || !Array.isArray(template.assetLayers) || template.assetLayers.length === 0) return null;
+    var size = _pickBiggestImageSize(template);
+    if(!size) return null;
+    var boxes = [];
+    for(var i = 0; i < template.assetLayers.length; i++){
+      var L = template.assetLayers[i];
+      var ov = (overrides && overrides[L.slot]) || null;
+      var nat = _assumedNat(L.slot, size.w, size.h);
+      var b = _computeAssetBbox(L, nat, size.w, size.h, ov);
+      boxes.push({ slot: L.slot, x: b.x, y: b.y, w: b.w, h: b.h });
+    }
+    return { templateId: template.id, width: size.w, height: size.h, boxes: boxes };
   }
 
   function pickBiggestExisting(renders, template){
@@ -1064,17 +1181,36 @@
     if(!tid) return;
     var template = findTemplate(tid);
     if(!template) return;
-    // Pick the smallest size for preview — cheapest to render and good
-    // enough at the modal preview pane's display size. The Render
-    // button still ships the full size set when clicked.
-    var smallest = template.sizes[0];
-    for(var i = 1; i < template.sizes.length; i++){
-      if(template.sizes[i].w * template.sizes[i].h < smallest.w * smallest.h){
-        smallest = template.sizes[i];
+    // Phase 3 (Round 5): client-only refresh — re-derive bboxes from
+    // the current overrides and repaint the drag handles WITHOUT
+    // calling the server. The previous implementation fired runRender()
+    // on every drag-pause, burning credits silently each time the user
+    // nudged a handle. The new render-at-export workflow requires
+    // explicit user action — so this function never spends credits;
+    // it just keeps the visual state in sync with the form values.
+    var vars      = readModalVars();
+    var overrides = (vars.layerOverrides && typeof vars.layerOverrides === 'object') ? vars.layerOverrides : {};
+    var defaults  = computeDefaultPreviewMeta(template, overrides);
+    if(defaults){
+      // Preserve the template id + canvas size from previousMeta when
+      // a real render is already showing — only patch the bboxes for
+      // slots present in the new defaults set, so we don't blow away
+      // server-supplied bboxes for slots the client doesn't know how
+      // to derive.
+      if(previewMeta && previewMeta.boxes && previewMeta.width === defaults.width && previewMeta.height === defaults.height){
+        var byslot = {};
+        for(var i = 0; i < defaults.boxes.length; i++) byslot[defaults.boxes[i].slot] = defaults.boxes[i];
+        previewMeta = {
+          templateId: previewMeta.templateId,
+          width:      previewMeta.width,
+          height:     previewMeta.height,
+          boxes:      previewMeta.boxes.map(function(b){ return byslot[b.slot] || b; }),
+        };
+      } else {
+        previewMeta = defaults;
       }
+      renderPreviewHandles();
     }
-    var vars = readModalVars();
-    runRender(template, [smallest.label], vars, /*toastOnly*/ false);
   }
 
   // ─── Form helpers ──────────────────────────────────────────────────────────
@@ -1159,12 +1295,15 @@
     }
     if(displayed.length === 0) return '';
 
-    // Hint copy adapts to whether a render exists — drag handles need
-    // server-supplied layer_boxes to paint, so before the first render
-    // the only positioning mechanism is the sliders below.
+    // Hint copy adapts to render state. Phase 3 (Round 5): drag handles
+    // now paint pre-render too — bboxes are derived client-side from
+    // the template's anchor / scale / padding specs, so users can
+    // position without first burning credits on a render. Sliders and
+    // drag stay in sync; neither calls the server until the user
+    // explicitly clicks Render.
     var posHint = hasRender
-      ? 'Drag any asset on the preview, or use sliders for precise control. Reset reverts to template defaults.'
-      : 'No render yet — use the sliders below to position. Drag handles appear after the first render. Reset reverts to template defaults.';
+      ? 'Drag any asset on the preview, or use sliders for precise control. Changes don\'t spend credits — only Render does. Reset reverts to template defaults.'
+      : 'Drag the asset rectangles on the preview, or use the sliders below. Nothing renders (or spends credits) until you click Render. Reset reverts to template defaults.';
     var html = ''
       + '<div class="mkt-form-section-title">Positioning</div>'
       + '<div class="mkt-form-hint" style="margin:-4px 0 10px">' + posHint + '</div>';
