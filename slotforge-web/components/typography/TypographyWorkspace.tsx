@@ -243,25 +243,79 @@ export function TypographyWorkspace({
   )
 
   // ── Upload handler (drag-drop or file picker) ─────────────────────────────
+  //
+  // We downscale + JPEG-re-encode every upload BEFORE base64-ing into
+  // the request body. Why: previously we used FileReader.readAsDataURL
+  // straight on the original File, which inflates each image ~33% via
+  // base64. Six 4 MB screenshots = up to ~32 MB JSON, way past
+  // Vercel's 4.5 MB serverless-function body cap → a 413 Payload Too
+  // Large response from the platform before the route even runs.
+  //
+  // The /api/typography/generate route forwards images to OpenAI vision
+  // at detail:'low' (downsampled to ~512×512 internally), so full-res
+  // screenshots don't add information. 1280px max-edge JPEG @ 0.82 cuts
+  // the payload to ~150–250 KB per image — six fit comfortably under
+  // the platform cap with headroom for game_name + notes + locales.
+  //
+  // PNGs with transparency aren't typical for slot screenshots; the
+  // typography model reads colour + composition, not alpha. Re-encoding
+  // to JPEG is safe and saves another ~30% over the same-resolution PNG.
+  const downscaleImageToDataUrl = useCallback(async (
+    file: File,
+    maxEdge = 1280,
+    quality = 0.82,
+  ): Promise<string> => {
+    const objectUrl = URL.createObjectURL(file)
+    try {
+      const img = await new Promise<HTMLImageElement>((res, rej) => {
+        const i = new Image()
+        i.onload  = () => res(i)
+        i.onerror = () => rej(new Error('image decode failed'))
+        i.src = objectUrl
+      })
+      const w = img.naturalWidth
+      const h = img.naturalHeight
+      if (!w || !h) throw new Error('image has zero dimensions')
+      const scale = Math.min(1, maxEdge / Math.max(w, h))
+      const tw = Math.max(1, Math.round(w * scale))
+      const th = Math.max(1, Math.round(h * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width  = tw
+      canvas.height = th
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('canvas 2d context unavailable')
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(img, 0, 0, tw, th)
+      return canvas.toDataURL('image/jpeg', quality)
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }, [])
+
   const handleFiles = useCallback((files: FileList | File[]) => {
     const arr = Array.from(files).filter(f => f.type.startsWith('image/'))
     if (arr.length === 0) return
     // Cap the total at 6 to match the API schema limit. Oldest uploads
     // stay; we reject the excess silently.
-    Promise.all(arr.map(file => new Promise<InputImage>((resolve, reject) => {
-      const r = new FileReader()
-      r.onload = () => resolve({
-        id:     `up-${Math.random().toString(36).slice(2, 10)}`,
-        source: 'upload',
-        label:  file.name.slice(0, 24),
-        url:    r.result as string,
-      })
-      r.onerror = reject
-      r.readAsDataURL(file)
-    }))).then(imgs => {
-      setImages(prev => [...prev, ...imgs].slice(0, 6))
-    }).catch(() => {/* ignore */})
-  }, [])
+    Promise.all(arr.map(async (file): Promise<InputImage | null> => {
+      try {
+        const url = await downscaleImageToDataUrl(file)
+        return {
+          id:     `up-${Math.random().toString(36).slice(2, 10)}`,
+          source: 'upload',
+          label:  file.name.slice(0, 24),
+          url,
+        }
+      } catch (err) {
+        console.warn('[typography] image downscale failed', file.name, err)
+        return null
+      }
+    })).then(imgs => {
+      const ok = imgs.filter((x): x is InputImage => x !== null)
+      if (ok.length > 0) setImages(prev => [...prev, ...ok].slice(0, 6))
+    })
+  }, [downscaleImageToDataUrl])
 
   const removeImage = useCallback((id: string) => {
     setImages(prev => prev.filter(i => i.id !== id))
