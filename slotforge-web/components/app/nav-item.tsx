@@ -8,13 +8,21 @@ interface NavItemProps {
   href: string
   icon: LucideIcon
   label: string
+  /** Tighter label rendered under the icon when the sidebar is in
+   *  collapsed mode. The collapsed rail is 56 px wide with 8 px side
+   *  margin → only ~40 px of room for the caption, and full labels like
+   *  "DASHBOARD" or "HELP & DOCS" overflow / wrap to multiple lines.
+   *  Pass a 4-5 char abbreviation here (e.g. "Dash", "Help"); falls
+   *  back to the full `label` when omitted. The expanded mode and the
+   *  native tooltip both still show the full label. */
+  shortLabel?: string
   /** If true, only match exact path instead of startsWith */
   exact?: boolean
   /** Render as icon-only rail item (tooltip via native title attr). */
   collapsed?: boolean
 }
 
-export function NavItem({ href, icon: Icon, label, exact, collapsed }: NavItemProps) {
+export function NavItem({ href, icon: Icon, label, shortLabel, exact, collapsed }: NavItemProps) {
   const pathname = usePathname()
   const active = exact ? pathname === href : pathname.startsWith(href)
 
@@ -61,8 +69,15 @@ export function NavItem({ href, icon: Icon, label, exact, collapsed }: NavItemPr
           color:          active ? '#d7a84f' : 'rgba(255,255,255,0.6)',
           lineHeight:     1,
           marginTop:      1,
+          // Belt-and-braces against the 56 px rail clipping the caption:
+          // never wrap, hide overflow, and ellipsis if shortLabel still
+          // happens to be too long (e.g. localised translations).
+          maxWidth:       '100%',
+          whiteSpace:     'nowrap',
+          overflow:       'hidden',
+          textOverflow:   'ellipsis',
         }}>
-          {label}
+          {shortLabel ?? label}
         </span>
       ) : (
         label

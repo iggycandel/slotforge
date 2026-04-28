@@ -137,12 +137,14 @@ export function Sidebar() {
               href={`/${slug}/dashboard`}
               icon={LayoutDashboard}
               label="Dashboard"
+              shortLabel="Home"
               collapsed={collapsed}
             />
             <NavItem
               href={`/${slug}/projects`}
               icon={FolderOpen}
               label="Projects"
+              shortLabel="Proj"
               collapsed={collapsed}
             />
 
@@ -162,6 +164,7 @@ export function Sidebar() {
               href={`/${slug}/settings/general`}
               icon={Settings}
               label="Settings"
+              shortLabel="Set"
               collapsed={collapsed}
             />
           </>
@@ -182,7 +185,7 @@ export function Sidebar() {
           gap: 4,
         }}
       >
-        <NavItem href="/help" icon={HelpCircle} label="Help & docs" exact collapsed={collapsed} />
+        <NavItem href="/help" icon={HelpCircle} label="Help & docs" shortLabel="Help" exact collapsed={collapsed} />
 
         {/* Account row */}
         <div
