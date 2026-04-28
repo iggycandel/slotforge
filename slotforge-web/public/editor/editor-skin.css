@@ -617,11 +617,13 @@ body {
   position: relative;
   z-index: 1;
   display: grid;
-  /* Width/height adapt to whichever axis is the binding constraint
-   * given --rv-aspect (set per-render in renderReelViz). The fallback
-   * 5/3 matches the most common reel-set so the very first paint
-   * never collapses while JS catches up. */
-  width: auto;
+  /* Strategy: width:100% takes the stage's full inner width; the
+   * aspect-ratio derives the height. If that height exceeds the
+   * stage (taller-than-wide grids like 3×7 or 5×6), max-height:100%
+   * kicks in and the spec's aspect-preserving shrink reduces the
+   * width to keep proportions. width:auto + aspect-ratio (the old
+   * approach) collapsed to content size and the grid never grew. */
+  width: 100%;
   height: auto;
   max-width: 100%;
   max-height: 100%;
@@ -631,7 +633,10 @@ body {
   background: transparent;
   border: none;
   border-radius: 0;
-  margin: auto; /* belt-and-braces centering inside the stage flex */
+  /* Centred inside the flex stage; margin:auto handles the case
+   * where max-height shrunk us below the parent's full size. */
+  margin: auto;
+  place-self: center;
 }
 #reel-viz .rvc {
   /* No per-cell aspect-ratio — the grid's aspect + 1fr×1fr layout

@@ -11,15 +11,28 @@
      them; design-system.css loads Inter + JetBrains Mono which are now
      the canonical body + mono families. -->
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<!-- Shared design-system tokens (colors, type scale, radii, shadows) — same
-     stylesheet the marketing landing page consumes, so editor + landing share
-     a single source of truth. -->
-<link rel="stylesheet" href="/design-system.css">
-<link rel="stylesheet" href="editor.css">
-<!-- Editor skin layer — sits on top of editor.css and remaps legacy tokens
-     onto the --sf-* design system + adds component-level overrides for
-     the most visible chrome (workspace tabs, save button, panels, pills). -->
-<link rel="stylesheet" href="editor-skin.css">
+<!-- Cache-bust the editor's CSS files using the ?v= param from the
+     iframe URL — same pattern editor.js uses below. Without this,
+     bumping EDITOR_VERSION reloaded spinative.html but the CSS files
+     stayed cached at the previous version and skin tweaks didn't
+     reach the browser. The script runs synchronously in <head> so
+     the styles are present before body parses. -->
+<script>
+  (function(){
+    var v = new URLSearchParams(location.search).get('v') || 'prod';
+    function addCss(href){
+      var l = document.createElement('link');
+      l.rel = 'stylesheet';
+      l.href = href + '?v=' + encodeURIComponent(v);
+      document.head.appendChild(l);
+    }
+    // Order matters: design-system → editor.css → editor-skin.css
+    // so each layer overrides the one before.
+    addCss('/design-system.css');
+    addCss('editor.css');
+    addCss('editor-skin.css');
+  })();
+</script>
 <!-- DOM-to-image rasterizer used by getThumbnail() when saving. Loaded here so
      it's ready before editor.js runs; version-busted by the host shell. -->
 <script src="html2canvas.min.js"></script>
