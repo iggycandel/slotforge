@@ -279,6 +279,20 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // Gate modal — shown when plan or credits block generation
   const [gateModal, setGateModal] = useState<{ type: 'upgrade' | 'credits' } | null>(null)
 
+  // Pre-flight confirmation modal for Generate-All / Fill-Gaps. Pops up
+  // BEFORE the actual /api/generate call so the user can see the credit
+  // cost and bail if it's not what they expected. The pending args are
+  // the same tuple runBatchGenerate accepts; on confirm we forward them
+  // straight through.
+  const [confirmGen, setConfirmGen] = useState<{
+    fillGaps:  boolean
+    types:     AssetType[]      // resolved target list (count = .length)
+    used:      number           // credits used this period
+    total:     number           // credits included in plan
+    plan:      string           // "free" | "freelancer" | "studio" | …
+    label:     string           // short copy noun ("backgrounds", "all assets", "missing", …)
+  } | null>(null)
+
   // Asset state
   const [assets, setAssets] = useState<Partial<Record<AssetType, GeneratedAsset>>>(
     () => buildAssetMap(initialAssets)
@@ -646,16 +660,75 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     }
   }, [theme, projectId, provider, styleId, addLog, saveContext, assetGroups, assets])
 
-  const handleGenerate        = useCallback(() => runBatchGenerate(false), [runBatchGenerate])
-  const handleGenerateMissing  = useCallback(() => runBatchGenerate(true),  [runBatchGenerate])
+  // Pre-flight confirmation. Fetches /api/credits, makes the upgrade /
+  // credits-exhausted decision client-side, and only opens the confirm
+  // modal when the user actually has the budget. On free plan it short-
+  // circuits to the existing upgrade gate so the user is steered to
+  // billing instead of seeing a confirm dialog they can't act on.
+  const requestGenerateConfirm = useCallback(async (
+    fillGaps:       boolean,
+    explicitTypes?: AssetType[],
+    label?:         string,
+  ) => {
+    const candidate = explicitTypes ?? assetGroups.flatMap(g => g.types)
+    const types     = fillGaps ? candidate.filter(t => !assets[t]) : candidate
+    if (types.length === 0) {
+      addLog('All assets already generated — nothing to do.')
+      return
+    }
+
+    let plan = 'free'; let aiEnabled = false; let used = 0; let total = 0
+    try {
+      const r = await fetch('/api/credits', { cache: 'no-store' })
+      if (r.ok) {
+        const j = await r.json()
+        plan      = String(j.plan ?? 'free')
+        aiEnabled = !!j.aiEnabled
+        used      = typeof j.used  === 'number' ? j.used  : 0
+        total     = typeof j.total === 'number' ? j.total : 0
+      }
+    } catch (e) {
+      // Non-fatal: if /api/credits is briefly unreachable we still let
+      // the user proceed; the server-side gate will catch any policy
+      // violation and surface the existing 403/402 modals.
+      console.warn('[generate-confirm] /api/credits failed; proceeding without preflight', e)
+    }
+
+    if (!aiEnabled || plan === 'free') {
+      setGateModal({ type: 'upgrade' })
+      return
+    }
+    if (total > 0 && used + types.length > total) {
+      // Will run partially or not at all — push the user to top up
+      // before burning the small remaining budget on a partial batch.
+      setGateModal({ type: 'credits' })
+      return
+    }
+    setConfirmGen({
+      fillGaps,
+      types,
+      used,
+      total,
+      plan,
+      label: label ?? (fillGaps ? 'missing assets' : 'all assets'),
+    })
+  }, [assetGroups, assets, addLog])
+
+  const handleGenerate        = useCallback(() => requestGenerateConfirm(false), [requestGenerateConfirm])
+  const handleGenerateMissing  = useCallback(() => requestGenerateConfirm(true),  [requestGenerateConfirm])
   // Per-group batch — reuses the same pipeline as the global Generate-All
   // button, but narrows the type list to this group and chooses
   // fill-gaps mode when some slots are already filled (re-roll-all when
   // none are, so the button is always actionable).
   const handleGenerateGroup   = useCallback((types: AssetType[]) => {
     const anyEmpty = types.some(t => !assets[t])
-    runBatchGenerate(anyEmpty, types)
-  }, [assets, runBatchGenerate])
+    // Route through the same pre-flight as the global Generate-All path
+    // so per-group buttons also surface the credit cost + plan gate. The
+    // label uses the group's first type as a hint ("backgrounds", "high
+    // symbols", etc.) so the modal copy is contextual.
+    const label = anyEmpty ? `the ${types.length} missing in this group` : `${types.length} assets in this group`
+    requestGenerateConfirm(anyEmpty, types, label)
+  }, [assets, requestGenerateConfirm])
 
   // ─── Single-asset regeneration ──────────────────────────────────────────────
 
@@ -804,6 +877,106 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
 
   return (
     <>
+    {/* ── Generate-All / Fill-Gaps confirmation ──────────────────────────────
+       Pre-flight before kicking the SSE batch. Shows scope + credit cost +
+       remaining balance. Free / no-AI plans never reach this surface — they
+       get the upgrade gate from requestGenerateConfirm() instead. */}
+    {confirmGen && (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <div style={{
+          background: 'linear-gradient(180deg, rgba(22,27,41,.96), rgba(10,12,20,.98))',
+          border: '1px solid rgba(215,168,79,.30)',
+          borderRadius: 20, padding: 28, maxWidth: 460, width: '90%',
+          position: 'relative', boxShadow: '0 40px 120px rgba(0,0,0,.55)',
+        }}>
+          <button
+            onClick={() => setConfirmGen(null)}
+            style={{ position: 'absolute', top: 14, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: '#7a7a8a' }}
+            aria-label="Close"
+          ><X size={16} /></button>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>✨</div>
+          <p style={{ fontWeight: 700, fontSize: 17, color: '#f4efe4', margin: '0 0 6px' }}>
+            Ready to generate {confirmGen.label}?
+          </p>
+          <p style={{ fontSize: 12.5, color: '#a5afc0', lineHeight: 1.6, margin: '0 0 20px' }}>
+            We&apos;ll prompt the AI for each asset (theme, palette, style, audience), upload the results, and stream them back into the grid as they land. You can re-roll any individual tile after.
+          </p>
+
+          {/* Cost / balance card */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 1,
+            background: 'rgba(255,255,255,.04)',
+            border: '1px solid rgba(255,255,255,.07)',
+            borderRadius: 12,
+            overflow: 'hidden',
+            marginBottom: 22,
+          }}>
+            {[
+              { lbl: 'Assets',        val: String(confirmGen.types.length) },
+              { lbl: 'Credits',       val: String(confirmGen.types.length) },
+              { lbl: 'After',         val: confirmGen.total > 0
+                  ? `${Math.max(0, confirmGen.total - confirmGen.used - confirmGen.types.length)} / ${confirmGen.total}`
+                  : '—' },
+            ].map((cell, i) => (
+              <div key={i} style={{ background: '#0f1118', padding: '14px 12px', textAlign: 'center' }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#7d8799', marginBottom: 6, fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}>
+                  {cell.lbl}
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: i === 1 ? '#f0ca79' : '#f4efe4', letterSpacing: '-.02em' }}>
+                  {cell.val}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p style={{ fontSize: 11, color: '#7d8799', lineHeight: 1.55, margin: '0 0 18px' }}>
+            1 credit = 1 generated asset. Credits are only deducted on successful provider responses; failed assets are refunded automatically.
+          </p>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => setConfirmGen(null)}
+              style={{
+                flex: 0.7, padding: '11px 18px',
+                background: 'rgba(255,255,255,.04)',
+                border: '1px solid rgba(255,255,255,.10)',
+                color: '#a5afc0',
+                borderRadius: 999, cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+                fontFamily: 'inherit',
+              }}
+            >Cancel</button>
+            <button
+              onClick={() => {
+                const args = confirmGen
+                setConfirmGen(null)
+                // Fire the actual batch — same path as before, just gated.
+                runBatchGenerate(args.fillGaps, args.types)
+              }}
+              style={{
+                flex: 1, padding: '11px 18px',
+                background: 'linear-gradient(135deg,#d7a84f,#f0ca79)',
+                color: '#0a0c10',
+                border: 'none', borderRadius: 999, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, letterSpacing: '-.005em',
+                boxShadow: '0 4px 20px rgba(215,168,79,.28), inset 0 1px 0 rgba(255,255,255,.3)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                fontFamily: 'inherit',
+              }}
+            >
+              <Sparkles size={14} /> Generate {confirmGen.types.length}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {/* ── Plan / Credits gate modal ──────────────────────────────────────────── */}
     {gateModal && (
       <div style={{

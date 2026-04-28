@@ -585,7 +585,14 @@ body {
 .rv-stage {
   position: relative;
   width: 100%;
-  aspect-ratio: 9 / 11;
+  /* No fixed aspect-ratio — the stage adapts to whatever grid the
+   * user picks. Old 9/11 portrait left a wide-short grid (5×4 / 6×3
+   * / 6×4) letterboxed with too much dead space top and bottom and
+   * looked off-centre. Now the stage's height = grid height + padding,
+   * with sensible bounds so very-tall grids (3×7, 5×6) don't make the
+   * stage absurd. */
+  min-height: 220px;
+  max-height: 420px;
   padding: 18px;
   border-radius: var(--sf-radius-xl);
   background:
