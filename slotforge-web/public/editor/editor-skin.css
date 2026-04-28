@@ -816,6 +816,43 @@ body {
   background: rgba(255,255,255,0.06);
 }
 
+/* ─── Rotation handle (Photoshop-style) ─────────────────────────────
+   Small circle on a stalk above the top-centre resize handle.
+   Sits outside the bbox so it's distinguishable from the resize
+   chips and can never be confused for an edge handle. */
+.rh.rot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--sf-bg);
+  border: 2px solid var(--sf-gold);
+  box-shadow: 0 0 0 2px var(--sf-bg), 0 4px 12px rgba(0,0,0,0.5);
+  position: absolute;
+  top: -42px;
+  left: calc(50% - 9px);
+  cursor: grab;
+  z-index: 10001;
+  /* Reset rectangular handle defaults that .rh inherits. */
+  background-clip: padding-box;
+}
+.rh.rot::before {
+  content: '';
+  position: absolute;
+  width: 1.5px;
+  height: 24px;
+  background: var(--sf-gold);
+  left: 50%;
+  top: calc(100% + 1px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0.7;
+}
+.rh.rot:hover {
+  background: var(--sf-gold);
+  box-shadow: 0 0 0 2px var(--sf-bg), 0 0 16px rgba(215,168,79,0.6);
+}
+.rh.rot:active { cursor: grabbing; }
+
 /* ─── 19. Toast / nudge — pill chip language. */
 .sf-toast,
 #sf-toast,

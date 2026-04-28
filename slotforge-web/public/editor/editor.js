@@ -411,6 +411,7 @@ function serializeState(){
     userLocks: [...USER_LOCKS],
     assets,
     adjs: JSON.parse(JSON.stringify(EL_ADJ)),
+    transforms: JSON.parse(JSON.stringify(EL_TRANSFORM)),
     masks: JSON.parse(JSON.stringify(EL_MASKS)),
     // Extensions: previously not captured, so their mutations (toggle
     // visibility, change blend mode, edit text / colour / font, tweak
@@ -481,6 +482,8 @@ function restoreSnap(){
   // Restore adjustments and masks
   Object.keys(EL_ADJ).forEach(k=>delete EL_ADJ[k]);
   if(s.adjs) Object.assign(EL_ADJ,s.adjs);
+  Object.keys(EL_TRANSFORM).forEach(k=>delete EL_TRANSFORM[k]);
+  if(s.transforms) Object.assign(EL_TRANSFORM, s.transforms);
   Object.keys(EL_MASKS).forEach(k=>delete EL_MASKS[k]);
   if(s.masks) Object.assign(EL_MASKS,s.masks);
   // Extended state — restore every field the extended serializeState
@@ -1700,6 +1703,12 @@ function buildCanvas(){
     el.id='el-'+k; el.dataset.key=k;
     el.className='cel'+(isLocked(k)?' locked':'');
     el.style.cssText=`position:absolute;left:${pos.x}px;top:${pos.y}px;width:${pos.w}px;height:${pos.h}px;z-index:${def.z||5}`;
+    // Apply rotate/flip transform if present. Transform-origin centred so
+    // rotation feels natural (Photoshop-style — pivots at the bbox centre).
+    {
+      const _xfCss = _transformCss(k);
+      if(_xfCss){ el.style.transform = _xfCss; el.style.transformOrigin = 'center center'; }
+    }
 
     // IMPORTANT: Make base layers non-interactive entirely when under a popup
     if(isPopup && !keys.includes(k)) {
@@ -2135,6 +2144,16 @@ function selectEl(k){
       h.addEventListener('mousedown',e=>startResize(e,k,pos));
       el.appendChild(h);
     });
+    // Rotation handle — small circle on a stalk above top-centre. Lives
+    // outside the .cel via a separate CSS class so the resize handles
+    // styling stays untouched. Listens on mousedown to fire startRotate;
+    // rotation is committed via setTransform/applyTransformToCel so it
+    // survives save/load through EL_TRANSFORM persistence.
+    const rot = document.createElement('div');
+    rot.className = 'rh rot';
+    rot.title = 'Drag to rotate · Shift snaps to 15°';
+    rot.addEventListener('mousedown', ev => startRotate(ev, k));
+    el.appendChild(rot);
   }
   
   // Selecting a layer should NOT auto-open its properties popup. Panels open
@@ -2242,50 +2261,187 @@ function startJpGroupMove(e){
   document.addEventListener('mouseup',up);
 }
 
-// ═══ RESIZE ═══
+// ═══ RESIZE — Photoshop-style ═══
+// Modifier key behaviour matches PS V/Free Transform:
+//   • plain drag (corner)  → free aspect, opposite corner anchored
+//   • Shift + corner       → locked aspect ratio
+//   • Alt   + corner/edge  → scale from CENTRE (opposite handle mirrors)
+//   • Shift + Alt + corner → locked aspect AND from centre
+//   • plain edge drag      → single-axis, opposite edge anchored
+//
+// Modifiers are read live each frame from the latest mouse event so the
+// user can press/release Shift or Alt mid-drag without restarting.
 function startResize(e,k,handle){
   e.preventDefault();e.stopPropagation();
   const sx=e.clientX,sy=e.clientY,orig={...getPos(k)};
-  const aspect=orig.w/orig.h; // lock aspect ratio — computed once, never from intermediate values
+  const aspect=orig.w/orig.h; // captured once — never recomputed mid-drag (rounding drift)
   const commit=beginAction('resize '+k);
+  const isCorner=handle.length===2; // tl, tr, bl, br
   let rafId=null;
+  let lastEv=e;
   function mv(ev){
-    const cx=ev.clientX,cy=ev.clientY;
+    lastEv = ev;
     if(rafId)cancelAnimationFrame(rafId);
     rafId=requestAnimationFrame(function(){
       rafId=null;
-      const dx=Math.round((cx-sx)/ZOOM),dy=Math.round((cy-sy)/ZOOM);
+      const cx=lastEv.clientX, cy=lastEv.clientY;
+      const dx=Math.round((cx-sx)/ZOOM), dy=Math.round((cy-sy)/ZOOM);
+      const lockAspect = lastEv.shiftKey;
+      const fromCenter = lastEv.altKey;
       let{x,y,w,h}=orig;
-      // Determine primary resize axis from handle
-      const isCorner=handle.length===2; // tl, tr, bl, br
-      if(isCorner){
-        // Corner drag: use larger delta to drive both, maintain aspect
-        if(handle==='br'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); }
-        else if(handle==='bl'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; }
-        else if(handle==='tr'){ w=Math.max(40,orig.w+dx); h=Math.round(w/aspect); y=orig.y+orig.h-h; }
-        else if(handle==='tl'){ w=Math.max(40,orig.w-dx); h=Math.round(w/aspect); x=orig.x+orig.w-w; y=orig.y+orig.h-h; }
-      } else {
-        // Edge drag: single-axis resize — the OTHER axis stays fixed.
-        // Previous behaviour locked the aspect ratio on edge drags too,
-        // so side handles silently dragged the height along and the user
-        // couldn't actually stretch just one axis. Corner handles still
-        // keep aspect (the expected Photoshop default); Shift-drag here
-        // could re-introduce aspect lock in a future pass.
-        if(handle==='mr'){ w=Math.max(40,orig.w+dx); }
-        else if(handle==='ml'){ w=Math.max(40,orig.w-dx); x=orig.x+orig.w-w; }
-        else if(handle==='bc'){ h=Math.max(40,orig.h+dy); }
-        else if(handle==='tc'){ h=Math.max(40,orig.h-dy); y=orig.y+orig.h-h; }
+
+      // Per-handle deltas. dxRight = how the right edge moves; dxLeft =
+      // how the left edge moves; same for top/bottom. Edge handles only
+      // touch one axis. Sign convention: positive grows the bbox.
+      let dxR=0, dxL=0, dyT=0, dyB=0;
+      switch(handle){
+        case 'br': dxR =  dx; dyB =  dy; break;
+        case 'tr': dxR =  dx; dyT = -dy; break;
+        case 'bl': dxL = -dx; dyB =  dy; break;
+        case 'tl': dxL = -dx; dyT = -dy; break;
+        case 'mr': dxR =  dx;            break;
+        case 'ml': dxL = -dx;            break;
+        case 'bc':           dyB =  dy; break;
+        case 'tc':           dyT = -dy; break;
       }
+
+      // Corner aspect-lock: drive both axes from the larger delta so the
+      // box always feels under one finger even when only one axis is
+      // moved. Sign of secondary delta inferred from handle quadrant.
+      if(isCorner && lockAspect){
+        const totalDx = (dxL || 0) + (dxR || 0);
+        const totalDy = (dyT || 0) + (dyB || 0);
+        if(Math.abs(totalDx) >= Math.abs(totalDy)){
+          const newW = Math.max(40, orig.w + totalDx);
+          const newH = Math.round(newW / aspect);
+          const dyAuto = newH - orig.h;
+          // Re-distribute the auto height to the same vertical edge
+          // the user is dragging.
+          if(handle === 'tl' || handle === 'tr'){ dyT = dyAuto; dyB = 0; }
+          else                                  { dyB = dyAuto; dyT = 0; }
+          if(dxL) dxL = totalDx; else dxR = totalDx;
+        } else {
+          const newH = Math.max(40, orig.h + totalDy);
+          const newW = Math.round(newH * aspect);
+          const dxAuto = newW - orig.w;
+          if(handle === 'tl' || handle === 'bl'){ dxL = dxAuto; dxR = 0; }
+          else                                  { dxR = dxAuto; dxL = 0; }
+          if(dyT) dyT = totalDy; else dyB = totalDy;
+        }
+      }
+
+      // Scale-from-centre: mirror whatever delta we already have onto the
+      // opposite edge. Geometry stays anchored at centre.
+      if(fromCenter){
+        if(dxR && !dxL) dxL = dxR;
+        else if(dxL && !dxR) dxR = dxL;
+        if(dyT && !dyB) dyB = dyT;
+        else if(dyB && !dyT) dyT = dyB;
+      }
+
+      // Apply the resolved deltas. min 40 enforced per-axis.
+      let nx = orig.x - dxL;
+      let ny = orig.y - dyT;
+      let nw = Math.max(40, orig.w + dxL + dxR);
+      let nh = Math.max(40, orig.h + dyT + dyB);
+      // Re-anchor x/y when min-clamp kicked in so the un-clamped edge stays put.
+      if(orig.w + dxL + dxR < 40){
+        if(dxL && !dxR) nx = orig.x + orig.w - 40;
+        else if(dxR && !dxL) nx = orig.x;
+      }
+      if(orig.h + dyT + dyB < 40){
+        if(dyT && !dyB) ny = orig.y + orig.h - 40;
+        else if(dyB && !dyT) ny = orig.y;
+      }
+
+      x = Math.round(nx); y = Math.round(ny); w = Math.round(nw); h = Math.round(nh);
       setPos(k,{x,y,w,h});
       const el=document.getElementById('el-'+k);
       if(el){el.style.left=x+'px';el.style.top=y+'px';el.style.width=w+'px';el.style.height=h+'px';}
       updateSelInfo();
     });
   }
-  // up: cancel any pending frame, commit, re-attach handles via selectEl — no full buildCanvas() needed
   function up(){if(rafId)cancelAnimationFrame(rafId);commit();selectEl(k);document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);}
   document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
 }
+
+// ═══ ROTATE ═══
+// Drag the rotation handle (above top-centre). Shift snaps to 15°.
+function startRotate(e, k){
+  e.preventDefault(); e.stopPropagation();
+  const orig = getTransform(k);
+  const pos  = getPos(k);
+  // Centre of the bbox in screen coords — we measure angles to the cursor
+  // from this point, so we need it in window coordinates.
+  const cel  = document.getElementById('el-'+k);
+  if(!cel) return;
+  const r    = cel.getBoundingClientRect();
+  const ccx  = r.left + r.width  / 2;
+  const ccy  = r.top  + r.height / 2;
+  const startAng = Math.atan2(e.clientY - ccy, e.clientX - ccx) * 180 / Math.PI;
+  const commit = beginAction('rotate '+k);
+  let rafId = null;
+  let lastEv = e;
+  function mv(ev){
+    lastEv = ev;
+    if(rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(function(){
+      rafId = null;
+      const a = Math.atan2(lastEv.clientY - ccy, lastEv.clientX - ccx) * 180 / Math.PI;
+      let delta = a - startAng;
+      let next  = (orig.rotate || 0) + delta;
+      // Snap to 15° while Shift is held — matches the canvas-tool grid
+      // most users expect after Photoshop / Figma muscle-memory.
+      if(lastEv.shiftKey) next = Math.round(next / 15) * 15;
+      // Normalise to (-180, 180] so the readout stays human.
+      next = ((next + 540) % 360) - 180;
+      setTransform(k, { rotate: Math.round(next * 10) / 10 });
+      applyTransformToCel(k);
+      updateSelInfo();
+    });
+  }
+  function up(){
+    if(rafId) cancelAnimationFrame(rafId);
+    commit();
+    selectEl(k); // re-attach handles in their new orientation
+    document.removeEventListener('mousemove', mv);
+    document.removeEventListener('mouseup',   up);
+  }
+  document.addEventListener('mousemove', mv);
+  document.addEventListener('mouseup',   up);
+}
+
+// Flip helpers — exposed on window so the right-click menus can call.
+function flipLayerH(k){
+  if(!k || !PSD[k] || isLocked(k)) return;
+  const commit = beginAction('flip-h '+k);
+  setTransform(k, { flipX: !getTransform(k).flipX });
+  applyTransformToCel(k);
+  commit();
+  pushHistory && pushHistory('flip-h '+k);
+  markDirty();
+}
+function flipLayerV(k){
+  if(!k || !PSD[k] || isLocked(k)) return;
+  const commit = beginAction('flip-v '+k);
+  setTransform(k, { flipY: !getTransform(k).flipY });
+  applyTransformToCel(k);
+  commit();
+  pushHistory && pushHistory('flip-v '+k);
+  markDirty();
+}
+function resetTransform(k){
+  if(!k) return;
+  const commit = beginAction('reset-transform '+k);
+  delete EL_TRANSFORM[k];
+  applyTransformToCel(k);
+  commit();
+  pushHistory && pushHistory('reset-transform '+k);
+  markDirty();
+}
+window.flipLayerH    = flipLayerH;
+window.flipLayerV    = flipLayerV;
+window.resetTransform = resetTransform;
 
 // Canvas click to deselect
 // Auto-select toggle
@@ -2513,6 +2669,13 @@ document.addEventListener('keydown',e=>{
     return;
   }
   if((e.metaKey||e.ctrlKey)&&e.key==='o'){e.preventDefault();loadProjectFile();return;}
+  // Cmd/Ctrl+D — duplicate selected layer (Photoshop standard).
+  // Browser default is "Bookmark this page"; preventDefault stops it.
+  if((e.metaKey||e.ctrlKey) && e.key==='d' && !e.shiftKey && SEL_KEY && !e.target.matches('input,textarea,select,[contenteditable]')){
+    e.preventDefault();
+    duplicateLayer(SEL_KEY);
+    return;
+  }
   if(e.key==='a'&&!e.metaKey&&!e.ctrlKey&&!e.target.matches('input,textarea,select')){e.preventDefault();toggleAutoSelect();return;}
   if(e.key==='o'&&!e.metaKey&&!e.ctrlKey&&!e.target.matches('input,textarea,select')){e.preventDefault();toggleCanvasOverflow();return;}
   if(e.key==='h'&&!e.metaKey&&!e.ctrlKey&&!e.target.matches('input,textarea,select')){e.preventDefault();togglePan();return;}
@@ -2857,6 +3020,16 @@ function openLayerCtxMenu(key, cx, cy){
 
   // Delete — works for any layer
   menu.appendChild(item('✕ Delete Layer', function(){ deleteAnyLayer(key); }, true));
+
+  menu.appendChild(sep());
+
+  // Transform — flip / reset rotation. Inserted before the blend modes
+  // group so users see the geometric actions first; rotation itself is
+  // expressed via the canvas rotation handle so it doesn't need a
+  // dedicated menu item.
+  menu.appendChild(item('⇋ Flip Horizontal',           function(){ flipLayerH(key); }));
+  menu.appendChild(item('⇅ Flip Vertical',             function(){ flipLayerV(key); }));
+  menu.appendChild(item('↺ Reset Rotation & Flip',    function(){ resetTransform(key); }));
 
   menu.appendChild(sep());
 
@@ -4328,6 +4501,7 @@ function duplicateLayer(key){
   PSD[newKey].label=(src.label||key)+' copy';
   if(EL_ASSETS[key]) EL_ASSETS[newKey]=EL_ASSETS[key];
   if(EL_ADJ[key]) EL_ADJ[newKey]=JSON.parse(JSON.stringify(EL_ADJ[key]));
+  if(EL_TRANSFORM[key]) EL_TRANSFORM[newKey]=JSON.parse(JSON.stringify(EL_TRANSFORM[key]));
   if(EL_BLEND_MODES[key]) EL_BLEND_MODES[newKey]=EL_BLEND_MODES[key];
   // Add to the same screen
   Object.entries(SDEFS).forEach(function(e){
@@ -4405,6 +4579,7 @@ function buildFilePayload(){
     assets: JSON.parse(JSON.stringify(EL_ASSETS)),
     // Visual adjustments & masks
     adjs:   JSON.parse(JSON.stringify(EL_ADJ)),
+    transforms: JSON.parse(JSON.stringify(EL_TRANSFORM)),
     masks:  JSON.parse(JSON.stringify(EL_MASKS)),
     // Layer order per screen
     keyOrders,
@@ -4579,6 +4754,8 @@ function _restoreFilePayload(d){
   // Adjustments & masks
   Object.keys(EL_ADJ).forEach(k => delete EL_ADJ[k]);
   if(d.adjs) Object.assign(EL_ADJ, d.adjs);
+  Object.keys(EL_TRANSFORM).forEach(k => delete EL_TRANSFORM[k]);
+  if(d.transforms) Object.assign(EL_TRANSFORM, d.transforms);
   Object.keys(EL_MASKS).forEach(k => delete EL_MASKS[k]);
   if(d.masks) Object.assign(EL_MASKS, d.masks);
   // Key orders
@@ -5027,6 +5204,36 @@ const EL_ADJ = {}; // key -> {brightness, contrast, saturation, opacity}
 const EL_ASSETS = {}; // key -> dataURL (uploaded image)
 const EL_MASKS = {}; // key -> {type:'none'|'circle'|'inset', inset:[0,0,0,0], radius:0}
 
+// ─── EL_TRANSFORM: rotation + flip per layer ──────────────────────────────
+// Stored per-key (not per-screen) because the user almost always wants the
+// same rotation/flip across screens for the same layer (logo, character,
+// frame, etc.). Position lives in EL_VP per-screen; transform is
+// orthogonal. { rotate: 0, flipX: false, flipY: false }
+const EL_TRANSFORM = {};
+function getTransform(k){
+  const t = EL_TRANSFORM[k];
+  return t || { rotate: 0, flipX: false, flipY: false };
+}
+function setTransform(k, patch){
+  const cur = getTransform(k);
+  EL_TRANSFORM[k] = { rotate: cur.rotate, flipX: cur.flipX, flipY: cur.flipY, ...patch };
+  // Strip the entry when fully reset so payloads stay tidy.
+  const fresh = EL_TRANSFORM[k];
+  if((fresh.rotate||0) === 0 && !fresh.flipX && !fresh.flipY) delete EL_TRANSFORM[k];
+}
+function _transformCss(k){
+  const t = getTransform(k);
+  if((t.rotate||0) === 0 && !t.flipX && !t.flipY) return '';
+  return `rotate(${t.rotate||0}deg) scaleX(${t.flipX?-1:1}) scaleY(${t.flipY?-1:1})`;
+}
+function applyTransformToCel(k){
+  const el = document.getElementById('el-'+k);
+  if(!el) return;
+  const css = _transformCss(k);
+  el.style.transform = css;
+  if(css) el.style.transformOrigin = 'center center';
+}
+
 // ── Asset pool: de-duplicates base64 image data across undo/redo history entries ──
 // Each unique image is stored exactly once; history snapshots reference by pool ID
 const ASSET_POOL = {};
@@ -5219,6 +5426,22 @@ function openCtxPanel(k, clientX, clientY){
       reelCfgBtn.onclick = null;
     }
   }
+
+  // Transform shortcuts — flip / reset / duplicate. Locked layers can't
+  // be transformed, so we grey out the buttons but keep them visible
+  // (consistent with how the other ctx-panel rows behave).
+  const _locked = isLocked(k);
+  const _setBtn = (id, on, fn) => {
+    const b = document.getElementById(id);
+    if(!b) return;
+    b.style.opacity = on ? '1' : '0.4';
+    b.style.pointerEvents = on ? 'auto' : 'none';
+    b.onclick = on ? fn : null;
+  };
+  _setBtn('ctx-flip-h-btn',     !_locked, () => { flipLayerH(k); closeCtxPanel(); });
+  _setBtn('ctx-flip-v-btn',     !_locked, () => { flipLayerV(k); closeCtxPanel(); });
+  _setBtn('ctx-reset-xform-btn',!_locked, () => { resetTransform(k); closeCtxPanel(); });
+  _setBtn('ctx-duplicate-btn',  true,     () => { duplicateLayer(k); closeCtxPanel(); });
 
   // Wire copy button for this specific key
   const copyBtn = document.getElementById('ctx-copy-btn');
@@ -12571,6 +12794,12 @@ window._sfApplyPayload = function(payload){
   try { if(s.ovPos   && typeof s.ovPos==='object')   P.ovPos   = s.ovPos;   } catch(e){}
   try { if(s.holdnspin && typeof s.holdnspin==='object') P.holdnspin = Object.assign(P.holdnspin||{}, s.holdnspin); } catch(e){}
   try { if(s.adjs  && typeof EL_ADJ   !== 'undefined') Object.assign(EL_ADJ,   s.adjs);  } catch(e){}
+  try {
+    if(typeof EL_TRANSFORM !== 'undefined'){
+      Object.keys(EL_TRANSFORM).forEach(k => delete EL_TRANSFORM[k]);
+      if(s.transforms) Object.assign(EL_TRANSFORM, s.transforms);
+    }
+  } catch(e){}
   try { if(s.masks && typeof EL_MASKS !== 'undefined') Object.assign(EL_MASKS, s.masks); } catch(e){}
   try { if(s.blendModes && typeof EL_BLEND_MODES!=='undefined') { Object.keys(EL_BLEND_MODES).forEach(function(k){delete EL_BLEND_MODES[k];}); Object.assign(EL_BLEND_MODES, s.blendModes); } } catch(e){}
   try { if(Array.isArray(s.userLocks) && typeof USER_LOCKS !== 'undefined'){ USER_LOCKS.clear(); s.userLocks.forEach(function(k){ USER_LOCKS.add(k); }); } } catch(e){}
@@ -12813,8 +13042,9 @@ window._sfBridge = (function(){
       featSlotOrders:      JSON.parse(JSON.stringify(P.featSlotOrders      || {})),
       assets:           JSON.parse(JSON.stringify(typeof EL_ASSETS !== 'undefined' ? EL_ASSETS : {})),
       library:     JSON.parse(JSON.stringify(P.library  || [])),
-      adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ    !== 'undefined' ? EL_ADJ    : {})),
-      masks:       JSON.parse(JSON.stringify(typeof EL_MASKS  !== 'undefined' ? EL_MASKS  : {})),
+      adjs:        JSON.parse(JSON.stringify(typeof EL_ADJ       !== 'undefined' ? EL_ADJ       : {})),
+      transforms:  JSON.parse(JSON.stringify(typeof EL_TRANSFORM !== 'undefined' ? EL_TRANSFORM : {})),
+      masks:       JSON.parse(JSON.stringify(typeof EL_MASKS     !== 'undefined' ? EL_MASKS     : {})),
       userLocks:   typeof USER_LOCKS !== 'undefined' ? [...USER_LOCKS] : [],
       // Save layer key order for every screen — captures custom layers added/reordered by the user
       keyOrders:   (function(){ var ko={}; try{ Object.entries(typeof SDEFS!=='undefined'?SDEFS:{}).forEach(function(e){ if(e[1].keys) ko[e[0]]=[].concat(e[1].keys); }); }catch(ex){} return ko; })(),
@@ -13152,6 +13382,7 @@ window._sfBridge = (function(){
         // copy for the fallback save path.
         customPsd:      p.customPsd,
         adjs:           p.adjs,
+        transforms:     p.transforms,
         masks:          p.masks,
         // Typography spec too — it's saved via SF_SAVE_TYPOGRAPHY, but
         // mirroring it here keeps the safety-save path self-consistent.

@@ -1536,6 +1536,14 @@
   <label class="ctx-btn" id="ctx-upload-btn" style="cursor:pointer"><span class="ctx-ico">⬆</span>Upload / Replace Asset<input type="file" id="ctx-file-inp" accept="image/*" style="display:none"></label>
   <button class="ctx-btn" id="ctx-ai-btn"><span class="ctx-ico">✦</span>Generate with AI&hellip;</button>
   <div class="ctx-sep"></div>
+  <!-- Transform group — flip / rotate / duplicate. Shown for every
+       layer except locked ones; openCtxPanel() greys out actions on
+       locked layers. -->
+  <button class="ctx-btn" id="ctx-flip-h-btn"><span class="ctx-ico">⇋</span>Flip Horizontal</button>
+  <button class="ctx-btn" id="ctx-flip-v-btn"><span class="ctx-ico">⇅</span>Flip Vertical</button>
+  <button class="ctx-btn" id="ctx-reset-xform-btn"><span class="ctx-ico">↺</span>Reset Rotation &amp; Flip</button>
+  <button class="ctx-btn" id="ctx-duplicate-btn"><span class="ctx-ico">⧉</span>Duplicate Layer <span style="margin-left:auto;font-size:9px;color:#778;font-family:DM Mono,monospace;letter-spacing:.04em">⌘D</span></button>
+  <div class="ctx-sep"></div>
   <button class="ctx-btn" id="ctx-copy-btn"><span class="ctx-ico">⎘</span>Copy Asset</button>
   <button class="ctx-btn" id="ctx-paste-btn" style="opacity:0.4"><span class="ctx-ico">⎘</span>Paste Asset</button>
   <div class="ctx-sep"></div>
