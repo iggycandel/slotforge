@@ -11352,7 +11352,7 @@ function _activateMarketingWorkspace(){
   if(document.getElementById('_sf_marketing_js')) return;
   var s = document.createElement('script');
   s.id  = '_sf_marketing_js';
-  s.src = '/editor/marketing.js?v=v139';
+  s.src = '/editor/marketing.js?v=v140';
   s.onload  = function(){
     if(window._sfMarketing && typeof window._sfMarketing.init === 'function'){
       window._sfMarketing.init();

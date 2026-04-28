@@ -138,7 +138,14 @@
         setTimeout(function(){
           render();
           ensureCharacterCutout();
-          maybeAutoRenderAll();
+          // Auto-render REMOVED (Round 5). Previously kicked
+          // maybeAutoRenderAll() here so first-time users got every tile
+          // pre-rendered. Now we defer all server renders until the
+          // user explicitly clicks Render or Export Kit — credits are
+          // never spent before the user has had a chance to position
+          // the character + logo. The function stays defined below so
+          // older deep-link / debug paths still resolve, but it's no
+          // longer invoked anywhere in the load flow.
         }, 120);
       });
     }).catch(function(err){
@@ -581,8 +588,12 @@
         + '<div class="mkt-welcome">'
         +   '<div class="mkt-welcome-icon">✨</div>'
         +   '<div>'
-        +     '<div class="mkt-welcome-title">Your kit is ready to render</div>'
-        +     '<div class="mkt-welcome-sub">Click <b>Render</b> on any tile to compose it from your project assets, or <b>Export all kit</b> in the topbar to ship the full set in one zip.</div>'
+        +     '<div class="mkt-welcome-title">Your kit is ready — render whenever you like</div>'
+        +     '<div class="mkt-welcome-sub">'
+        +       'Tiles below are <b>previews</b>. They show the templates that will be composed from your project assets — nothing has been rendered yet, so no credits have been spent.'
+        +       '<br>'
+        +       '<b>Customise</b> a tile to position the character + logo with sliders and the live drag overlay, then <b>Render</b> to commit, or use <b>Export all kit</b> in the topbar to render + zip the full set in one shot.'
+        +     '</div>'
         +   '</div>'
         + '</div>';
     }
@@ -628,13 +639,18 @@
     }).join(' · ');
     var formats = uniq(t.sizes.map(function(s){ return (s.format||'').toUpperCase(); })).join(' / ');
 
-    // v124-fix: always start with the empty placeholder. The original
-    // code rendered <img src=previewPath onerror=display:none> which
-    // left a hidden element in place; subsequent thumbnail swaps then
-    // updated the hidden img and the user never saw the render. Day 8
-    // polish ships hand-rendered preview PNGs and re-introduces the
-    // previewPath path with proper fallback.
-    var preview = '<div class="mkt-tile-preview-slot"></div>';
+    // Render-at-export workflow (Round 5): tiles default to a "Preview"
+    // state — no server render has fired yet, no credits spent. The
+    // .mkt-tile-preview-slot is empty + carries a "PREVIEW" badge until
+    // the user clicks Render (per-tile) or Export all kit (full batch).
+    // updateTileThumbnail() replaces the slot with the rendered image
+    // when one lands, so no special-cased empty-vs-rendered branch is
+    // needed — the ::after badge naturally drops away once an <img>
+    // takes over the slot's content.
+    var preview = ''
+      + '<div class="mkt-tile-preview-slot">'
+      +   '<span class="mkt-tile-badge mkt-tile-badge-preview" title="Nothing rendered yet — Customise &amp; Render to commit">Preview</span>'
+      + '</div>';
 
     return ''
       + '<div class="mkt-tile" data-template-id="'+escapeAttr(t.id)+'">'
@@ -642,8 +658,8 @@
       +   '<div class="mkt-tile-name">'+escapeHtml(t.name)+'</div>'
       +   '<div class="mkt-tile-sizes">'+escapeHtml(sizes)+(formats ? ('  '+escapeHtml(formats)) : '')+'</div>'
       +   '<div class="mkt-tile-actions">'
-      +     '<button class="mkt-tile-btn" data-act="customise">Customise</button>'
-      +     '<button class="mkt-tile-btn primary" data-act="render">Render</button>'
+      +     '<button class="mkt-tile-btn" data-act="customise" title="Position character + logo with sliders and the live drag overlay">Customise</button>'
+      +     '<button class="mkt-tile-btn primary" data-act="render" title="Render this tile and replace the preview with the final asset">Render</button>'
       +   '</div>'
       + '</div>';
   }
@@ -1885,6 +1901,13 @@
     + '.mkt-loading-step-spin{width:14px;height:14px;border-radius:50%;border:1.5px solid rgba(201,168,76,0.20);border-top-color:#c9a84c;animation:mktStepSpin .8s linear infinite;flex-shrink:0;display:inline-block}'
     + '.mkt-loading-step-tick{width:14px;height:14px;border-radius:50%;background:rgba(94,202,138,0.15);border:1px solid rgba(94,202,138,0.45);color:#5eca8a;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}'
     + '@keyframes mktStepSpin{to{transform:rotate(360deg)}}'
+    // ─── Tile "Preview" badge (Round 5 — render-at-export) ──────────────
+    + '.mkt-tile-badge{position:absolute;top:8px;left:8px;z-index:2;font-family:DM Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:999px;line-height:1.4}'
+    + '.mkt-tile-badge-preview{background:rgba(201,168,76,0.13);border:1px solid rgba(201,168,76,0.32);color:#e8c96d}'
+    // Hide the badge once a real <img> has been swapped into the slot —
+    // the slot then becomes the rendered creative, no need to overlay
+    // a "Preview" hint anymore.
+    + '.mkt-tile-preview-slot:has(img) .mkt-tile-badge{display:none}'
     // ─── Premium empty-state for fresh projects ──────────────────────────
     // Hero card with gold accent, three asset status cards, strong CTA.
     + '.mkt-onboard{max-width:780px;margin:30px auto 60px;padding:0 28px;font-family:Space Grotesk,sans-serif}'
