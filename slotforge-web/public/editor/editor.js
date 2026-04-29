@@ -1988,50 +1988,49 @@ function buildCanvas(){
       // (rare — mid-layout race) so we never compute NaN cells.
       const GAP_X=RS.padX??0;
       const GAP_Y=RS.padY??0;
-      // Cells fill the reel area edge-to-edge. Portrait now uses
-      // rectangular cells (cellH up to 1.35× cellW) so the grid
-      // dominates the canvas instead of leaving 70% empty space —
-      // the user's "reel set looks very small" report. The previous
-      // single-number CELL = min(_fitW, _fitH) made cells square,
-      // which shrank the grid back to width-bound dimensions and
-      // wasted the extra reel-area height. cellW + cellH track each
-      // axis independently; designers who need true square cells can
-      // always upload square symbol art (object-fit: contain in
-      // makeSymbolCell letter-boxes the asset).
+      // Cells are SQUARE — the limiting axis sets the side length, the
+      // grid centres inside the reel area, and any leftover space in
+      // the OTHER axis becomes empty padding on either side of the
+      // grid. Earlier rectangular-cell version made the grid fill the
+      // reel area edge-to-edge but caused visible gaps between
+      // symbols whenever the reel area aspect didn't match the
+      // symbol-art aspect — square symbol art with object-fit:contain
+      // in a tall cell rendered as a square in the middle with empty
+      // bands above and below (the user's "portrait one has a gap in
+      // between symbols" report when the same reel-area was square in
+      // landscape but tall in portrait). One square cell size keeps
+      // the symbols edge-to-edge whatever aspect the user gives the
+      // reel area; the leftover reel-area space becomes decorative
+      // padding which the reelFrame asset can fill.
       const _fitW = (pos.w - (cols-1)*GAP_X) / Math.max(1, cols);
       const _fitH = (pos.h - (rows-1)*GAP_Y) / Math.max(1, rows);
-      const _fitCellW = Math.floor(_fitW);
-      const _fitCellH = Math.floor(_fitH);
+      const _fitCell = Math.floor(Math.min(_fitW, _fitH));
       const fallbackCell = (EL_COMPUTED._cellSize?.[vp] || 164);
-      const CELL_W = (_fitCellW > 0 ? _fitCellW : fallbackCell);
-      const CELL_H = (_fitCellH > 0 ? _fitCellH : fallbackCell);
+      const CELL = (_fitCell > 0 ? _fitCell : fallbackCell);
       // RS.scale stays a uniform scalar — overlap / scale tweaks
       // shouldn't introduce non-uniform stretch. Per-axis scale
       // is a future feature if needed.
       const SCALE = (RS.scale || 1);
-      const CELL_W_S = Math.round(CELL_W * SCALE);
-      const CELL_H_S = Math.round(CELL_H * SCALE);
+      const CELL_S = Math.round(CELL * SCALE);
       const OV=RS.overlap||{id:null,amount:0};
       // Allow scaled/overlapped content to bleed outside the reelArea bounds
       const _needsOverflow = SCALE !== 1 || (OV.id && OV.amount > 0);
       el.style.overflow = _needsOverflow ? 'visible' : 'hidden';
-      const gridW=cols*CELL_W_S+(cols-1)*GAP_X;
-      const gridH=rows*CELL_H_S+(rows-1)*GAP_Y;
+      const gridW=cols*CELL_S+(cols-1)*GAP_X;
+      const gridH=rows*CELL_S+(rows-1)*GAP_Y;
       const offX=Math.round((pos.w-gridW)/2);
       const offY=Math.round((pos.h-gridH)/2);
       for(let row=0;row<rows;row++){
         for(let col=0;col<cols;col++){
           const idx=row*cols+col;
-          const dispW=CELL_W_S;
-          const dispH=CELL_H_S;
-          const cell=makeSymbolCell(idx,dispW,dispH);
+          const cell=makeSymbolCell(idx,CELL_S,CELL_S);
           cell.style.position='absolute';
-          const slotX=offX+col*(CELL_W_S+GAP_X);
-          const slotY=offY+row*(CELL_H_S+GAP_Y);
+          const slotX=offX+col*(CELL_S+GAP_X);
+          const slotY=offY+row*(CELL_S+GAP_Y);
           cell.style.left=(slotX)+'px';
           cell.style.top=(slotY)+'px';
-          cell.style.width=dispW+'px';
-          cell.style.height=dispH+'px';
+          cell.style.width=CELL_S+'px';
+          cell.style.height=CELL_S+'px';
           el.appendChild(cell);
         }
       }
