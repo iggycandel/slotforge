@@ -368,6 +368,15 @@ function getPos(k){
   return EL_COMPUTED[vp]?.[k] || PSD[k]?.[vp] || PSD[k]?.portrait || {x:0,y:0,w:100,h:100};
 }
 
+/** Write a layer's bbox into the CURRENT viewport's bucket only.
+ *  Edits in portrait must not leak into landscape (and vice-versa) —
+ *  the user explicitly relies on this for per-viewport composition.
+ *  curEL() resolves to EL_VP[currentViewport][currentScreen], so the
+ *  write is automatically scoped; the only writers that legitimately
+ *  touch both viewports are the asset-upload paths (applyAssetToLayer
+ *  + the SF_INJECT_IMAGE_LAYER fit pass) which need to seed sensible
+ *  defaults for both at upload time. Any new code that calls
+ *  EL_VP[opp][...] = ... is breaking the rule and should be reviewed. */
 function setPos(k,pos){ curEL()[k] = pos; }
 
 function resetEl(k){
@@ -2386,12 +2395,38 @@ function startJpGroupMove(e){
 //
 // Modifiers are read live each frame from the latest mouse event so the
 // user can press/release Shift or Alt mid-drag without restarting.
+/** Layers that hold images distort visibly when their bbox aspect
+ *  changes — character/logo/reelFrame/symbols/custom uploads/feat-slot
+ *  uploads. For those, lock aspect ratio by DEFAULT on every resize so
+ *  a corner drag never warps the asset. Hold Shift to override and
+ *  free-resize (inverted from the previous default-free / Shift-locked
+ *  behaviour, which the user reported as causing accidental distortion).
+ *
+ *  Non-image layers (banners, JP row, dim layer, settings) keep the
+ *  previous default-free behaviour — their content is text or layout,
+ *  not pixels, so a different bbox shape is expected. */
+function isAspectLockedByDefault(k){
+  if (!k) return false;
+  if (typeof EL_ASSETS !== 'undefined' && EL_ASSETS[k]) return true;
+  if (k.startsWith('sym_'))     return true;
+  if (k.startsWith('custom_'))  return true;
+  if (k.startsWith('bg_'))      return true;
+  if (k.indexOf('.') >= 0)      return true; // feature-namespaced slots (bonuspick.bg, wheel.disc, …)
+  if (k === 'logo' || k === 'char' || k === 'reelFrame' || k === 'bg') return true;
+  if (typeof PSD !== 'undefined' && PSD[k] && (PSD[k].type === 'feat_slot' || PSD[k].type === 'custom')) return true;
+  return false;
+}
+
 function startResize(e,k,handle){
   e.preventDefault();e.stopPropagation();
   const sx=e.clientX,sy=e.clientY,orig={...getPos(k)};
   const aspect=orig.w/orig.h; // captured once — never recomputed mid-drag (rounding drift)
   const commit=beginAction('resize '+k);
   const isCorner=handle.length===2; // tl, tr, bl, br
+  // Image-bearing layers lock aspect by default; Shift breaks the lock
+  // for the rare case the user genuinely wants to warp. Non-image
+  // layers keep the previous Shift-to-lock semantics.
+  const aspectDefault = isAspectLockedByDefault(k);
   let rafId=null;
   let lastEv=e;
   function mv(ev){
@@ -2401,7 +2436,7 @@ function startResize(e,k,handle){
       rafId=null;
       const cx=lastEv.clientX, cy=lastEv.clientY;
       const dx=Math.round((cx-sx)/ZOOM), dy=Math.round((cy-sy)/ZOOM);
-      const lockAspect = lastEv.shiftKey;
+      const lockAspect = aspectDefault ? !lastEv.shiftKey : lastEv.shiftKey;
       const fromCenter = lastEv.altKey;
       let{x,y,w,h}=orig;
 
@@ -2418,6 +2453,26 @@ function startResize(e,k,handle){
         case 'ml': dxL = -dx;            break;
         case 'bc':           dyB =  dy; break;
         case 'tc':           dyT = -dy; break;
+      }
+
+      // Edge-handle aspect-lock: a single-axis edge drag has to grow
+      // the OTHER axis proportionally, anchored at the centre of the
+      // unmoved axis (so a left-or-right drag pushes top + bottom
+      // equally outward). Without this, "lock aspect" only worked on
+      // corners — the user could still distort an image by dragging
+      // a single edge handle, which is exactly the bug they reported.
+      if(!isCorner && lockAspect){
+        if(dxR || dxL){
+          const horizGrowth = dxR + dxL;     // total bbox W growth
+          const vGrowth = horizGrowth / aspect;
+          dyT = vGrowth / 2;
+          dyB = vGrowth / 2;
+        } else if(dyT || dyB){
+          const vertGrowth  = dyT + dyB;     // total bbox H growth
+          const hGrowth = vertGrowth * aspect;
+          dxL = hGrowth / 2;
+          dxR = hGrowth / 2;
+        }
       }
 
       // Corner aspect-lock: drive both axes from the larger delta so the
