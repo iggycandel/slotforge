@@ -12969,6 +12969,27 @@ window.addEventListener('message', function(evt){
   var msg = evt.data;
   if(!msg || msg.type !== 'SF_UPLOAD_ASSET_RESULT') return;
   var cb = window._sfUploadCallbacks[msg.assetKey];
+
+  // Silent-failure was the most-reported editor bug class — uploads
+  // that bounce off Vercel's 4.5 MB platform body cap, file-type
+  // sniff rejections, or DB-row write failures all returned with no
+  // user-visible feedback because the bridge handler only acted on a
+  // success URL. Now we surface every failure as a toast that names
+  // the layer + the actual reason, even when no callback is
+  // registered (e.g. drag-drop pre-upload). Without this, every
+  // future upload bug lands as "uploading does not work, no message
+  // is displayed."
+  if(msg.error){
+    try {
+      var hint = msg.status === 413
+        ? 'File is too large (server limit). Try a smaller image — under 4 MB is safe.'
+        : (msg.message || msg.error || 'Upload failed');
+      var label = (typeof PSD !== 'undefined' && PSD[msg.assetKey] && PSD[msg.assetKey].label) || msg.assetKey;
+      if(typeof showToast === 'function') showToast('Upload failed for ' + label + ' — ' + hint);
+      else console.warn('[upload] failed for', msg.assetKey, hint);
+    } catch(e){ /* swallow — toast is best-effort */ }
+  }
+
   if(!cb) return;
   delete window._sfUploadCallbacks[msg.assetKey];
   if(msg.url){ cb(msg.url); }

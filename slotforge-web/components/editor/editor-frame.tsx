@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { autosaveProject, createSnapshot, getSnapshots, restoreSnapshot, deleteSnapshot } from '../../actions/editor'
+import { maybeDownscaleImage } from '@/lib/asset-upload/downscale'
 import type { ProjectSnapshot, SaveState } from '../../types'
 import { RightPanel } from './RightPanel'
 import { AssetsWorkspace } from '../assets/AssetsWorkspace'
@@ -16,7 +17,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v145'
+const EDITOR_VERSION = 'v146'
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -318,29 +319,68 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
       }
 
       if (msg.type === 'SF_UPLOAD_ASSET' && msg.file && msg.assetKey) {
+        // Async-IIFE so we can `await` the downscale pass without
+        // changing the onMessage signature. Inputs ≤3.5 MB return
+        // untouched; larger ones get re-encoded via canvas so the
+        // body fits comfortably under Vercel's 4.5 MB platform body
+        // cap. PNG transparency is preserved (reel frames + character
+        // cutouts depend on alpha); other formats become JPEG q90.
+        // See lib/asset-upload/downscale.ts for the full rationale.
+        ;(async () => {
+        const original = msg.file as File
+        const file = await maybeDownscaleImage(original)
         const form = new FormData()
-        form.append('file',      msg.file as Blob)
+        form.append('file',      file)
         form.append('projectId', projectId)
         form.append('assetKey',  msg.assetKey as string)
+        // Defensive parse: a Vercel platform 413 (request body > 4.5 MB
+        // cap) lands as text/html, not JSON. Calling res.json() on it
+        // throws "Unexpected token <" which the catch block then turns
+        // into a meaningless "SyntaxError" toast inside the editor.
+        // Reading the body as text first and only JSON-parsing when
+        // the content-type matches gives us a clean message + status
+        // code that the editor's SF_UPLOAD_ASSET_RESULT handler can
+        // surface verbatim.
+        const reportResult = (payload: { url?: string | null; error?: string | null; message?: string | null; status?: number }) => {
+          iframeRef.current?.contentWindow?.postMessage({
+            type:     'SF_UPLOAD_ASSET_RESULT',
+            assetKey: msg.assetKey,
+            url:      payload.url     ?? null,
+            error:    payload.error   ?? null,
+            message:  payload.message ?? null,
+            status:   payload.status,
+          }, window.location.origin)
+        }
         fetch('/api/assets/upload', { method: 'POST', body: form })
-          .then(r => r.json())
-          .then(({ url, error }) => {
-            iframeRef.current?.contentWindow?.postMessage({
-              type: 'SF_UPLOAD_ASSET_RESULT', assetKey: msg.assetKey, url: url ?? null, error: error ?? null,
-            }, window.location.origin)
-            if (url && payloadRef.current) {
+          .then(async r => {
+            const status      = r.status
+            const contentType = r.headers.get('content-type') ?? ''
+            const raw         = await r.text()
+            let parsed: { url?: string; error?: string; message?: string; asset?: unknown } = {}
+            if (contentType.includes('application/json')) {
+              try { parsed = JSON.parse(raw) } catch { /* fall through */ }
+            }
+            if (!r.ok) {
+              const message = parsed.message
+                            ?? parsed.error
+                            ?? (status === 413 ? 'File too large for the upload endpoint.' : `Upload failed (HTTP ${status}).`)
+              reportResult({ error: parsed.error ?? message, message, status })
+              return
+            }
+            if (parsed.url && payloadRef.current) {
               const assets = ((payloadRef.current.assets as Record<string, unknown>) ?? {})
-              payloadRef.current = { ...payloadRef.current, assets: { ...assets, [msg.assetKey as string]: url } }
+              payloadRef.current = { ...payloadRef.current, assets: { ...assets, [msg.assetKey as string]: parsed.url } }
               doSave(payloadRef.current, false)
               // Trigger right-panel asset list refresh
               setAssetRefreshTick(t => t + 1)
             }
+            reportResult({ url: parsed.url, status })
           })
           .catch(err => {
-            iframeRef.current?.contentWindow?.postMessage({
-              type: 'SF_UPLOAD_ASSET_RESULT', assetKey: msg.assetKey, url: null, error: String(err),
-            }, window.location.origin)
+            const message = err instanceof Error ? err.message : 'Network error'
+            reportResult({ error: message, message })
           })
+        })()
       }
 
       if (msg.type === 'SF_ASSET_CDN_URL' && msg.assetKey && msg.url) {

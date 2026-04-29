@@ -768,9 +768,12 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       setFailedTypes(prev => { const m = new Map(prev); m.delete(assetType); return m })
     }
 
-    // Belt-and-braces client-side cap. The route enforces 12 MB but
-    // checking here gives an instant, useful error message instead of
-    // a round-trip + opaque 413.
+    // Belt-and-braces client-side cap. Vercel's Node serverless runtime
+    // enforces a 4.5 MB request-body cap regardless of what our route
+    // says, so 12 MB is a soft ceiling — the downscale pass below
+    // brings everything comfortably under 4 MB. We still keep the cap
+    // in case the user feeds us a deliberately huge non-image file or
+    // an image format that doesn't decode (SVG / GIF skip downscale).
     const MAX_CLIENT_BYTES = 12 * 1024 * 1024
     if (file.size > MAX_CLIENT_BYTES) {
       const mb = (file.size / 1024 / 1024).toFixed(1)
@@ -778,22 +781,50 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       return
     }
 
+    // Downscale large images via canvas so the body fits under
+    // Vercel's 4.5 MB platform cap. PNG keeps alpha, JPEG q90
+    // otherwise. Files ≤3.5 MB pass through untouched. The user's
+    // 6.4 MB reel-frame upload was the impetus — see
+    // lib/asset-upload/downscale.ts.
+    const { maybeDownscaleImage } = await import('@/lib/asset-upload/downscale')
+    let uploadFile = file
+    try {
+      uploadFile = await maybeDownscaleImage(file)
+      if (uploadFile !== file) {
+        const beforeMb = (file.size       / 1024 / 1024).toFixed(1)
+        const afterMb  = (uploadFile.size / 1024 / 1024).toFixed(1)
+        addLog(`Downscaled ${assetType} from ${beforeMb} MB → ${afterMb} MB to fit upload limit`)
+      }
+    } catch (err) {
+      console.warn('[asset-upload] downscale failed', err)
+      // Fall through with the original file — the server will return
+      // a clean error if it really is too large.
+    }
+
     const fd = new FormData()
-    fd.append('file', file)
+    fd.append('file', uploadFile)
     fd.append('projectId', projectId)
     fd.append('assetKey', assetType)
     fd.append('theme', theme || 'custom')
     addLog(`Uploading ${assetType}…`)
     try {
-      const res  = await fetch('/api/assets/upload', { method: 'POST', body: fd })
-      // Defensive parse — a 413 from the platform (before our route
-      // runs) ships HTML, not JSON, and would otherwise throw inside
-      // res.json() with a confusing "Unexpected token <" message.
-      const json = await res.json().catch(() => ({} as Record<string, unknown>))
+      const res = await fetch('/api/assets/upload', { method: 'POST', body: fd })
+      // Defensive parse — a Vercel-platform 413 ships HTML before our
+      // route runs, and res.json() would throw a confusing
+      // "Unexpected token <" otherwise. Read text first, JSON-parse
+      // only when the content-type says so.
+      const ct  = res.headers.get('content-type') ?? ''
+      const raw = await res.text()
+      let json: Record<string, unknown> = {}
+      if (ct.includes('application/json')) {
+        try { json = JSON.parse(raw) as Record<string, unknown> } catch { /* fall through */ }
+      }
       if (!res.ok || json.error) {
         const msg = (json.message as string)
                   ?? (json.error as string)
-                  ?? `Upload failed (HTTP ${res.status})`
+                  ?? (res.status === 413
+                      ? 'File too large for the upload endpoint (server cap).'
+                      : `Upload failed (HTTP ${res.status})`)
         setFailure(msg)
         return
       }
