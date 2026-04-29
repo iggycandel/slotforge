@@ -222,10 +222,21 @@ function computeLayout(){
   const frameX_L  = Math.round(frameCX_L - frameW_L/2);
   const reelX_L   = frameX_L + FRAME;
 
-  // Vertical (landscape): JP bars sit FULLY ABOVE the reel frame — bottom edge flush with frame top
+  // Vertical (landscape): JP bars sit FULLY ABOVE the reel frame — bottom edge flush with frame top.
+  //
+  // UI_BOTTOM_L is reserved in the height accounting because the
+  // user might place balance / spin chrome below the reels even
+  // though the default landscape layout uses a right column for
+  // those. vSlack = 1125 - (msg + jp + frame + ui-bottom). We split
+  // the slack 50/50 above and below the reel frame so the grid
+  // sits centred in the visible canvas — the previous 0.3 / 0.7
+  // top/bottom split bunched everything into the upper half and
+  // left a big grey strip at the bottom (user's report:
+  // "objects are all at the top of the canvas, there is a grey
+  // area below").
   const totalH_used = JP_H_L + frameH_L + UI_BOTTOM_L + MSG_H_L;
   const vSlack_L = 1125 - totalH_used;
-  const vTop_L = MSG_H_L + Math.round(vSlack_L * 0.3);
+  const vTop_L = MSG_H_L + Math.round(vSlack_L * 0.5);
   const frameY_L = vTop_L + JP_H_L; // frame starts below full JP bar height
   const reelY_L  = frameY_L + FRAME;
   const jpY_L    = frameY_L - JP_H_L; // bars fully above frame, bottom edge = frame top
@@ -2456,6 +2467,24 @@ function isAspectLockedByDefault(k){
 
 function startResize(e,k,handle){
   e.preventDefault();e.stopPropagation();
+  // Remap visible handle → logical handle when the layer has a flip
+  // applied. The .cel div carries `transform: scaleX(-1)` /
+  // `scaleY(-1)` for flipped layers (see _transformCss + line ~1852),
+  // and the resize handles are children of that div — so CSS flips
+  // the handles too. The visually-RIGHT handle is then actually the
+  // 'ml' handle in coordinate space, and dragging it grows the bbox
+  // from the LEFT edge. User reports this as "right handles trigger
+  // the left side scale". Swapping the handle's l/r (or t/b) before
+  // the math runs makes the visible drag match coordinate-space
+  // direction. Rotation is left as-is for now — 90° / 270° would
+  // need to swap horizontal ↔ vertical handles entirely; user
+  // hasn't reported it and the flow editor's rotation handle is
+  // hidden behind a context-menu action that's rarely used.
+  const xform = (typeof EL_TRANSFORM !== 'undefined' && EL_TRANSFORM[k]) || null;
+  if (xform) {
+    if (xform.flipX) handle = handle.replace(/[lr]/g, c => c === 'l' ? 'r' : 'l');
+    if (xform.flipY) handle = handle.replace(/[tb]/g, c => c === 't' ? 'b' : 't');
+  }
   const sx=e.clientX,sy=e.clientY,orig={...getPos(k)};
   const aspect=orig.w/orig.h; // captured once — never recomputed mid-drag (rounding drift)
   const commit=beginAction('resize '+k);
