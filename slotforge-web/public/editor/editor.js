@@ -3776,7 +3776,31 @@ document.getElementById('theme-sel').addEventListener('change',e=>{P.theme=e.tar
   document.getElementById('col'+n).addEventListener('input',e=>{P.colors['c'+n]=e.target.value;document.getElementById('sw'+n).style.background=e.target.value;document.getElementById('hex'+n).textContent=e.target.value;refresh();markDirty();});
   document.getElementById('tog'+n).addEventListener('click',()=>{P.colors['t'+n]=!P.colors['t'+n];document.getElementById('tog'+n).classList.toggle('on',P.colors['t'+n]);document.getElementById('sw'+n).classList.toggle('off',!P.colors['t'+n]);refresh();markDirty();});
 });
-document.getElementById('reel-sel').addEventListener('change',e=>{P.reelset=e.target.value;renderReelViz();document.getElementById('sb-reel').textContent=P.reelset.replace('x','×').replace(/[ch]/g,'');refresh();markDirty();});
+// Wipe user-stored reelArea + reelFrame positions across every
+// viewport / screen bucket. The reel set has just changed (different
+// cols / rows), so the layout's `cellP = floor(min(availW/cols,
+// availH/rows))` math produces a different grid — but `getPos()` gives
+// EL_VP overrides priority over EL_COMPUTED, so any stored value
+// (whether from a deliberate drag or from the smart-asset-fit pass in
+// applyAssetToLayer) freezes the old container size and shrinks the
+// new symbols to fit. Wiping the override lets computeLayout's fresh
+// dimensions take effect on the very next paint.
+//
+// Both keys are wiped because reelFrame is the visual border around
+// reelArea — its w/h derives from the same grid math, so stale
+// reelFrame state would clip the bigger reel area on a 5×6 / 6×4
+// upgrade even when reelArea itself resizes correctly.
+function resetReelLayoutOverrides(){
+  ['portrait','landscape','desktop'].forEach(function(vp){
+    if(!EL_VP[vp]) return;
+    Object.keys(EL_VP[vp]).forEach(function(sk){
+      if(!EL_VP[vp][sk]) return;
+      delete EL_VP[vp][sk]['reelArea'];
+      delete EL_VP[vp][sk]['reelFrame'];
+    });
+  });
+}
+document.getElementById('reel-sel').addEventListener('change',e=>{P.reelset=e.target.value;resetReelLayoutOverrides();renderReelViz();document.getElementById('sb-reel').textContent=P.reelset.replace('x','×').replace(/[ch]/g,'');refresh();markDirty();});
 // Round 3.1: aspect-ratio moved to the GRID container (was on cells).
 // On a 6×3 grid inside a 9:11 portrait stage, the previous approach
 // forced cells to use the taller-row height as their width — they
