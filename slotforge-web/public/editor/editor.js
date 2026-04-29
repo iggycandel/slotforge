@@ -86,38 +86,53 @@ const RIGHT_COL_L = 320; // right UI column width in landscape
 
 function computeLayout(){
   const [cols, rows] = parseReel(P.reelset);
-  const GAP = 8, PAD = 12;
+  // Default cell-to-cell gap is ZERO — symbols are touching by
+  // default per the user's request ("symbols should be by default
+  // touching each other, and the gap should be increased from this
+  // point"). The Reel Settings modal still exposes padX / padY for
+  // designers who want a Megaways-style gap, but the FLOOR is 0 so
+  // a fresh project / reel-set switch always starts edge-to-edge.
+  const GAP = 0, PAD = 12;
   const FRAME = FRAME_MARGIN;
 
-  // ── PORTRAIT ──
-  // Available canvas area for the reel grid:
-  //   Width: portrait crop = 984px (canvas x:441–1425)
-  //   Height: 2000px minus JP bar, reel frame borders, UI strip, msg label, logo margin
+  // ── UNIFIED CELL SIZE ──
+  // The reel area defaults to the SAME pixel dimensions in portrait
+  // and landscape so toggling the viewport doesn't reshape the grid
+  // (user's request: "the size should be the same in both portrait
+  // and landscape. so it should fit both screen modes"). We pick the
+  // largest square cell that fits inside BOTH viewports' available
+  // crops; the binding constraint is whichever axis is tightest in
+  // either orientation. Per-viewport user overrides via setPos still
+  // win — that's how a designer can choose to make portrait bigger
+  // than landscape (or vice versa) AFTER the unified default.
+  //
+  // Portrait crop: 984w × 2000h, minus the locked UI / JP / logo /
+  // frame allotment.
+  // Landscape crop: ~1244w × 851h once the left logo column + right
+  // UI column + msg / JP / UI strip are taken out.
   const availW_P = 984 - PAD*2 - FRAME*2;
   const availH_P = 2000 - MSG_H_P - JP_H_P - FRAME*2 - UI_BOTTOM_P - 60/*logo top margin*/;
-  // Portrait uses RECTANGULAR cells — slightly taller than wide. With
-  // square cells the 5×N grid was width-bound at ~185 px, leaving the
-  // reel area at only 30% of the 2000-tall canvas (the user's report:
-  // "in portrait, reel set looks very small"). Modern slot designs
-  // for mobile portrait use cells in the 4:5 / 5:6 / 1:1.35 region —
-  // tall enough to fill the screen, square enough that symbol art
-  // doesn't look stretched. We cap the height ratio at 1.35× so cells
-  // never feel "lanky" even on tall grids; cellH then clamps to the
-  // available height to honour the existing UI / logo / JP allotment.
-  const cellW_P = Math.max(60, Math.min(200, Math.floor(availW_P / cols)));
-  const cellH_P = Math.max(
-    cellW_P,
-    Math.min(
-      Math.floor((availH_P - (rows - 1) * GAP) / rows),
-      Math.floor(cellW_P * 1.35),
-    ),
-  );
-  const gridW_P = cols*cellW_P + (cols-1)*GAP;
-  const gridH_P = rows*cellH_P + (rows-1)*GAP;
-  const reelW_P = gridW_P + PAD*2;
-  const reelH_P = gridH_P + PAD*2;
-  const frameW_P = reelW_P + FRAME*2;
-  const frameH_P = reelH_P + FRAME*2;
+  const availW_L = 2000 - LOGO_H_L - RIGHT_COL_L - PAD*2 - FRAME*2;
+  const availH_L = 1125 - MSG_H_L - JP_H_L - FRAME*2 - UI_BOTTOM_L;
+  const cellSize = Math.max(60, Math.min(200, Math.floor(Math.min(
+    (availW_P - (cols - 1) * GAP) / cols,
+    (availH_P - (rows - 1) * GAP) / rows,
+    (availW_L - (cols - 1) * GAP) / cols,
+    (availH_L - (rows - 1) * GAP) / rows,
+  ))));
+  const gridW = cols * cellSize + (cols - 1) * GAP;
+  const gridH = rows * cellSize + (rows - 1) * GAP;
+  const reelW_unified = gridW + PAD * 2;
+  const reelH_unified = gridH + PAD * 2;
+  const frameW_unified = reelW_unified + FRAME * 2;
+  const frameH_unified = reelH_unified + FRAME * 2;
+
+  // Portrait alias the unified dims so the rest of the function reads
+  // unchanged. cellW_P / cellH_P kept as backwards-compat aliases.
+  const cellW_P = cellSize, cellH_P = cellSize;
+  const gridW_P = gridW, gridH_P = gridH;
+  const reelW_P = reelW_unified, reelH_P = reelH_unified;
+  const frameW_P = frameW_unified, frameH_P = frameH_unified;
 
   // Centre the reel frame within the portrait crop window. Reads from
   // VP.portrait so the viewport symmetry change (cx:508 in v2) flows
@@ -204,16 +219,15 @@ function computeLayout(){
   };
 
   // ── LANDSCAPE ──
-  // Available for reels: full 2000px wide but leave left (logo) and right (UI) columns
-  const availW_L = 2000 - LOGO_H_L - RIGHT_COL_L - PAD*2 - FRAME*2;
-  const availH_L = 1125 - MSG_H_L - JP_H_L - FRAME*2 - UI_BOTTOM_L;
-  const cellL = Math.max(60, Math.min(200, Math.floor(Math.min(availW_L/cols, availH_L/rows))));
-  const gridW_L = cols*cellL + (cols-1)*GAP;
-  const gridH_L = rows*cellL + (rows-1)*GAP;
-  const reelW_L = gridW_L + PAD*2;
-  const reelH_L = gridH_L + PAD*2;
-  const frameW_L = reelW_L + FRAME*2;
-  const frameH_L = reelH_L + FRAME*2;
+  // Reuses the unified reel area dimensions computed above so portrait
+  // and landscape default to the SAME grid size. availW_L / availH_L
+  // already factored into the unified cellSize cap; no separate
+  // landscape cell calculation is needed. cellL kept as a name for the
+  // legacy _cellSize export below.
+  const cellL = cellSize;
+  const gridW_L = gridW, gridH_L = gridH;
+  const reelW_L = reelW_unified, reelH_L = reelH_unified;
+  const frameW_L = frameW_unified, frameH_L = frameH_unified;
 
   // Centre reels in the available corridor
   const reelCorridorX = LOGO_H_L;
@@ -1301,7 +1315,14 @@ function makeSymbolCell(idx, cellW, cellH){
   if(uploadedImg){
     const img = document.createElement('img');
     img.src = uploadedImg;
-    img.style.cssText = `width:90%;height:90%;object-fit:contain;pointer-events:none;transform:scale(${oStyle.scale});position:relative;z-index:${oStyle.z}`;
+    // Symbol art fills the cell edge-to-edge so adjacent symbols
+    // visually touch when the grid uses GAP=0 (the default per the
+    // user's request). The previous 90%/90% fill left a visible
+    // 5% margin around each symbol that read as "gaps" between
+    // touching cells. object-fit:contain preserves the symbol's
+    // own aspect ratio inside the cell, so square symbol art on
+    // (now-square) cells lands edge-to-edge with no distortion.
+    img.style.cssText = `width:100%;height:100%;object-fit:contain;pointer-events:none;transform:scale(${oStyle.scale});position:relative;z-index:${oStyle.z}`;
     wrapper.appendChild(img);
   } else {
     const col = SYM_COLS[idx % SYM_COLS.length];
