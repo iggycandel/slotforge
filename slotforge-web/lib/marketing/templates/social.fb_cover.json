@@ -2,17 +2,21 @@
   "id": "social.fb_cover",
   "name": "Facebook — Cover",
   "category": "social",
-  "version": 1,
+  "version": 2,
   "sizes": [
     { "w": 820, "h": 312, "label": "820x312", "format": "jpg" }
   ],
   "layers": [
     { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
-    { "type": "gradient", "from": "rgba(0,0,0,0.6)", "to": "transparent", "direction": "right", "start": 0.0 },
-    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "middle-right", "scale": 1.0, "padding": 16 },
-    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-left", "scale": 0.4, "padding": 24 },
-    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 38, "tracking": 1.0 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 2 }, "anchor": "middle-left", "align": "left", "maxWidth": "55%" },
-    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 16 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-left", "padding": [8, 18] }
+    { "type": "gradient", "from": "rgba(0,0,0,0.55)", "to": "transparent", "direction": "right", "start": 0.0 },
+    { "type": "asset", "slot": "character.transparent",
+      "fit": "contain", "anchor": "bottom-left", "scale": 1.0,
+      "padding": [0, "52%", 0, 16] },
+    { "type": "asset", "slot": "logo",
+      "fit": "contain", "anchor": "middle-right", "scale": 1.0,
+      "padding": [20, 20, 20, "52%"],
+      "whenAlone": { "anchor": "middle-center", "scale": 0.85, "padding": ["12%", "8%", "12%", "8%"] } },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 16 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-right", "padding": [8, 18] }
   ],
   "vars": {
     "gameName":      { "source": "project.gameName", "override": true },

@@ -23,6 +23,7 @@
 import { auth }                       from '@clerk/nextjs/server'
 import { NextRequest, NextResponse }  from 'next/server'
 import archiver                       from 'archiver'
+import sharp                          from 'sharp'
 import { Readable }                   from 'stream'
 
 import { createAdminClient }          from '@/lib/supabase/admin'
@@ -52,6 +53,19 @@ export async function GET(req: NextRequest) {
 
   const projectId = req.nextUrl.searchParams.get('project_id')
   const idsCsv    = req.nextUrl.searchParams.get('render_ids')
+  // Optional re-encode pass: when `?format=jpg` is present, every entry is
+  // transcoded to JPEG via sharp before being appended to the archive.
+  // Game studios share these in WhatsApp / Slack / Discord where uniform
+  // file extensions matter more than original-format fidelity. PNG alpha
+  // flattens onto white. PDF entries are left untouched (sharp can't
+  // rasterise them and the press one-pager only ships as PDF).
+  const formatParam = (req.nextUrl.searchParams.get('format') || '').toLowerCase()
+  const transcode   = formatParam === 'jpg' || formatParam === 'jpeg'
+  // 70 / 85 / 95 are the offered presets (export menu UI). Validated as
+  // an integer in [50, 100]; out-of-range falls back to a balanced 85.
+  const qParam      = parseInt(req.nextUrl.searchParams.get('quality') || '85', 10)
+  const quality     = Number.isFinite(qParam) && qParam >= 50 && qParam <= 100 ? qParam : 85
+
   if (!projectId) return NextResponse.json({ error: 'Missing project_id' }, { status: 400 })
 
   if (!(await assertProjectAccess(userId, projectId))) {
@@ -103,7 +117,10 @@ export async function GET(req: NextRequest) {
   // gameName powers the archive's filename and each entry's prefix.
   const project   = await loadMarketingProject(projectId)
   const slug      = slugify(project?.meta.gameName ?? project?.name ?? 'spinative')
-  const zipName   = `${slug}_marketing-kit_v1.zip`
+  // Suffix the archive when transcoding so users with both kits in their
+  // Downloads can tell them apart at a glance.
+  const variantTag = transcode ? `_jpeg-q${quality}` : ''
+  const zipName    = `${slug}_marketing-kit_v1${variantTag}.zip`
 
   // Stream the archive. We pipe archiver into a Node Readable, then
   // wrap that as a Web ReadableStream for the Next.js Response. This
@@ -121,8 +138,22 @@ export async function GET(req: NextRequest) {
   ;(async () => {
     for (const row of list) {
       try {
-        const buf = await downloadRender(row.storage_path)
-        const name = `${slug}_${row.kit.template_id}_${row.size_label}.${row.format}`
+        const raw = await downloadRender(row.storage_path)
+        // Transcoding decision per entry. PDFs always pass through (sharp
+        // can't read them; the press one-pager is meant to be a PDF
+        // anyway). Other formats convert to JPEG when ?format=jpg is set.
+        let buf: Buffer = raw
+        let ext: string = row.format
+        if (transcode && row.format !== 'pdf') {
+          // flatten:white forces alpha channels onto a white backdrop —
+          // JPEG has no alpha. mozjpeg buys ~10% smaller files for free.
+          buf = await sharp(raw)
+            .flatten({ background: { r: 255, g: 255, b: 255 } })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer()
+          ext = 'jpg'
+        }
+        const name = `${slug}_${row.kit.template_id}_${row.size_label}.${ext}`
         archive.append(buf, { name })
       } catch (e) {
         console.warn(`[marketing/zip] skipped ${row.id} (${row.storage_path}):`, e instanceof Error ? e.message : e)

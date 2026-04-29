@@ -40,7 +40,8 @@
       "fit": "contain",
       "anchor": "top-center",
       "scale": 0.7,
-      "padding": 60
+      "padding": 60,
+      "whenAlone": { "anchor": "middle-center", "scale": 0.85, "padding": 80 }
     },
     {
       "type": "text",

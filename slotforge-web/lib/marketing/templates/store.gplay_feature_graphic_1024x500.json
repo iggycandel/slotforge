@@ -2,17 +2,21 @@
   "id": "store.gplay_feature_graphic_1024x500",
   "name": "Google Play — Feature Graphic",
   "category": "store",
-  "version": 1,
+  "version": 2,
   "sizes": [
     { "w": 1024, "h": 500, "label": "1024x500", "format": "jpg" }
   ],
   "layers": [
     { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
-    { "type": "gradient", "from": "rgba(0,0,0,0.6)", "to": "transparent", "direction": "right", "start": 0.0 },
-    { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "middle-right", "scale": 1.05, "padding": 24 },
-    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-left", "scale": 0.45, "padding": 40 },
-    { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 64, "tracking": 1.2 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 3 }, "anchor": "middle-left", "align": "left", "maxWidth": "55%" },
-    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 22 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-left", "padding": [12, 28] }
+    { "type": "gradient", "from": "rgba(0,0,0,0.55)", "to": "transparent", "direction": "right", "start": 0.0 },
+    { "type": "asset", "slot": "character.transparent",
+      "fit": "contain", "anchor": "bottom-left", "scale": 1.0,
+      "padding": [0, "52%", 0, 24] },
+    { "type": "asset", "slot": "logo",
+      "fit": "contain", "anchor": "middle-right", "scale": 1.0,
+      "padding": [30, 30, 30, "52%"],
+      "whenAlone": { "anchor": "middle-center", "scale": 0.85, "padding": ["12%", "8%", "12%", "8%"] } },
+    { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 22 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-right", "padding": [12, 28] }
   ],
   "vars": {
     "gameName":      { "source": "project.gameName", "override": true },

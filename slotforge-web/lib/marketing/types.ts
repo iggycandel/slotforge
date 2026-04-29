@@ -71,6 +71,13 @@ export type Layer =
   | CtaLayer
   | OverlayLayer
 
+/** Padding side: literal px (number) or percentage of the matching axis
+ *  ("50%" on `right`/`left` = 50% of canvas width; on `top`/`bottom` =
+ *  50% of canvas height). Percentage strings let templates carve the
+ *  canvas into halves / thirds without hardcoding pixel values that
+ *  break across multiple sizes (1920×600 vs 2400×800 etc). */
+export type PaddingSide = number | string
+
 /** Draws a project asset (background, logo, character) onto the canvas. */
 export interface AssetLayer {
   type:    'asset'
@@ -85,14 +92,28 @@ export interface AssetLayer {
   /** Scale relative to canvas (0..1). 0.85 = 85% of the smaller canvas
    *  dimension. Optional — defaults to 1.0 (fills box). */
   scale?:  number
-  /** Padding inside the canvas, in canvas-relative px. A scalar is
-   *  uniform; a tuple is [top, right, bottom, left]. */
-  padding?: number | [top: number, right: number, bottom: number, left: number]
+  /** Padding inside the canvas. A scalar applies uniformly; a tuple is
+   *  [top, right, bottom, left]. Each side may be a literal px number
+   *  or a percentage string like "50%" — useful for reserving exactly
+   *  half the canvas for a sibling layer (character left / logo right
+   *  pattern shipped by every wide-horizontal template). */
+  padding?: PaddingSide | [top: PaddingSide, right: PaddingSide, bottom: PaddingSide, left: PaddingSide]
   /** Per-layoutVariant overrides. The engine merges
    *  `variants?[vars.layoutVariant]` into the layer config before
    *  rendering, so a template can ship A/B/C arrangements without
    *  duplicating the whole layer stack. */
   variants?: Partial<Record<LayoutVariant, Partial<Omit<AssetLayer, 'type' | 'slot'>>>>
+  /** Fallback overrides applied when the project has NO character
+   *  asset. Used by wide-horizontal banners where the default layout
+   *  reserves the right half for the logo (next to a left-anchored
+   *  character) — when there's no character, the logo should re-centre
+   *  on the canvas instead of sitting awkwardly at the right edge.
+   *
+   *  The engine shallow-merges these fields onto the layer (after the
+   *  variant merge, before drawing) when `assets.character` AND
+   *  `assets['character.transparent']` are both absent. Logo layers in
+   *  character-aware templates declare `whenAlone: { anchor: 'middle-center', ... }`. */
+  whenAlone?: Partial<Pick<AssetLayer, 'anchor' | 'scale' | 'padding' | 'fit'>>
 }
 
 export type AssetSlot =

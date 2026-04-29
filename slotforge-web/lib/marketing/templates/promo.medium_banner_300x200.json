@@ -1,21 +1,22 @@
 {
-  "id": "social.linkedin_banner",
-  "name": "LinkedIn — Banner",
-  "category": "social",
-  "version": 2,
+  "id": "promo.medium_banner_300x200",
+  "name": "Medium Banner — 300×200",
+  "category": "promo",
+  "version": 1,
   "sizes": [
-    { "w": 1584, "h": 396, "label": "1584x396", "format": "jpg" }
+    { "w": 300, "h": 200, "label": "300x200", "format": "jpg" },
+    { "w": 600, "h": 400, "label": "600x400", "format": "jpg" }
   ],
   "layers": [
     { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
-    { "type": "gradient", "from": "rgba(0,0,0,0.55)", "to": "transparent", "direction": "right", "start": 0.0 },
+    { "type": "gradient", "from": "rgba(0,0,0,0.5)", "to": "transparent", "direction": "right", "start": 0.0 },
     { "type": "asset", "slot": "character.transparent",
       "fit": "contain", "anchor": "bottom-left", "scale": 1.0,
-      "padding": [0, "52%", 0, 20] },
+      "padding": [0, "52%", 0, 8] },
     { "type": "asset", "slot": "logo",
       "fit": "contain", "anchor": "middle-right", "scale": 1.0,
-      "padding": [30, 30, 30, "52%"],
-      "whenAlone": { "anchor": "middle-center", "scale": 0.85, "padding": ["12%", "8%", "12%", "8%"] } }
+      "padding": [16, 12, 16, "52%"],
+      "whenAlone": { "anchor": "middle-center", "scale": 0.9, "padding": ["10%", "6%", "10%", "6%"] } }
   ],
   "vars": {
     "gameName":      { "source": "project.gameName", "override": true },
@@ -26,5 +27,5 @@
     "colorMode":     { "default": "auto", "options": ["auto","light","dark"] },
     "layoutVariant": { "default": "A", "options": ["A","B","C"] }
   },
-  "previewPath": "/marketing/previews/social_linkedin_banner.png"
+  "previewPath": "/marketing/previews/promo_medium_banner_300x200.png"
 }
