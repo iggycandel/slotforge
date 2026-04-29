@@ -17,7 +17,47 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v149'
+const EDITOR_VERSION = 'v150'
+
+// ─── Pre-flight payload sanitisation ─────────────────────────────────────────
+//
+// Next.js enforces a 4 MB body cap on Server Action calls (configured
+// via experimental.serverActions.bodySizeLimit in next.config.js). The
+// editor's payload is normally well under that — except when a Storage
+// upload has failed and EL_ASSETS still holds the original file as a
+// base64 dataURL. A single 6 MB character PNG renders the entire save
+// dead-on-arrival before our route even sees it.
+//
+// The action's autosaveProject strips base64 too, but its strip runs
+// AFTER the body-cap check, which is too late. We strip here BEFORE
+// the call so the payload never breaches the cap. Custom layers
+// (`custom_*`) skip the strip — those have no CDN equivalent and the
+// base64 is the only copy.
+//
+// Also drops base64 from `library` items the same way the server-side
+// path does, for symmetry.
+function stripBase64FromPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = { ...payload }
+  if (cleaned.assets && typeof cleaned.assets === 'object') {
+    const safe: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(cleaned.assets as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.startsWith('data:') && !k.startsWith('custom_')) continue
+      safe[k] = v
+    }
+    cleaned.assets = safe
+  }
+  if (Array.isArray(cleaned.library)) {
+    cleaned.library = (cleaned.library as Record<string, unknown>[]).map(item => {
+      if (!item || typeof item !== 'object') return item
+      const c: Record<string, unknown> = { ...item }
+      for (const f of ['src', 'url', 'data', 'thumbnail']) {
+        if (typeof c[f] === 'string' && (c[f] as string).startsWith('data:')) delete c[f]
+      }
+      return c
+    })
+  }
+  return cleaned
+}
 const editorSrc = `/editor/spinative.html?v=${EDITOR_VERSION}`
 
 // CSS injected into the editor iframe:
@@ -71,7 +111,13 @@ function SaveBadge({ state }: { state: SaveState }) {
           100% { transform: scale(1);   opacity: 1; }
         }
       `}</style>
-      <span style={{ fontSize: 11, color, display: 'flex', alignItems: 'center', gap: 5 }}>
+      <span
+        style={{ fontSize: 11, color, display: 'flex', alignItems: 'center', gap: 5 }}
+        // Show the actual error message on hover so the user knows
+        // why the save failed (was previously just a bare "Error"
+        // badge with no detail).
+        title={state.status === 'error' ? (state.error || 'Save failed — open DevTools for detail') : undefined}
+      >
         {/* Checkmark for saved / idle states; pulsing dot otherwise */}
         {showCheck ? (
           <svg
@@ -244,12 +290,17 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
     }
     isSavingRef.current = true
     setSaveState({ status: 'saving' })
+    // Strip base64 BEFORE the Server Action call so the body stays
+    // under Next.js's 4 MB cap. See stripBase64FromPayload + the
+    // failure mode it guards against.
+    const cleanedPayload = stripBase64FromPayload(payload)
     try {
-      const { error } = await autosaveProject(projectId, payload)
-      if (error) throw error
+      const { error } = await autosaveProject(projectId, cleanedPayload)
+      if (error) throw new Error(typeof error === 'string' ? error : 'Autosave failed')
       const noteText = versionLabel.trim()
       if (isManual) {
-        await createSnapshot(projectId, payload, noteText || undefined)
+        const snap = await createSnapshot(projectId, cleanedPayload, noteText || undefined)
+        if (snap.error) throw new Error(typeof snap.error === 'string' ? snap.error : 'Snapshot failed')
         setVersionLabel('')
         loadSnapshots()
       }
@@ -264,8 +315,15 @@ export default function EditorFrame({ projectId, orgSlug, initialPayload, projec
           window.location.origin,
         )
       } catch { /* iframe gone — ignore */ }
-    } catch {
-      setSaveState({ status: 'error' })
+    } catch (err) {
+      // Capture the actual reason so the user can see WHY the save
+      // failed instead of a bare "Error" badge. Server Actions over
+      // 4 MB throw a network-level "Body exceeded ..." error from
+      // Next.js itself; surface that verbatim so the user knows it's
+      // a payload-size issue and not a server bug.
+      const message = err instanceof Error ? err.message : 'Save failed'
+      console.error('[doSave]', err)
+      setSaveState({ status: 'error', error: message })
     } finally {
       isSavingRef.current = false
       if (pendingSave.current) {

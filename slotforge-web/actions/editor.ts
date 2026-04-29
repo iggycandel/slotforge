@@ -28,19 +28,20 @@ export async function getProjectWithPayload(projectId: string) {
   return { data, error }
 }
 
-export async function autosaveProject(projectId: string, payload: Record<string, unknown>) {
-  const { userId } = await auth()
-  if (!userId) return { error: 'Not authenticated' }
-  if (!(await assertProjectAccess(userId, projectId))) {
-    return { error: 'Not found' }
-  }
-  const supabase  = createAdminClient()
-  const thumbnail = (payload._thumbnail as string | undefined) ?? null
+/** Strip base64 data URLs from a project payload so it stays under
+ *  the Server-Action body cap and the DB row stays small. Custom
+ *  layers (`custom_*`) keep their base64 — those have no CDN
+ *  equivalent and the dataURL is the only copy. Mirrors the
+ *  client-side `stripBase64FromPayload` in editor-frame.tsx so the
+ *  protection is enforced at both ends.
+ *
+ *  Defence in depth: the client stripper handles the body-cap (Next
+ *  rejects a large Server Action body BEFORE the action runs); the
+ *  server stripper handles the DB-size question (a snapshot row
+ *  shouldn't be 5 MB even if the body cap was raised) and any direct
+ *  callers that bypass the client. */
+function sanitisePayload(payload: Record<string, unknown>): Record<string, unknown> {
   const cleanPayload: Record<string, unknown> = { ...payload }
-  delete cleanPayload._thumbnail
-
-  // Strip base64 data URLs from assets — they can be several MB each and blow the payload limit.
-  // Exception: custom_N layers have no CDN path, so their base64 is the only copy — keep it.
   if (cleanPayload.assets && typeof cleanPayload.assets === 'object') {
     const safeAssets: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(cleanPayload.assets as Record<string, unknown>)) {
@@ -49,8 +50,6 @@ export async function autosaveProject(projectId: string, payload: Record<string,
     }
     cleanPayload.assets = safeAssets
   }
-
-  // Strip base64 data URLs from library items (same reason — each item may have a src or url field).
   if (Array.isArray(cleanPayload.library)) {
     cleanPayload.library = (cleanPayload.library as Record<string, unknown>[]).map(item => {
       if (!item || typeof item !== 'object') return item
@@ -63,6 +62,20 @@ export async function autosaveProject(projectId: string, payload: Record<string,
       return clean
     })
   }
+  return cleanPayload
+}
+
+export async function autosaveProject(projectId: string, payload: Record<string, unknown>) {
+  const { userId } = await auth()
+  if (!userId) return { error: 'Not authenticated' }
+  if (!(await assertProjectAccess(userId, projectId))) {
+    return { error: 'Not found' }
+  }
+  const supabase  = createAdminClient()
+  const thumbnail = (payload._thumbnail as string | undefined) ?? null
+  // Sanitise + drop the transient _thumbnail field (saved separately).
+  const cleanPayload = sanitisePayload(payload)
+  delete cleanPayload._thumbnail
 
   // Build update: always save payload; also sync name from gameName if set
   const update: Record<string, unknown> = { payload: cleanPayload, updated_at: new Date().toISOString() }
@@ -92,12 +105,18 @@ export async function createSnapshot(projectId: string, payload: Record<string, 
     .select('*', { count: 'exact', head: true })
     .eq('project_id', projectId)
   const version = (count ?? 0) + 1
+  // Sanitise the payload before inserting — every manual save (Cmd+S)
+  // creates a snapshot, and a base64 dataURL leaking into the
+  // project_snapshots row inflated the table by several MB per save
+  // and tripped the 4 MB Server-Action body cap on the way in. Same
+  // strip rule as autosaveProject. Custom layers keep their base64.
+  const cleanPayload = sanitisePayload(payload)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any)
     .from('project_snapshots')
     .insert({
       project_id: projectId,
-      payload,
+      payload: cleanPayload,
       label: label ?? null,
       created_at: new Date().toISOString(),
       version,
