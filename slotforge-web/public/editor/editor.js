@@ -1603,11 +1603,27 @@ function openOvPropsPanel(ov,sub){
   if (titleEl) titleEl.textContent = `${ovLabel} › ${subDef.label}`;
   panel.dataset.mode = isBtn ? 'btn' : 'text';
 
+  // Normalise any hex string to the 7-char form `<input type="color">` requires.
+  // Without this the picker silently falls back to white for valid-but-non-7-char
+  // values (e.g. `#c9a84ccc` with alpha used in every intro/outro sub-copy default,
+  // or `#fff` shorthand the user may have typed manually). The canvas keeps
+  // rendering the real colour from `<text input>` so picker + canvas would
+  // drift — the user sees gold text but a white picker swatch.
+  const _hexFor = (c, fb) => {
+    if (typeof c !== 'string') return fb;
+    const s = c.trim().toLowerCase();
+    if (/^#[0-9a-f]{6}$/.test(s))     return s;                                  // already correct
+    if (/^#[0-9a-f]{8}$/.test(s))     return s.slice(0, 7);                      // strip alpha
+    if (/^#[0-9a-f]{3}$/.test(s))     return '#' + s[1]+s[1]+s[2]+s[2]+s[3]+s[3]; // expand shorthand
+    if (/^#[0-9a-f]{4}$/.test(s))     return '#' + s[1]+s[1]+s[2]+s[2]+s[3]+s[3]; // shorthand+alpha
+    return fb;
+  };
+
   // ── Shared: text + primary colour ──
   const txt   = getOvProp(ov,sub,'dText')  || subDef.dText  || '';
   const color = getOvProp(ov,sub,'dColor') || subDef.dColor || '#ffffff';
   _set('ovp-text', txt);
-  _set('ovp-color',      color.length === 7 ? color : '#ffffff');
+  _set('ovp-color',      _hexFor(color, '#ffffff'));
   _set('ovp-color-hex',  color);
 
   if (!isBtn) {
@@ -1625,9 +1641,9 @@ function openOvPropsPanel(ov,sub){
     const bg1    = getOvProp(ov,sub,'dBg1')    || '#c9a84c';
     const bg2    = getOvProp(ov,sub,'dBg2')    || '#e8c96d';
     const radius = getOvProp(ov,sub,'dRadius') || 40;
-    _set('ovp-bg1',     bg1.length === 7 ? bg1 : '#c9a84c');
+    _set('ovp-bg1',     _hexFor(bg1, '#c9a84c'));
     _set('ovp-bg1-hex', bg1);
-    _set('ovp-bg2',     bg2.length === 7 ? bg2 : '#e8c96d');
+    _set('ovp-bg2',     _hexFor(bg2, '#e8c96d'));
     _set('ovp-bg2-hex', bg2);
     _set('ovp-radius',  radius);
   }
@@ -3690,34 +3706,41 @@ function switchScreen(scr){
   renderLayers();
   if(!isProj){
     requestAnimationFrame(()=>{
-      buildCanvas();
+      // Wrap each step individually so a throw in buildCanvas /
+      // buildFeatureOverlay (e.g. a stale PSD entry on a niche screen) can't
+      // skip the trailing _sendLayersUpdate / fitZoom and leave the React
+      // Layers panel stale. Previously a single uncaught throw meant the
+      // panel stayed empty until the user navigated to a working screen.
+      try { buildCanvas(); } catch(e){ console.error('[switchScreen] buildCanvas',e); }
       // Fix E: always tear down the previous feature overlay before deciding
       // whether to build a new one, so switching between sub-tabs (In-round →
       // Outro / Intro) never leaks layers from the prior screen.
-      document.getElementById('feature-screen-overlay')?.remove();
+      try { document.getElementById('feature-screen-overlay')?.remove(); } catch(e){}
       const gf = document.getElementById('gf');
       // Fix H: build overlays synchronously inside the rAF callback (after
       // buildCanvas) instead of via a 60ms setTimeout. Eliminates the
       // per-tab-switch flicker where the canvas was briefly empty.
-      if(scr.startsWith('ew_')){
-        const parentScr=scr.replace('ew_','');
-        if(gf) gf.appendChild(buildEWOverlay(parentScr));
-        // Replay stored feat-slot order so user reorders persist across
-        // screen switches — matches the featureDef.overlay path below.
-        try { _applyFeatSlotOrder(); } catch(e){}
-      }
-      const featureDef=SDEFS[scr];
-      if(featureDef?.overlay && featureDef.overlay!=='generic'){
-        const ov=buildFeatureOverlay(scr, featureDef);
-        if(ov && gf) gf.appendChild(ov);
-        // Replay the stored feat-slot order so user-reordered layers stay
-        // reordered when the user switches back to this screen.
-        try { _applyFeatSlotOrder(); } catch(e){}
-      }
+      try {
+        if(scr.startsWith('ew_')){
+          const parentScr=scr.replace('ew_','');
+          if(gf) gf.appendChild(buildEWOverlay(parentScr));
+          // Replay stored feat-slot order so user reorders persist across
+          // screen switches — matches the featureDef.overlay path below.
+          try { _applyFeatSlotOrder(); } catch(e){}
+        }
+        const featureDef=SDEFS[scr];
+        if(featureDef?.overlay && featureDef.overlay!=='generic'){
+          const ov=buildFeatureOverlay(scr, featureDef);
+          if(ov && gf) gf.appendChild(ov);
+          // Replay the stored feat-slot order so user-reordered layers stay
+          // reordered when the user switches back to this screen.
+          try { _applyFeatSlotOrder(); } catch(e){}
+        }
+      } catch(e){ console.error('[switchScreen] overlay build',e); }
       // Push layers update unconditionally — screens without a feature
       // overlay still need the Layers panel refreshed (empty feature-slot set).
       try { _sendLayersUpdate(); } catch(e){}
-      fitZoom();
+      try { fitZoom(); } catch(e){}
     });
   }
 }
@@ -13655,8 +13678,16 @@ window._sfBridge = (function(){
           msg.payload = Object.assign({}, msg.payload, { gameName: msg.projectName });
         }
         loadPayload(msg.payload);
-      } else if(msg.projectName){
-        prefillName(msg.projectName);
+      } else {
+        if(msg.projectName) prefillName(msg.projectName);
+        // Brand-new project: no payload to apply, so _sfApplyPayload (which
+        // sets _sfPayloadLoaded=true at its tail) never runs. Without this
+        // line the gate stays false forever, and _sendLayersUpdate +
+        // SF_REQUEST_LAYERS_UPDATE early-return, leaving the React Layers
+        // panel permanently empty. Mark the gate true here so the panel
+        // populates from the default state on the very first paint.
+        window._sfPayloadLoaded = true;
+        try { _sendLayersUpdate(); } catch(e){}
       }
     }
     if(msg.type === 'SF_REQUEST_SAVE'){ triggerSave(); }
