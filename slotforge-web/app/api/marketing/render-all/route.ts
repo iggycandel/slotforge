@@ -85,10 +85,13 @@ export async function POST(req: NextRequest) {
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
   const { assets, assetVersions, readiness } = await loadMarketingAssets(project_id)
-  if (!readiness.hasBackground || !readiness.hasLogo || !readiness.hasCharacter) {
+  // Character is optional — see app/api/marketing/render/route.ts for
+  // the full rationale. Every wide-banner template falls back to a
+  // logo-centred composition when no character is present.
+  if (!readiness.hasBackground || !readiness.hasLogo) {
     return NextResponse.json(
       { error: 'assets_missing', readiness,
-        message: 'Marketing renders need a background, logo, and character. Generate them first.' },
+        message: 'Marketing renders need a background and a logo. Generate them first.' },
       { status: 412 },
     )
   }

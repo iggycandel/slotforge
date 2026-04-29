@@ -122,13 +122,17 @@ export async function POST(req: NextRequest) {
   }
 
   const { assets, assetVersions, readiness } = await loadMarketingAssets(project_id)
-  // Hard-require the three core assets. The Day 5 UI gates on a readiness
-  // probe before exposing the Render button, but defending here closes
-  // the race where a user deletes an asset between probe and click.
-  if (!readiness.hasBackground || !readiness.hasLogo || !readiness.hasCharacter) {
+  // Hard-require the two ESSENTIAL assets. Character is intentionally
+  // optional — every wide-banner template ships a `whenAlone` fallback
+  // that re-centres the logo when no character is present, and many
+  // slot themes (3-reel classics, fruit machines, abstract themes)
+  // don't have a hero figure at all. The UI gates the kit view on the
+  // same two essentials; defending here closes the race where a user
+  // deletes one of them between probe and click.
+  if (!readiness.hasBackground || !readiness.hasLogo) {
     return NextResponse.json(
       { error: 'assets_missing', readiness,
-        message: 'Marketing renders need a background, logo, and character. Generate them first.' },
+        message: 'Marketing renders need a background and a logo. Generate them first.' },
       { status: 412 },   // Precondition Failed
     )
   }
