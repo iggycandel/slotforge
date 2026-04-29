@@ -191,26 +191,44 @@ export function Sidebar() {
             keeps that window very small. */}
         <NavItem href={slug ? `/${slug}/help` : '/help'} icon={HelpCircle} label="Help & docs" shortLabel="Help" exact collapsed={collapsed} />
 
-        {/* Account row */}
+        {/* Account row — links to the dedicated /account page (Round 7).
+            The Clerk avatar still sits next to the label so the popup
+            (sign-out / quick switcher) stays one click away, but the
+            row itself navigates to the full account surface where
+            users can see plan, credits, workspace, and quick links. */}
         <div
           className="flex items-center rounded-lg"
           style={{
             cursor:        'default',
             gap:           collapsed ? 0 : 10,
-            padding:       collapsed ? '6px 0' : '8px 12px',
+            padding:       collapsed ? '6px 0' : '4px 12px',
             justifyContent: collapsed ? 'center' : 'flex-start',
           }}
           title={collapsed ? 'Account' : undefined}
         >
           <UserButton
             afterSignOutUrl="/"
-            appearance={{
-              elements: {
-                avatarBox: 'w-6 h-6',
-              },
-            }}
+            appearance={{ elements: { avatarBox: 'w-6 h-6' } }}
           />
-          {!collapsed && <span style={{ fontSize: 13, color: '#a5afc0', fontWeight: 500 }}>Account</span>}
+          {!collapsed && (
+            <Link
+              href={slug ? `/${slug}/account` : '/account'}
+              style={{
+                fontSize:    13,
+                color:       '#a5afc0',
+                fontWeight:  500,
+                textDecoration: 'none',
+                padding:     '6px 8px',
+                borderRadius: 8,
+                flex:        1,
+                transition:  'color .15s, background .15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#f4efe4'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#a5afc0'; e.currentTarget.style.background = 'transparent' }}
+            >
+              Account
+            </Link>
+          )}
         </div>
 
         {/* Collapse toggle — always last so it doesn't move when content shifts */}
