@@ -1,9 +1,9 @@
 'use client'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useOrganization } from '@clerk/nextjs'
-import { Plus, Trash2, LayoutGrid, Clock, Sparkles } from 'lucide-react'
+import { Plus, Trash2, LayoutGrid, Clock, Sparkles, Search, ArrowDownUp, X } from 'lucide-react'
 import { WelcomeBanner } from '@/components/dashboard/WelcomeBanner'
 
 interface Project {
@@ -14,6 +14,11 @@ interface Project {
   payload?: Record<string, unknown> | null
 }
 
+// Round 7 polish: persisted sort preference. Restored on mount so the
+// user's chosen ordering carries across sessions on the same device.
+type SortMode = 'recent' | 'oldest' | 'name'
+const SORT_STORAGE_KEY = 'sf_dash_sort_v1'
+
 // ─── Main dashboard page ─────────────────────────────────
 export default function DashboardPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>()
@@ -22,8 +27,56 @@ export default function DashboardPage() {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [showNewForm, setShowNewForm] = useState(false)
+  const [query, setQuery] = useState('')
+  const [sort,  setSort]  = useState<SortMode>('recent')
   const { organization } = useOrganization()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef     = useRef<HTMLInputElement>(null)
+  const searchRef    = useRef<HTMLInputElement>(null)
+
+  // Restore the persisted sort preference on first mount. localStorage
+  // access is wrapped in try/catch so SSR / private-mode browsers don't
+  // crash the page.
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(SORT_STORAGE_KEY)
+      if (v === 'recent' || v === 'oldest' || v === 'name') setSort(v)
+    } catch { /* ignore */ }
+  }, [])
+  useEffect(() => {
+    try { localStorage.setItem(SORT_STORAGE_KEY, sort) } catch { /* ignore */ }
+  }, [sort])
+
+  // ⌘K / Ctrl+K focuses the search input — standard "open search"
+  // gesture across SaaS dashboards. preventDefault so the browser
+  // bookmark-K binding doesn't intercept.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Derived filtered + sorted list. Memoised so typing in the search
+  // input doesn't re-run the array allocation on every parent render.
+  const visibleProjects = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    let out = q
+      ? projects.filter(p => p.name.toLowerCase().includes(q))
+      : projects.slice()
+    if (sort === 'recent') {
+      out.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    } else if (sort === 'oldest') {
+      out.sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
+    } else if (sort === 'name') {
+      out.sort((a, b) => a.name.localeCompare(b.name))
+    }
+    return out
+  }, [projects, query, sort])
 
   async function load() {
     setLoading(true)
@@ -87,7 +140,9 @@ export default function DashboardPage() {
             {organization?.name ?? 'Dashboard'}
           </h1>
           <p style={{ fontSize: 13, color: '#7d8799', margin: '4px 0 0' }}>
-            {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+            {visibleProjects.length === projects.length
+              ? `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`
+              : `${visibleProjects.length} of ${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`}
           </p>
         </div>
 
@@ -116,6 +171,91 @@ export default function DashboardPage() {
           New project
         </button>
       </div>
+
+      {/* Search + sort toolbar — shown only once there's >1 project so
+          a brand-new dashboard stays uncluttered. ⌘K focuses the
+          search field; Esc clears it. Sort preference persists per
+          device via localStorage. */}
+      {!loading && projects.length > 1 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '12px 32px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(15,17,24,0.5)',
+        }}>
+          <div style={{
+            flex: 1, maxWidth: 480, position: 'relative',
+            display: 'flex', alignItems: 'center',
+          }}>
+            <Search style={{
+              position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)',
+              width: 14, height: 14, color: '#7d8799', pointerEvents: 'none',
+            }} />
+            <input
+              ref={searchRef}
+              type="text"
+              value={query}
+              placeholder="Search projects… (⌘K)"
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setQuery('') }}
+              style={{
+                flex: 1, padding: '8px 36px 8px 34px',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                color: '#f4efe4', fontSize: 13,
+                borderRadius: 999, outline: 'none',
+                fontFamily: 'inherit',
+                transition: 'border-color .15s, background .15s',
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = 'rgba(215,168,79,0.30)'; e.currentTarget.style.background = 'rgba(215,168,79,0.04)' }}
+              onBlur={e  => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => { setQuery(''); searchRef.current?.focus() }}
+                title="Clear search"
+                style={{
+                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                  width: 22, height: 22, borderRadius: '50%',
+                  border: 'none', background: 'rgba(255,255,255,0.06)',
+                  color: '#a5afc0', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              ><X size={11} /></button>
+            )}
+          </div>
+
+          {/* Sort dropdown — three options, persisted */}
+          <label style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 11px', borderRadius: 999,
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.025)',
+            cursor: 'pointer',
+          }}>
+            <ArrowDownUp size={12} style={{ color: '#7d8799' }} />
+            <select
+              value={sort}
+              onChange={e => setSort(e.target.value as SortMode)}
+              style={{
+                appearance: 'none' as const,
+                WebkitAppearance: 'none',
+                background: 'transparent', border: 'none', outline: 'none',
+                color: '#f4efe4', fontSize: 12, fontFamily: 'inherit',
+                cursor: 'pointer', paddingRight: 14,
+                backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"8\\" height=\\"8\\" viewBox=\\"0 0 8 8\\"><path d=\\"M1 2.5L4 5.5L7 2.5\\" stroke=\\"%23a5afc0\\" stroke-width=\\"1.2\\" fill=\\"none\\" stroke-linecap=\\"round\\"/></svg>")',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0 center',
+              }}
+            >
+              <option value="recent">Recent</option>
+              <option value="oldest">Oldest</option>
+              <option value="name">Name (A→Z)</option>
+            </select>
+          </label>
+        </div>
+      )}
 
       {/* New project form */}
       {showNewForm && (
@@ -196,13 +336,15 @@ export default function DashboardPage() {
           </div>
         ) : projects.length === 0 ? (
           <EmptyState onNew={() => setShowNewForm(true)} />
+        ) : visibleProjects.length === 0 ? (
+          <NoMatchesState query={query} onClear={() => setQuery('')} />
         ) : (
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
             gap: 16,
           }}>
-            {projects.map(p => (
+            {visibleProjects.map(p => (
               <ProjectCard
                 key={p.id}
                 project={p}
@@ -304,6 +446,42 @@ function ProjectCard({
         </div>
       </div>
     </Link>
+  )
+}
+
+// ─── No-matches state — shown when search filters out every project ──
+function NoMatchesState({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: '60px 24px', textAlign: 'center',
+    }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 14,
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginBottom: 16,
+      }}>
+        <Search style={{ width: 22, height: 22, color: '#7d8799' }} />
+      </div>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#f4efe4', margin: '0 0 6px' }}>
+        No projects matching “{query}”
+      </h3>
+      <p style={{ fontSize: 12, color: '#7d8799', marginBottom: 18, maxWidth: 280 }}>
+        Check the spelling, or clear the search to see every project in this workspace.
+      </p>
+      <button
+        onClick={onClear}
+        style={{
+          padding: '7px 16px', borderRadius: 999,
+          border: '1px solid rgba(255,255,255,0.10)',
+          background: 'rgba(255,255,255,0.03)',
+          color: '#a5afc0', fontSize: 12, fontWeight: 600,
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >Clear search</button>
+    </div>
   )
 }
 
