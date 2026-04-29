@@ -1207,20 +1207,11 @@
           </div>
         </div>
 
-        <!-- Free Spins config -->
-        <div class="ps" id="ps-freespin-cfg" style="display:none">
-          <div class="psh"><span class="pi">🌀</span><span class="pl">Free Spins Configuration</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Spins Awarded</div><input class="fi" type="number" value="10" min="1" max="100"></div>
-              <div class="pf"><div class="lbl">Trigger Symbols</div><input class="fi" value="3 Scatters" placeholder="e.g. 3 Scatters"></div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Multiplier</div><select class="fsel"><option>None</option><option>2×</option><option>3×</option><option>5×</option><option>Progressive</option></select></div>
-              <div class="pf"><div class="lbl">Retrigger</div><select class="fsel"><option>Yes — same count</option><option>Yes — extra spins</option><option>No retrigger</option></select></div>
-            </div>
-          </div>
-        </div>
+        <!-- Free Spins config — REMOVED (Round 6). Now generated from
+             FDEFS.freespin.cfg via renderFeatureConfigCard() in editor.js,
+             so values persist via P.featureCfg + the save bridge. The
+             previous static HTML had inputs with no IDs / no event
+             handlers — user-typed values vanished on reload. -->
 
         <!-- Hold & Spin config -->
         <div class="ps" id="ps-holdnspin-cfg" style="display:none">
@@ -1240,106 +1231,17 @@
           </div>
         </div>
 
-        <!-- Buy Feature config -->
-        <div class="ps" id="ps-buyfeat-cfg" style="display:none">
-          <div class="psh"><span class="pi">💳</span><span class="pl">Buy Feature Configuration</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Cost Multiplier</div><select class="fsel"><option>50× bet</option><option>75× bet</option><option>100× bet</option><option>Custom</option></select></div>
-              <div class="pf"><div class="lbl">Buys Into</div><select class="fsel"><option>Free Spins</option><option>Hold & Spin</option><option>Bonus Game</option></select></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Gamble config -->
-        <div class="ps" id="ps-gamble-cfg" style="display:none">
-          <div class="psh"><span class="pi">🎲</span><span class="pl">Gamble Configuration</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Gamble Type</div><select class="fsel" id="gamble-type"><option>Card Suit (Red/Black)</option><option>Card Value (Hi/Lo)</option><option>Coin Flip</option><option>Wheel</option></select></div>
-              <div class="pf"><div class="lbl">Max Steps</div><input class="fi" id="gamble-steps" type="number" value="5" min="1" max="20"></div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Win Cap</div><input class="fi" id="gamble-cap" placeholder="e.g. 500× stake"></div>
-              <div class="pf"><div class="lbl">Half Gamble</div><select class="fsel" id="gamble-half"><option>Available</option><option>Not available</option></select></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Megaways config -->
-        <div class="ps" id="ps-megaways-cfg" style="display:none">
-          <div class="psh"><span class="pi">⊞</span><span class="pl">Megaways™ Configuration</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Symbols per Reel</div><select class="fsel"><option>2–7 (standard)</option><option>1–8</option><option>2–6</option><option>Custom</option></select></div>
-              <div class="pf"><div class="lbl">Max Ways</div><select class="fsel"><option>117,649 (6-reel)</option><option>46,656</option><option>Custom</option></select></div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Horizontal Reel</div><select class="fsel"><option>None</option><option>Top row</option><option>Bottom row</option></select></div>
-              <div class="pf"><div class="lbl">Licenced From</div><input class="fi" value="Big Time Gaming" placeholder="Licensor"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Cascade config -->
-        <div class="ps" id="ps-cascade-cfg" style="display:none">
-          <div class="psh"><span class="pi">⬇</span><span class="pl">Cascade / Avalanche Configuration</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Fall Direction</div><select class="fsel"><option>Down (gravity)</option><option>Up</option><option>All directions</option></select></div>
-              <div class="pf"><div class="lbl">Symbol Source</div><select class="fsel"><option>From top of reel</option><option>Random fill</option><option>From all sides</option></select></div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Win Multiplier</div><select class="fsel"><option>None</option><option>+1× per cascade</option><option>×2 per cascade</option></select></div>
-              <div class="pf"><div class="lbl">Max Multiplier</div><input class="fi" type="number" value="100" placeholder="e.g. 100"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Win Multiplier Trail config -->
-        <div class="ps" id="ps-winmult-cfg" style="display:none">
-          <div class="psh"><span class="pi">✕</span><span class="pl">Win Multiplier Trail</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Start Value</div><input class="fi" type="number" value="1" min="1"></div>
-              <div class="pf"><div class="lbl">Increment</div><select class="fsel"><option>+1 per win</option><option>×2 per win</option><option>Custom</option></select></div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Max Multiplier</div><input class="fi" placeholder="∞ or value"></div>
-              <div class="pf"><div class="lbl">Resets On</div><select class="fsel"><option>No win</option><option>End of bonus</option><option>Never</option></select></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Bonus Pick config -->
-        <div class="ps" id="ps-bonuspick-cfg" style="display:none">
-          <div class="psh"><span class="pi">🎁</span><span class="pl">Bonus Pick Game</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Pick Type</div><select class="fsel"><option>Pick from grid</option><option>Pick from row</option><option>Match pairs</option><option>Reveal & collect</option></select></div>
-              <div class="pf"><div class="lbl">Picks Allowed</div><input class="fi" type="number" value="3" min="1"></div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Prize Type</div><select class="fsel"><option>Cash prizes</option><option>Multipliers</option><option>Free spins</option><option>Mixed</option></select></div>
-              <div class="pf"><div class="lbl">Trigger</div><input class="fi" value="3 Bonus" placeholder="e.g. 3 Bonus"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Sticky Wild config -->
-        <div class="ps" id="ps-stickywild-cfg" style="display:none">
-          <div class="psh"><span class="pi">📌</span><span class="pl">Sticky Wild Configuration</span></div>
-          <div class="psb">
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Duration</div><select class="fsel"><option>1 spin</option><option>2 spins</option><option>3 spins</option><option>Until no win</option><option>Entire bonus</option></select></div>
-              <div class="pf"><div class="lbl">Accumulates</div><select class="fsel"><option>Yes — stickies add up</option><option>No — one at a time</option></select></div>
-            </div>
-            <div class="pfr">
-              <div class="pf"><div class="lbl">Multiplier</div><select class="fsel"><option>None</option><option>2×</option><option>Random 2×–5×</option><option>Progressive</option></select></div>
-              <div class="pf"><div class="lbl">Trigger</div><select class="fsel"><option>Any Wild landing</option><option>Scatter triggered</option><option>Feature only</option></select></div>
-            </div>
-          </div>
-        </div>
+        <!-- Buy Feature / Gamble / Megaways / Cascade / Win Multiplier
+             Trail / Bonus Pick / Sticky Wild config cards REMOVED in
+             Round 6. All seven now generate from FDEFS[*].cfg via
+             renderFeatureConfigCard() in editor.js, so user-typed
+             values persist via P.featureCfg + the save bridge.
+             Previously the static HTML inputs had no IDs / no event
+             handlers — values vanished on reload. Plus added new
+             cards for Tumble (no static panel before, just shared
+             cascade's). Hold & Spin and Expanding Wild stay static
+             below — they have bespoke JS bindings (symbol picker,
+             screen + reel toggles) that aren't worth schema-fying. -->
 
         <!-- Expanding Wild config (existing section) -->
         <div class="ps s3" id="ps-expanding-wild" style="display:none">

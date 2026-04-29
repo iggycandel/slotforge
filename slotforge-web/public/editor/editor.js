@@ -423,6 +423,7 @@ function serializeState(){
     ovPos:     JSON.parse(JSON.stringify(P.ovPos   || {})),
     dimOp:     P.dimOpacity,
     customPsd,
+    fcfg:      JSON.parse(JSON.stringify(P.featureCfg          || {})),
     bps:       JSON.parse(JSON.stringify(P.bonusPickSettings   || {})),
     wbs:       JSON.parse(JSON.stringify(P.wheelBonusSettings  || {})),
     lbs:       JSON.parse(JSON.stringify(P.ladderBonusSettings || {})),
@@ -509,6 +510,7 @@ function restoreSnap(){
     }
   });
   if (s.customPsd) Object.entries(s.customPsd).forEach(([k, def]) => { PSD[k] = def; });
+  if (s.fcfg && typeof s.fcfg === 'object') P.featureCfg = JSON.parse(JSON.stringify(s.fcfg));
   if (s.bps && P.bonusPickSettings)   Object.assign(P.bonusPickSettings,   s.bps);
   if (s.wbs && P.wheelBonusSettings)  Object.assign(P.wheelBonusSettings,  s.wbs);
   if (s.lbs && P.ladderBonusSettings) Object.assign(P.ladderBonusSettings, s.lbs);
@@ -1046,14 +1048,48 @@ function startOvResize(ev,ovId,subId){
 }
 // ── FEATURE DEFINITIONS ──
 // Groups: 'Bonus Rounds' | 'Wild Mechanics' | 'Buy / Ante' | 'Cascades & Reactions' | 'Special Mechanics' | 'Gamble'
+//
+// Round 6 (data-driven config): each entry can carry an optional
+// `cfg: FieldDef[]` array. When present, buildFeatures() generates
+// the per-feature configuration .ps card from this schema instead of
+// looking up a static <div> in spinative.html. Field shape:
+//   { id, label, type: 'text'|'number'|'select', default, optional?, hint?,
+//     options?: string[],         // 'select' only
+//     min?, max?, step?, placeholder?: string  // input attrs
+//   }
+// `icon` controls the .psh emoji glyph; `cfgTitle` overrides the
+// default "<Feature label> configuration" header.
+//
+// Features with bespoke panels (Expanding Wild's screen + reel
+// toggles, Hold & Spin's symbol-picker tied to P.symbols) stay
+// declared without `cfg` and continue to use their static <div>
+// in spinative.html via the legacy STATIC_CFG lookup in buildFeatures.
 const FDEFS=[
   // ── Bonus Rounds ──
   {key:'freespin',       label:'Free Spins',          group:'Bonus Rounds',          color:'#4ac8f0', screen:'freespin',
-   desc:'Scatter-triggered free spins with multipliers and retriggers.'},
+   desc:'Scatter-triggered free spins with multipliers and retriggers.',
+   icon:'🌀',
+   cfg:[
+     { id:'spinsAwarded',   label:'Spins Awarded',   type:'number', default:10, min:1, max:100 },
+     { id:'triggerSymbols', label:'Trigger Symbols', type:'text',   default:'3 Scatters', placeholder:'e.g. 3 Scatters' },
+     { id:'multiplier',     label:'Multiplier',      type:'select', default:'None',         optional:true,
+       options:['None','2×','3×','5×','Progressive'] },
+     { id:'retrigger',      label:'Retrigger',       type:'select', default:'Yes — same count', optional:true,
+       options:['Yes — same count','Yes — extra spins','No retrigger'] },
+   ]},
   {key:'holdnspin',      label:'Hold & Spin',          group:'Bonus Rounds',          color:'#5eca8a', screen:'holdnspin',
    desc:'Special symbols lock in place; grid respins until no new symbol lands.'},
   {key:'bonus_pick',     label:'Bonus Pick Game',      group:'Bonus Rounds',          color:'#f0a84c', screen:'bonus_pick',
-   desc:'A pick-and-reveal or interactive mini-game triggered by bonus symbols.'},
+   desc:'A pick-and-reveal or interactive mini-game triggered by bonus symbols.',
+   icon:'🎁',
+   cfg:[
+     { id:'pickType',     label:'Pick Type',     type:'select', default:'Pick from grid',
+       options:['Pick from grid','Pick from row','Match pairs','Reveal & collect'] },
+     { id:'picksAllowed', label:'Picks Allowed', type:'number', default:3, min:1, max:20 },
+     { id:'prizeType',    label:'Prize Type',    type:'select', default:'Cash prizes', optional:true,
+       options:['Cash prizes','Multipliers','Free spins','Mixed'] },
+     { id:'trigger',      label:'Trigger',       type:'text',   default:'3 Bonus', placeholder:'e.g. 3 Bonus' },
+   ]},
   {key:'wheel_bonus',    label:'Wheel Bonus',          group:'Bonus Rounds',          color:'#ef7a7a', screen:'wheel_bonus',
    desc:'Spin-the-wheel bonus awarding prizes, multipliers or feature entries.'},
   {key:'ladder_bonus',   label:'Ladder / Trail Bonus', group:'Bonus Rounds',          color:'#b07aef', screen:'ladder_bonus',
@@ -1062,7 +1098,18 @@ const FDEFS=[
   {key:'expanding_wild', label:'Expanding Wild',       group:'Wild Mechanics',        color:'#e8c96d', screen:'expandwild',
    desc:'Wild expands to cover the full reel. Direction and trigger configurable.'},
   {key:'sticky_wild',    label:'Sticky Wild',          group:'Wild Mechanics',        color:'#c9d84c', screen:'sticky_wild',
-   desc:'Wilds remain fixed for one or more subsequent spins.'},
+   desc:'Wilds remain fixed for one or more subsequent spins.',
+   icon:'📌',
+   cfg:[
+     { id:'duration',    label:'Duration',    type:'select', default:'1 spin',
+       options:['1 spin','2 spins','3 spins','Until no win','Entire bonus'] },
+     { id:'accumulates', label:'Accumulates', type:'select', default:'Yes — stickies add up',
+       options:['Yes — stickies add up','No — one at a time'] },
+     { id:'multiplier',  label:'Multiplier',  type:'select', default:'None', optional:true,
+       options:['None','2×','Random 2×–5×','Progressive'] },
+     { id:'trigger',     label:'Trigger',     type:'select', default:'Any Wild landing',
+       options:['Any Wild landing','Scatter triggered','Feature only'] },
+   ]},
   {key:'walking_wild',   label:'Walking Wild',         group:'Wild Mechanics',        color:'#d4b84c', screen:'walking_wild',
    desc:'Wild shifts one position per spin until it walks off the edge.'},
   {key:'stacked_wild',   label:'Stacked Wilds',        group:'Wild Mechanics',        color:'#f0d060', screen:null,
@@ -1073,21 +1120,64 @@ const FDEFS=[
    desc:'Oversized wild spanning 2×2 or more cells on the grid.'},
   // ── Buy / Ante ──
   {key:'buy_feature',    label:'Buy Feature',          group:'Buy / Ante',            color:'#ef7a7a', screen:null,
-   desc:'Player pays a fixed multiplier to directly trigger the bonus.'},
+   desc:'Player pays a fixed multiplier to directly trigger the bonus.',
+   icon:'💳',
+   cfg:[
+     { id:'cost',     label:'Cost Multiplier', type:'select', default:'100× bet',
+       options:['50× bet','75× bet','100× bet','Custom'] },
+     { id:'buysInto', label:'Buys Into',       type:'select', default:'Free Spins',
+       options:['Free Spins','Hold & Spin','Bonus Game'] },
+   ]},
   {key:'ante_bet',       label:'Ante Bet',             group:'Buy / Ante',            color:'#f09070', screen:null,
    desc:'Optional side-bet that increases bonus trigger frequency.'},
   {key:'bonus_store',    label:'Bonus Store',          group:'Buy / Ante',            color:'#ef9a7a', screen:null,
    desc:'Scatters accumulate in a persistent in-game store for later purchase.'},
   // ── Cascades & Reactions ──
   {key:'cascade',        label:'Cascade / Avalanche',  group:'Cascades & Reactions',  color:'#4adde8', screen:'cascade',
-   desc:'Winning symbols are removed; new symbols fall in to enable chain wins.'},
+   desc:'Winning symbols are removed; new symbols fall in to enable chain wins.',
+   icon:'⬇',
+   cfg:[
+     { id:'fallDirection', label:'Fall Direction', type:'select', default:'Down (gravity)',
+       options:['Down (gravity)','Up','All directions'] },
+     { id:'symbolSource',  label:'Symbol Source',  type:'select', default:'From top of reel',
+       options:['From top of reel','Random fill','From all sides'] },
+     { id:'winMultiplier', label:'Win Multiplier', type:'select', default:'None', optional:true,
+       options:['None','+1× per cascade','×2 per cascade'] },
+     { id:'maxMultiplier', label:'Max Multiplier', type:'number', default:100, min:1, max:1000, optional:true },
+   ]},
   {key:'tumble',         label:'Tumble / Reel Collapse',group:'Cascades & Reactions', color:'#40c8d0', screen:'tumble',
-   desc:'Symbols collapse after a win and are replaced from above.'},
+   desc:'Symbols collapse after a win and are replaced from above.',
+   icon:'🌊',
+   cfg:[
+     { id:'tumbleDirection', label:'Tumble Direction', type:'select', default:'Top to bottom',
+       options:['Top to bottom','Bottom to top','All directions'] },
+     { id:'multiplier',      label:'Multiplier',       type:'select', default:'None', optional:true,
+       options:['None','+1× per tumble','×2 per tumble','Progressive'] },
+   ]},
   {key:'win_multiplier', label:'Win Multiplier Trail',  group:'Cascades & Reactions', color:'#60e0a0', screen:'win_multiplier',
-   desc:'Consecutive wins in one spin increase a multiplier counter (1×, 2×, 3×…).'},
+   desc:'Consecutive wins in one spin increase a multiplier counter (1×, 2×, 3×…).',
+   icon:'✕',
+   cfg:[
+     { id:'startValue',    label:'Start Value',    type:'number', default:1, min:1 },
+     { id:'increment',     label:'Increment',      type:'select', default:'+1 per win',
+       options:['+1 per win','×2 per win','Custom'] },
+     { id:'maxMultiplier', label:'Max Multiplier', type:'text',   default:'∞',           placeholder:'∞ or value', optional:true },
+     { id:'resetsOn',      label:'Resets On',      type:'select', default:'No win',      optional:true,
+       options:['No win','End of bonus','Never'] },
+   ]},
   // ── Special Mechanics ──
   {key:'megaways',       label:'Megaways™',            group:'Special Mechanics',     color:'#c9a84c', screen:null,
-   desc:'Variable reel height — each spin shows 2–7 symbols per reel (licence required).'},
+   desc:'Variable reel height — each spin shows 2–7 symbols per reel (licence required).',
+   icon:'⊞',
+   cfg:[
+     { id:'symbolsPerReel', label:'Symbols per Reel', type:'select', default:'2–7 (standard)',
+       options:['2–7 (standard)','1–8','2–6','Custom'] },
+     { id:'maxWays',        label:'Max Ways',         type:'select', default:'117,649 (6-reel)',
+       options:['117,649 (6-reel)','46,656','Custom'] },
+     { id:'horizontalReel', label:'Horizontal Reel',  type:'select', default:'None', optional:true,
+       options:['None','Top row','Bottom row'] },
+     { id:'licencedFrom',   label:'Licenced From',    type:'text',   default:'Big Time Gaming', placeholder:'Licensor' },
+   ]},
   {key:'infinity_reels', label:'Infinity Reels',       group:'Special Mechanics',     color:'#9a7cdf', screen:'infinity_reels',
    desc:'Grid grows by one reel per consecutive winning spin.'},
   {key:'cluster_pays',   label:'Cluster Pays',         group:'Special Mechanics',     color:'#7a8aef', screen:'cluster_pays',
@@ -1100,7 +1190,16 @@ const FDEFS=[
    desc:'Symbols upgrade to higher-value versions during a bonus or random trigger.'},
   // ── Gamble ──
   {key:'gamble',         label:'Gamble',               group:'Gamble',                color:'#7a8aef', screen:'gamble',
-   desc:'Post-win gamble — double or nothing on a card, coin or wheel.'},
+   desc:'Post-win gamble — double or nothing on a card, coin or wheel.',
+   icon:'🎲',
+   cfg:[
+     { id:'gambleType', label:'Gamble Type', type:'select', default:'Card Suit (Red/Black)',
+       options:['Card Suit (Red/Black)','Card Value (Hi/Lo)','Coin Flip','Wheel'] },
+     { id:'maxSteps',   label:'Max Steps',   type:'number', default:5, min:1, max:20 },
+     { id:'winCap',     label:'Win Cap',     type:'text',   default:'500× stake', placeholder:'e.g. 500× stake', optional:true },
+     { id:'halfGamble', label:'Half Gamble', type:'select', default:'Available', optional:true,
+       options:['Available','Not available'] },
+   ]},
   {key:'super_gamble',   label:'Super Gamble',         group:'Gamble',                color:'#6060df', screen:'super_gamble',
    desc:'Extended gamble ladder with multiple steps up to a capped maximum.'},
 ];
@@ -3917,22 +4016,133 @@ function renderAssetsNeeded(featureKey){
   return wrap;
 }
 
+// ── FEATURE-CFG PERSISTENCE ─────────────────────────────────────────────────
+// Each feature with a `cfg` schema reads/writes here. Existing per-feature
+// engine state objects (P.bonusPickSettings, P.gambleSettings, P.wheelBonusSettings,
+// …) stay separate — they drive canvas overlays, not the in-Settings form.
+// P.featureCfg[featureKey] = { fieldId: value } — values default to field.default
+// on first read. Survives via the snapshot + cloud-save + file-payload paths.
+P.featureCfg = P.featureCfg || {};
+function getFeatureCfgValue(featureKey, field){
+  var bucket = P.featureCfg[featureKey] = P.featureCfg[featureKey] || {};
+  if(bucket[field.id] !== undefined && bucket[field.id] !== null) return bucket[field.id];
+  return field.default;
+}
+function setFeatureCfgValue(featureKey, fieldId, value){
+  var bucket = P.featureCfg[featureKey] = P.featureCfg[featureKey] || {};
+  bucket[fieldId] = value;
+  markDirty();
+}
+
+/** Generate a .ps configuration card for a feature from its cfg schema.
+ *  Returns null when the feature has no cfg schema (e.g. holdnspin /
+ *  expanding_wild — they keep their bespoke static panels). The resulting
+ *  card matches the visual structure of the legacy hand-written cards
+ *  (.ps > .psh + .psb > .pfr > .pf) so existing CSS applies unchanged. */
+function renderFeatureConfigCard(f){
+  if(!f || !Array.isArray(f.cfg) || f.cfg.length === 0) return null;
+  var card = document.createElement('div');
+  card.className = 'ps';
+  card.dataset.featureKey = f.key;
+
+  // Header — emoji + "<Feature> configuration"
+  var head = document.createElement('div');
+  head.className = 'psh';
+  head.innerHTML = '<span class="pi">' + (f.icon || '⚙') + '</span>' +
+                   '<span class="pl">' + _escAttr(f.label) + ' configuration</span>';
+  card.appendChild(head);
+
+  var body = document.createElement('div');
+  body.className = 'psb';
+
+  // Pair fields into rows of two for the standard .pfr two-column layout.
+  for(var i = 0; i < f.cfg.length; i += 2){
+    var row = document.createElement('div');
+    row.className = 'pfr';
+    row.appendChild(buildFeatureField(f.key, f.cfg[i]));
+    if(f.cfg[i + 1]) row.appendChild(buildFeatureField(f.key, f.cfg[i + 1]));
+    body.appendChild(row);
+  }
+  card.appendChild(body);
+  return card;
+}
+
+function buildFeatureField(featureKey, field){
+  var wrap = document.createElement('div');
+  wrap.className = 'pf';
+
+  var lbl = document.createElement('div');
+  lbl.className = 'lbl';
+  lbl.innerHTML = _escAttr(field.label) +
+                  (field.optional ? ' <span class="lbl-opt">— optional</span>' : '');
+  wrap.appendChild(lbl);
+
+  var value = getFeatureCfgValue(featureKey, field);
+  var inp;
+  if(field.type === 'select'){
+    inp = document.createElement('select');
+    inp.className = 'fsel';
+    (field.options || []).forEach(function(opt){
+      var o = document.createElement('option');
+      o.value = opt; o.textContent = opt;
+      if(opt === value) o.selected = true;
+      inp.appendChild(o);
+    });
+    inp.addEventListener('change', function(){ setFeatureCfgValue(featureKey, field.id, inp.value); });
+  } else if(field.type === 'number'){
+    inp = document.createElement('input');
+    inp.className = 'fi';
+    inp.type = 'number';
+    if(field.min  !== undefined) inp.min  = field.min;
+    if(field.max  !== undefined) inp.max  = field.max;
+    if(field.step !== undefined) inp.step = field.step;
+    inp.value = value;
+    inp.addEventListener('input', function(){
+      var n = parseFloat(inp.value);
+      setFeatureCfgValue(featureKey, field.id, isNaN(n) ? field.default : n);
+    });
+  } else { // text
+    inp = document.createElement('input');
+    inp.className = 'fi';
+    inp.type = 'text';
+    if(field.placeholder) inp.placeholder = field.placeholder;
+    inp.value = value;
+    inp.addEventListener('input', function(){ setFeatureCfgValue(featureKey, field.id, inp.value); });
+  }
+  wrap.appendChild(inp);
+
+  if(field.hint){
+    var hint = document.createElement('div');
+    hint.style.cssText = 'font-size:10px;color:#9898b8;line-height:1.5;margin-top:4px';
+    hint.textContent = field.hint;
+    wrap.appendChild(hint);
+  }
+  return wrap;
+}
+
+function _escAttr(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
 function buildFeatures(){
   const list=document.getElementById('feat-list'); if(!list) return;
 
-  // Config panel map — which config panel id belongs to each feature key
-  const CFG_PANEL={
-    freespin:'ps-freespin-cfg', holdnspin:'ps-holdnspin-cfg',
-    buy_feature:'ps-buyfeat-cfg', expanding_wild:'ps-expanding-wild',
-    gamble:'ps-gamble-cfg', megaways:'ps-megaways-cfg',
-    cascade:'ps-cascade-cfg', tumble:'ps-cascade-cfg',
-    win_multiplier:'ps-winmult-cfg', bonus_pick:'ps-bonuspick-cfg',
-    sticky_wild:'ps-stickywild-cfg',
+  // Static config panel ids — used only for features whose schema lives
+  // in spinative.html (Hold & Spin's symbol picker, Expanding Wild's
+  // huge bespoke panel). All other features now generate their card
+  // from FDEFS via renderFeatureConfigCard().
+  const STATIC_CFG = {
+    holdnspin:      'ps-holdnspin-cfg',
+    expanding_wild: 'ps-expanding-wild',
   };
 
-  // Before clearing, rescue config panels back to ptab-features so they survive innerHTML=''
+  // Before clearing, rescue static config panels back to ptab-features
+  // so they survive innerHTML=''. Schema-generated cards are recreated
+  // from FDEFS each rebuild — no rescue needed.
   const featPane=document.getElementById('ptab-features');
-  Object.values(CFG_PANEL).forEach(pid=>{
+  Object.values(STATIC_CFG).forEach(pid=>{
     const p=document.getElementById(pid);
     if(p&&p.parentElement===list) featPane.appendChild(p);
   });
@@ -3951,7 +4161,7 @@ function buildFeatures(){
     }
 
     const isOn = !!P.features[f.key];
-    const panelId = CFG_PANEL[f.key];
+    const staticPanelId = STATIC_CFG[f.key];
     const row = document.createElement('div');
     row.className = 'ft-row';
     row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #1a1a26';
@@ -3968,23 +4178,38 @@ function buildFeatures(){
     row.querySelector('.jp-tog').addEventListener('click', btn=>{
       P.features[f.key] = !P.features[f.key];
       btn.target.classList.toggle('on', P.features[f.key]);
-      // Show/hide the inline config panel
-      if(panelId){
-        const cfg = document.getElementById(panelId);
-        if(cfg) cfg.style.display = P.features[f.key] ? '' : 'none';
+      // Toggle visibility of EITHER the static panel OR the
+      // schema-generated card (only one path applies per feature).
+      if(staticPanelId){
+        const cfgEl = document.getElementById(staticPanelId);
+        if(cfgEl) cfgEl.style.display = P.features[f.key] ? '' : 'none';
+      } else {
+        const cfgEl = list.querySelector('[data-feature-key="'+f.key+'"]');
+        if(cfgEl) cfgEl.style.display = P.features[f.key] ? '' : 'none';
       }
       if(f.key==='expanding_wild' && P.features[f.key]) initEWActiveScreens();
       rebuildTabs(); refresh(); renderLayers(); markDirty();
     });
     list.appendChild(row);
 
-    // Immediately inject this feature's config panel right below its row
-    if(panelId){
-      const cfg=document.getElementById(panelId);
-      if(cfg){
-        cfg.style.display=isOn?'':'none';
-        list.appendChild(cfg);
-      }
+    // Inject the per-feature config card right below its toggle row.
+    // Two paths:
+    //  • Schema-generated (renderFeatureConfigCard) for the standard
+    //    cards that previously lived as inert static HTML in
+    //    spinative.html. Their inputs had no IDs / no event handlers,
+    //    so user-typed values vanished on reload — the schema path
+    //    finally wires them through P.featureCfg + the save bridge.
+    //  • Static panel lookup for the two bespoke cards (Hold & Spin's
+    //    symbol picker, Expanding Wild's screen + reel toggles).
+    let cfgEl = null;
+    if(staticPanelId){
+      cfgEl = document.getElementById(staticPanelId);
+    } else {
+      cfgEl = renderFeatureConfigCard(f);
+    }
+    if(cfgEl){
+      cfgEl.style.display = isOn ? '' : 'none';
+      list.appendChild(cfgEl);
     }
 
     // Assets needed mini-list — only for enabled features that have v1 slots
@@ -4559,6 +4784,7 @@ function buildFilePayload(){
     jpEnabled: !!P.jpEnabled,
     char:      JSON.parse(JSON.stringify(P.char)),
     ante:      JSON.parse(JSON.stringify(P.ante)),
+    featureCfg:JSON.parse(JSON.stringify(P.featureCfg || {})),
     msgPos:    P.msgPos,
     ovProps:   JSON.parse(JSON.stringify(P.ovProps||{})),
     ovPos:     JSON.parse(JSON.stringify(P.ovPos||{})),
@@ -4712,6 +4938,7 @@ function _restoreFilePayload(d){
   if(d.jackpots) Object.assign(P.jackpots, JSON.parse(JSON.stringify(d.jackpots)));
   if(d.char)     Object.assign(P.char,     JSON.parse(JSON.stringify(d.char)));
   if(d.ante)     Object.assign(P.ante,     JSON.parse(JSON.stringify(d.ante)));
+  if(d.featureCfg && typeof d.featureCfg === 'object') P.featureCfg = JSON.parse(JSON.stringify(d.featureCfg));
   if(d.ovProps)  Object.assign(P.ovProps,  JSON.parse(JSON.stringify(d.ovProps)));
   if(d.ovPos)    Object.assign(P.ovPos,    JSON.parse(JSON.stringify(d.ovPos)));
   // Layer positions
@@ -12758,6 +12985,7 @@ window._sfApplyPayload = function(payload){
   try { if(s.library  !== undefined) P.library  = s.library;  } catch(e){}
   try { if(s.expandWild) Object.assign(P.expandWild, s.expandWild); } catch(e){}
   try { if(s.reelSettings) Object.assign(P.reelSettings, s.reelSettings); } catch(e){}
+  try { if(s.featureCfg && typeof s.featureCfg === 'object') P.featureCfg = JSON.parse(JSON.stringify(s.featureCfg)); } catch(e){}
   try { if(s.bonusPickSettings)   Object.assign(P.bonusPickSettings,   s.bonusPickSettings);   } catch(e){}
   try { if(s.wheelBonusSettings)  Object.assign(P.wheelBonusSettings,  s.wheelBonusSettings);  } catch(e){}
   try { if(s.ladderBonusSettings) Object.assign(P.ladderBonusSettings, s.ladderBonusSettings); } catch(e){}
@@ -12970,6 +13198,10 @@ window._sfApplyPayload = function(payload){
   // Re-render — each call is individually guarded
   try { if(typeof renderReelViz==='function') renderReelViz(); } catch(e){}
   try { if(typeof rebuildTabs==='function')   rebuildTabs();   } catch(e){}
+  // Round 6: re-render the Features list so schema-generated config
+  // cards pick up the restored P.featureCfg values. Without this the
+  // cards still hold whatever the previous open had.
+  try { if(typeof buildFeatures==='function') buildFeatures(); } catch(e){}
   try { if(typeof buildCanvas==='function')   buildCanvas();   } catch(e){}
   try { if(typeof renderLayers==='function')  renderLayers();  } catch(e){}
   try { if(typeof renderLibrary==='function') renderLibrary(); } catch(e){}
@@ -13034,6 +13266,7 @@ window._sfBridge = (function(){
       symbols:     JSON.parse(JSON.stringify(P.symbols  || [])),
       expandWild:  JSON.parse(JSON.stringify(P.expandWild || {})),
       reelSettings:     JSON.parse(JSON.stringify(P.reelSettings || {})),
+      featureCfg:       JSON.parse(JSON.stringify(P.featureCfg || {})),
       bonusPickSettings:JSON.parse(JSON.stringify(P.bonusPickSettings || {})),
       wheelBonusSettings: JSON.parse(JSON.stringify(P.wheelBonusSettings || {})),
       ladderBonusSettings:JSON.parse(JSON.stringify(P.ladderBonusSettings || {})),
@@ -13357,6 +13590,7 @@ window._sfBridge = (function(){
         symbols:        p.symbols,
         expandWild:     p.expandWild,
         reelSettings:      p.reelSettings,
+        featureCfg:        p.featureCfg,
         bonusPickSettings: p.bonusPickSettings,
         wheelBonusSettings:  p.wheelBonusSettings,
         ladderBonusSettings: p.ladderBonusSettings,
