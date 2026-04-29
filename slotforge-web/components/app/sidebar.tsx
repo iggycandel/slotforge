@@ -185,7 +185,11 @@ export function Sidebar() {
           gap: 4,
         }}
       >
-        <NavItem href="/help" icon={HelpCircle} label="Help & docs" shortLabel="Help" exact collapsed={collapsed} />
+        {/* Help page lives under [orgSlug] so it inherits the sidebar
+            layout. Falls back to a literal /help (which would 404) only
+            if the slug hasn't resolved yet — the org-layout redirect
+            keeps that window very small. */}
+        <NavItem href={slug ? `/${slug}/help` : '/help'} icon={HelpCircle} label="Help & docs" shortLabel="Help" exact collapsed={collapsed} />
 
         {/* Account row */}
         <div
