@@ -11,7 +11,7 @@
     { "type": "asset", "slot": "background_base", "fit": "cover", "anchor": "middle-center" },
     { "type": "gradient", "from": "transparent", "to": "rgba(0,0,0,0.7)", "direction": "bottom", "start": 0.45 },
     { "type": "asset", "slot": "character.transparent", "fit": "contain", "anchor": "bottom-center", "scale": 0.95, "padding": 30 },
-    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-center", "scale": 0.55, "padding": 50 },
+    { "type": "asset", "slot": "logo", "fit": "contain", "anchor": "top-center", "scale": 0.55, "padding": 50, "whenAlone": { "anchor": "middle-center", "scale": 0.75, "padding": 80 } },
     { "type": "text", "value": "${gameName}", "font": { "family": "Inter", "weight": 900, "size": 56, "tracking": 1.2 }, "color": "#ffffff", "stroke": { "color": "rgba(0,0,0,0.5)", "width": 3 }, "anchor": "bottom-center", "align": "center", "maxWidth": "85%" },
     { "type": "cta", "valueVar": "ctaText", "style": "pill", "font": { "family": "Inter", "weight": 800, "size": 22 }, "bg": { "var": "colorAccent" }, "fg": "#ffffff", "anchor": "bottom-center", "padding": [12, 28] }
   ],

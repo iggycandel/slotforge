@@ -32,10 +32,11 @@ import type {
 // is to import each one by name. Press one-pager (PDF) ships in Day 9 with
 // its own pdf-lib pipeline.
 
-// Promo Screens (8)
+// Promo Screens (9)
 import promoSquareLobbyTile     from './templates/promo.square_lobby_tile.json'
 import promoPortraitLobbyTile   from './templates/promo.portrait_lobby_tile.json'
 import promoLandscapeLobbyTile  from './templates/promo.landscape_lobby_tile.json'
+import promoMediumBanner300x200 from './templates/promo.medium_banner_300x200.json'
 import promoHeroBannerDesktop   from './templates/promo.hero_banner_desktop.json'
 import promoHeroBannerMobile    from './templates/promo.hero_banner_mobile.json'
 import promoSideRail            from './templates/promo.side_rail_300x600.json'
@@ -67,6 +68,7 @@ const SHIPPED_TEMPLATES: MarketingTemplate[] = [
   promoSquareLobbyTile     as MarketingTemplate,
   promoPortraitLobbyTile   as MarketingTemplate,
   promoLandscapeLobbyTile  as MarketingTemplate,
+  promoMediumBanner300x200 as MarketingTemplate,
   promoHeroBannerDesktop   as MarketingTemplate,
   promoHeroBannerMobile    as MarketingTemplate,
   promoSideRail            as MarketingTemplate,
@@ -227,8 +229,20 @@ export interface TemplateSummary {
     slot:    string
     anchor:  string
     scale?:  number
-    padding?: number | [number, number, number, number]
+    /** Each side may be a literal px number OR a percentage string
+     *  ("50%") — matches the server's PaddingSide type. The client
+     *  bbox-mirror in marketing.js parses both forms. */
+    padding?: number | string | [number | string, number | string, number | string, number | string]
     fit?:    'cover' | 'contain' | 'fill'
+    /** Layout-fallback overrides applied when the project has no
+     *  character — wide-banner templates use this to re-centre the
+     *  logo. Same shape as the server-side `whenAlone` field. */
+    whenAlone?: {
+      anchor?:  string
+      scale?:   number
+      padding?: number | string | [number | string, number | string, number | string, number | string]
+      fit?:     'cover' | 'contain' | 'fill'
+    }
   }>
 }
 
@@ -256,6 +270,7 @@ export function listTemplateSummaries(): TemplateSummary[] {
           scale:   L.scale,
           padding: L.padding,
           fit:     L.fit,
+          whenAlone: L.whenAlone,
         })
       }
     }

@@ -33,6 +33,12 @@
     kits:        null,   // MarketingKitRow[]  from GET /kits
     readiness:   null,   // { hasBackground, hasLogo, hasCharacter, ... }
     error:       null,
+    /** Per-template error string. Cleared when a render starts; set when
+     *  the SSE stream emits an `error` event for that template. The grid
+     *  card surfaces it as a small red badge — used to be a single toast
+     *  that vanished after 4s, which made it impossible to see which tile
+     *  actually failed when batch-rendering. */
+    tileErrors:  {},
   };
 
   function projectId() { return window._sfProjectId || null; }
@@ -45,10 +51,13 @@
     init:           initOnce,
     refresh:        refresh,
     openExportMenu: openExportMenu,
-    // "Render all" — same pipeline as the export menu but skips the
-    // zip download. Use case: user wants to fill every tile to scan
-    // their kit, without committing to a download yet.
-    renderAll:      function(){ runExportAll(null, /*skipZip*/ true) },
+    // Back-compat shim: editor.js wires a topbar "Render all" button
+    // that calls _sfMarketing.renderAll() directly. The export menu now
+    // covers this via its "Quick → Render all" entry, but external
+    // callers (and any cached editor.js bundle in users' iframes) still
+    // hit this name. Keep it pointed at the same skip-zip pathway so a
+    // straggling caller doesn't break.
+    renderAll:      function(){ runExportAll(null, /*skipZip*/ true, null) },
   };
   window._sfMarketing = api;
 
@@ -138,14 +147,10 @@
         setTimeout(function(){
           render();
           ensureCharacterCutout();
-          // Auto-render REMOVED (Round 5). Previously kicked
-          // maybeAutoRenderAll() here so first-time users got every tile
-          // pre-rendered. Now we defer all server renders until the
-          // user explicitly clicks Render or Export Kit — credits are
-          // never spent before the user has had a chance to position
-          // the character + logo. The function stays defined below so
-          // older deep-link / debug paths still resolve, but it's no
-          // longer invoked anywhere in the load flow.
+          // No auto-render here — the user explicitly asks for renders
+          // via per-tile Render or the topbar's Quick → Render-all entry.
+          // Burning credits before the user has positioned char + logo
+          // produces wrong-looking tiles AND a surprise bill.
         }, 120);
       });
     }).catch(function(err){
@@ -174,39 +179,12 @@
   // workspace continues working with the regular character — engine
   // dispatcher in compose.ts falls back automatically.
 
-  /** Auto-render the whole kit the first time a project becomes
-   *  ready (3 base assets present) AND has no cached renders. Gated
-   *  on a per-project localStorage flag so it fires exactly once
-   *  per project regardless of whether the user later deletes
-   *  renders. Runs renderAll() with skipZip=true so the user sees
-   *  tiles populating, no surprise download. */
-  function maybeAutoRenderAll(){
-    var pid = projectId();
-    if(!pid) return;
-    if(!state.readiness || !isReady(state.readiness)) return;
-    // Already auto-fired? Don't re-fire.
-    var key = 'sf_mkt_autorendered_' + pid;
-    try { if(localStorage.getItem(key) === '1') return; } catch(e){}
-    // Anything already rendered? Skip.
-    var anyRender = false;
-    for(var i = 0; i < (state.kits||[]).length; i++){
-      if(((state.kits[i].renders) || []).length > 0){ anyRender = true; break; }
-    }
-    if(anyRender){
-      // Mark flag so a returning user with renders doesn't re-trigger.
-      try { localStorage.setItem(key, '1'); } catch(e){}
-      return;
-    }
-    // Mark BEFORE firing so a quick re-init doesn't double-trigger.
-    try { localStorage.setItem(key, '1'); } catch(e){}
-    if(typeof showToast === 'function'){
-      showToast('Auto-rendering your marketing kit — tiles will fill in as they land.');
-    }
-    // Defer slightly so the page has painted; runExportAll is heavy.
-    setTimeout(function(){
-      try { runExportAll(null, /*skipZip*/ true); } catch(e){ console.warn('[mkt] auto-render failed', e); }
-    }, 600);
-  }
+  // (Removed: `maybeAutoRenderAll`. The render-at-export round dropped
+  // its only call site; the function lingered as dead code with a stale
+  // comment for two rounds. Auto-render-on-load is intentionally gone —
+  // we never want to silently burn credits before the user has had a
+  // chance to position character + logo. The Quick → Render-all menu
+  // entry covers the rare "I just want to scan everything" case.)
 
   function ensureCharacterCutout(){
     var r = state.readiness || {};
@@ -279,25 +257,62 @@
     var rect = btn.getBoundingClientRect();
     var menu = document.createElement('div');
     menu.id = 'mkt-export-menu';
-    menu.style.cssText = 'position:fixed;top:'+(rect.bottom+6)+'px;right:'+Math.max(8, window.innerWidth - rect.right)+'px;background:#13131a;border:1px solid #2a2a3a;border-radius:6px;padding:6px;z-index:9999;min-width:240px;box-shadow:0 8px 24px rgba(0,0,0,0.4)';
+    menu.style.cssText = 'position:fixed;top:'+(rect.bottom+6)+'px;right:'+Math.max(8, window.innerWidth - rect.right)+'px;background:#13131a;border:1px solid #2a2a3a;border-radius:8px;padding:6px;z-index:9999;min-width:300px;box-shadow:0 12px 32px rgba(0,0,0,0.5)';
 
     // Compute counts so the menu labels are honest about output volume.
-    var counts = countRendersByCategory();
-    var items = [
-      { key: null,                 label: 'All categories',     count: counts.all   },
-      { key: ['promo'],            label: 'Promo Screens only', count: counts.promo },
-      { key: ['social'],           label: 'Social Assets only', count: counts.social },
-      { key: ['store'],            label: 'Store Page only',    count: counts.store },
-      { key: ['press'],            label: 'Press Kit only',     count: counts.press },
+    var counts   = countRendersByCategory();
+    // Quick-action: render-only (no zip). Surface this here instead of as a
+    // separate button — same pipeline, just a different terminating step.
+    var html = ''
+      + '<div class="mkt-export-section">QUICK</div>'
+      + '<button class="mkt-export-item" data-action="render-only" data-cats="">'
+      +   '<span>⚡ Render all (fill grid, no download)</span>'
+      +   '<span class="mkt-export-count">' + counts.all + ' tiles</span>'
+      + '</button>'
+      + '<div class="mkt-export-divider"></div>'
+      + '<div class="mkt-export-section">DOWNLOAD AS ZIP</div>'
+      // Native = whatever each template declared (mix of PNG / JPG / PDF).
+      // Same pipeline as before today's change — keeps the existing UX intact.
+      + '<button class="mkt-export-item" data-action="zip" data-format="" data-cats="">'
+      +   '<span>📦 All categories — Native formats</span>'
+      +   '<span class="mkt-export-count">' + counts.all + ' files</span>'
+      + '</button>'
+      + '<button class="mkt-export-item" data-action="zip" data-format="jpg" data-quality="70" data-cats="">'
+      +   '<span>📦 All — JPEG · q70 (smaller)</span>'
+      +   '<span class="mkt-export-count">' + counts.all + ' files</span>'
+      + '</button>'
+      + '<button class="mkt-export-item" data-action="zip" data-format="jpg" data-quality="85" data-cats="">'
+      +   '<span>📦 All — JPEG · q85 (balanced)</span>'
+      +   '<span class="mkt-export-count">' + counts.all + ' files</span>'
+      + '</button>'
+      + '<button class="mkt-export-item" data-action="zip" data-format="jpg" data-quality="95" data-cats="">'
+      +   '<span>📦 All — JPEG · q95 (high quality)</span>'
+      +   '<span class="mkt-export-count">' + counts.all + ' files</span>'
+      + '</button>';
+
+    // Per-category options (native only — JPEG presets are global to keep
+    // the menu manageable at four entries). Only render rows whose count
+    // is non-zero — a project with zero press templates shouldn't show
+    // the press option and create user confusion.
+    var catItems = [
+      { key: ['promo'],  label: 'Promo Screens only', count: counts.promo  },
+      { key: ['social'], label: 'Social Assets only', count: counts.social },
+      { key: ['store'],  label: 'Store Page only',    count: counts.store  },
+      { key: ['press'],  label: 'Press Kit only',     count: counts.press  },
     ];
-    var html = '';
-    for(var i = 0; i < items.length; i++){
-      var it = items[i];
+    var catBlock = '';
+    for(var i = 0; i < catItems.length; i++){
+      var it = catItems[i];
       if(it.count === 0) continue;
-      html += '<button class="mkt-export-item" data-cats="'+(it.key ? it.key.join(',') : '')+'">'
-            +   '<span>'+escapeHtml(it.label)+'</span>'
-            +   '<span class="mkt-export-count">'+it.count+' files</span>'
-            + '</button>';
+      catBlock += '<button class="mkt-export-item" data-action="zip" data-format="" data-cats="'+it.key.join(',')+'">'
+              +   '<span>' + escapeHtml(it.label) + '</span>'
+              +   '<span class="mkt-export-count">' + it.count + ' files</span>'
+              + '</button>';
+    }
+    if(catBlock){
+      html += '<div class="mkt-export-divider"></div>'
+           +  '<div class="mkt-export-section">FILTER BY CATEGORY</div>'
+           +  catBlock;
     }
     menu.innerHTML = html;
     document.body.appendChild(menu);
@@ -309,17 +324,26 @@
       s.textContent = ''
         + '.mkt-export-item{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 12px;font-size:12px;color:#e0deda;background:transparent;border:none;border-radius:4px;cursor:pointer;text-align:left;font-family:inherit}'
         + '.mkt-export-item:hover{background:#1a1a24}'
-        + '.mkt-export-count{color:#7a7a94;font-size:10px;font-family:"DM Mono",monospace;margin-left:12px}';
+        + '.mkt-export-count{color:#7a7a94;font-size:10px;font-family:"DM Mono",monospace;margin-left:12px;flex-shrink:0}'
+        + '.mkt-export-section{font-size:9px;letter-spacing:.12em;color:#5a5a78;padding:8px 12px 4px;text-transform:uppercase;font-family:"DM Mono",monospace}'
+        + '.mkt-export-divider{height:1px;background:#1a1a24;margin:6px 0}';
       document.head.appendChild(s);
     }
 
     menu.addEventListener('click', function(ev){
       var item = ev.target && ev.target.closest && ev.target.closest('.mkt-export-item');
       if(!item) return;
-      var cats = item.getAttribute('data-cats');
-      var arr  = cats ? cats.split(',') : null;
+      var action  = item.getAttribute('data-action') || 'zip';
+      var cats    = item.getAttribute('data-cats') || '';
+      var format  = item.getAttribute('data-format') || '';
+      var quality = item.getAttribute('data-quality') || '';
+      var arr     = cats ? cats.split(',') : null;
       menu.remove();
-      runExportAll(arr);
+      if(action === 'render-only'){
+        runExportAll(arr, /*skipZip*/ true);
+      } else {
+        runExportAll(arr, /*skipZip*/ false, format ? { format: format, quality: quality } : null);
+      }
     });
 
     // Outside-click closes
@@ -354,8 +378,13 @@
    *  same pipeline as single-template Render.
    *
    *  skipZip=true: just populate the tiles, no download. Used by the
-   *  topbar "Render all" button — fastest path to "show me my kit". */
-  function runExportAll(categories, skipZip){
+   *  Quick → Render-all menu entry — fastest path to "show me my kit".
+   *
+   *  transcode: { format: 'jpg', quality: '70'|'85'|'95' } when the user
+   *  picks a JPEG preset. Pass-through to the /zip endpoint as
+   *  `?format=&quality=` query params; null leaves files in their
+   *  native format (the today-default). */
+  function runExportAll(categories, skipZip, transcode){
     var pid = projectId();
     if(!pid) return;
 
@@ -416,9 +445,16 @@
                   state.readiness = (r && r.readiness) || state.readiness;
                 }).catch(function(){});
               if(!skipZip){
-                // Trigger the zip download via an invisible anchor.
+                // Trigger the zip download via an invisible anchor. When
+                // the user picked a JPEG preset, pass the format + quality
+                // through so the route re-encodes each entry on its way
+                // into the archive (see app/api/marketing/zip/route.ts).
                 var a = document.createElement('a');
                 var qs = 'project_id=' + encodeURIComponent(pid);
+                if(transcode && transcode.format){
+                  qs += '&format=' + encodeURIComponent(transcode.format);
+                  if(transcode.quality) qs += '&quality=' + encodeURIComponent(transcode.quality);
+                }
                 a.href     = '/api/marketing/zip?' + qs;
                 a.download = '';
                 document.body.appendChild(a);
@@ -426,7 +462,13 @@
                 document.body.removeChild(a);
               }
             } else if(ev.event === 'error'){
+              // Two-shot error UX: toast (transient, user notices) +
+              // per-tile banner (persistent, user can see WHICH tile
+              // failed when 30 ran in parallel and three blew up).
               if(typeof showToast === 'function') showToast(ev.data.message || 'Render error');
+              if(ev.data && ev.data.template_id){
+                setTileError(ev.data.template_id, ev.data.message || 'Render failed');
+              }
             }
           }
           return pump();
@@ -632,34 +674,84 @@
   }
 
   function renderCard(t){
-    // Sizes summary like "256² · 512² · 1024²  PNG" — squares get the ²
-    // shorthand, non-square uses WxH. Format dedupes by uppercase tag.
-    var sizes  = t.sizes.map(function(s){
-      return s.w === s.h ? s.w + '²' : (s.w + '×' + s.h);
-    }).join(' · ');
+    // Each size becomes a CHIP — clickable to render only that size.
+    // Already-rendered sizes get a ✓ marker so the user can see which
+    // sizes the cached preview comes from. Squares stay on their `²`
+    // shorthand for compactness; everything else uses `w×h`.
+    var kit = findKit(t.id);
+    var rendered = {};
+    if(kit && Array.isArray(kit.renders)){
+      for(var ri = 0; ri < kit.renders.length; ri++){
+        rendered[kit.renders[ri].size_label] = true;
+      }
+    }
+    var chipsHtml = '';
+    for(var i = 0; i < t.sizes.length; i++){
+      var s = t.sizes[i];
+      var lbl  = s.w === s.h ? (s.w + '²') : (s.w + '×' + s.h);
+      var done = !!rendered[s.label];
+      chipsHtml += '<button class="mkt-tile-chip'+(done ? ' is-done' : '')+'"'
+                +    ' data-size="'+escapeAttr(s.label)+'"'
+                +    ' title="'+escapeAttr(done ? 'Re-render this size' : 'Render only this size')+'">'
+                +    (done ? '<span class="mkt-tile-chip-tick">✓</span>' : '')
+                +    escapeHtml(lbl)
+                +  '</button>';
+    }
+    // Format pills come right of the chip row — same dedupe as before.
     var formats = uniq(t.sizes.map(function(s){ return (s.format||'').toUpperCase(); })).join(' / ');
 
-    // Render-at-export workflow (Round 5): tiles default to a "Preview"
-    // state — no server render has fired yet, no credits spent. The
-    // .mkt-tile-preview-slot is empty + carries a "PREVIEW" badge until
-    // the user clicks Render (per-tile) or Export all kit (full batch).
-    // updateTileThumbnail() replaces the slot with the rendered image
-    // when one lands, so no special-cased empty-vs-rendered branch is
-    // needed — the ::after badge naturally drops away once an <img>
-    // takes over the slot's content.
+    // Cutout-state badge — surfaces silently-running Replicate state on
+    // the tile so the user sees that something IS happening with their
+    // character art. Three visual states:
+    //   • template doesn't use character.transparent → no badge
+    //   • cutout ready (assets.character.transparent exists) → "✂ ready"
+    //   • cutout pending (still in flight) → "⏳ extracting"
+    // Placed top-right of the preview slot so it doesn't collide with
+    // the existing PREVIEW / RENDERING ribbons (which sit center).
+    var slots = (t.slots || []);
+    var usesCutout = slots.indexOf('character.transparent') >= 0;
+    var r = state.readiness || {};
+    var cutoutBadge = '';
+    if(usesCutout && r.hasCharacter){
+      if(r.hasCharacterTransparent){
+        cutoutBadge = '<span class="mkt-tile-cutout is-ready" title="Bg-removed character cutout is ready — renders use it automatically.">✂ Cutout</span>';
+      } else {
+        cutoutBadge = '<span class="mkt-tile-cutout is-pending" title="Bg-removal is running. Renders fall back to the original character until this lands.">⏳ Cutout…</span>';
+      }
+    }
+
+    // Per-tile error banner — populated by `setTileError(id, msg)`. Empty
+    // div emits at-render-time so the post-render error toggle is just
+    // a textContent + classList swap, no DOM rebuild.
+    var err = state.tileErrors && state.tileErrors[t.id];
+    var errorHtml = '<div class="mkt-tile-error'+(err ? ' is-active' : '')+'">'
+                  +   (err ? escapeHtml(err) : '')
+                  + '</div>';
+
     var preview = ''
       + '<div class="mkt-tile-preview-slot">'
       +   '<span class="mkt-tile-badge mkt-tile-badge-preview" title="Nothing rendered yet — Customise &amp; Render to commit">Preview</span>'
       + '</div>';
 
+    // Per-tile clear (✕) — only meaningful once something's been rendered.
+    // Otherwise the button does nothing and just adds visual noise. Wired
+    // through `data-act="clear"` so the existing onGridClick delegator
+    // handles dispatch — keeps the event surface narrow.
+    var clearBtn = (kit && kit.renders && kit.renders.length > 0)
+      ? '<button class="mkt-tile-clear" data-act="clear" title="Wipe cached renders for this tile and start over">✕</button>'
+      : '';
+
     return ''
       + '<div class="mkt-tile" data-template-id="'+escapeAttr(t.id)+'">'
       +   preview
+      +   cutoutBadge
+      +   clearBtn
       +   '<div class="mkt-tile-name">'+escapeHtml(t.name)+'</div>'
-      +   '<div class="mkt-tile-sizes">'+escapeHtml(sizes)+(formats ? ('  '+escapeHtml(formats)) : '')+'</div>'
+      +   '<div class="mkt-tile-chips">' + chipsHtml + (formats ? '<span class="mkt-tile-formats">'+escapeHtml(formats)+'</span>' : '') + '</div>'
+      +   errorHtml
       +   '<div class="mkt-tile-actions">'
       +     '<button class="mkt-tile-btn" data-act="customise" title="Position character + logo with sliders and the live drag overlay">Customise</button>'
-      +     '<button class="mkt-tile-btn primary" data-act="render" title="Render this tile and replace the preview with the final asset">Render</button>'
+      +     '<button class="mkt-tile-btn primary" data-act="render" title="Render every size in one go">Render all</button>'
       +   '</div>'
       + '</div>';
   }
@@ -683,15 +775,22 @@
       var statusHtml = c.ok
         ? '<span class="mkt-onboard-tick" title="Ready">✓</span>'
         : '<span class="mkt-onboard-pending" title="Not yet">●</span>';
+      // Each card is now a button → switches to the Assets workspace so
+      // the user can generate the missing asset directly. Going to a
+      // single hub today; a future iteration will deep-link to the
+      // specific asset tab once AssetsWorkspace exposes that API.
+      var hint = c.ok ? c.hint : (c.hint + ' · click to generate');
       return ''
-        + '<div class="mkt-onboard-card ' + (c.ok ? 'is-done' : 'is-pending') + '">'
+        + '<button type="button" class="mkt-onboard-card mkt-onboard-card-btn ' + (c.ok ? 'is-done' : 'is-pending') + '"'
+        +   ' onclick="if(typeof switchWorkspace===\'function\')switchWorkspace(\'assets\')"'
+        +   ' aria-label="' + escapeAttr(c.label + (c.ok ? ' — ready' : ' — generate now')) + '">'
         +   '<div class="mkt-onboard-card-icon">' + c.icon + '</div>'
         +   '<div class="mkt-onboard-card-meta">'
         +     '<div class="mkt-onboard-card-title">' + escapeHtml(c.label) + '</div>'
-        +     '<div class="mkt-onboard-card-hint">'  + escapeHtml(c.hint)  + '</div>'
+        +     '<div class="mkt-onboard-card-hint">'  + escapeHtml(hint)  + '</div>'
         +   '</div>'
         +   '<div class="mkt-onboard-card-status">' + statusHtml + '</div>'
-        + '</div>';
+        + '</button>';
     }).join('');
 
     return ''
@@ -717,27 +816,51 @@
   // ─── Grid event delegation ─────────────────────────────────────────────────
 
   function onGridClick(ev){
-    // Two paths into the customise flow:
-    //   1. Explicit button click on .mkt-tile-btn[data-act="customise|render"]
-    //   2. Click anywhere on the tile preview area (Phase 2 — the small
-    //      action buttons were hard to discover; users want to interact
-    //      with the tile itself). The preview slot is the natural target;
-    //      clicking it opens Customise just like the button. We exclude
-    //      the action-bar zone so the per-tile Render button still runs
-    //      a render rather than diverting to the modal.
-    var btn = ev.target && ev.target.closest && ev.target.closest('.mkt-tile-btn');
-    var tilePreview = !btn && ev.target && ev.target.closest && ev.target.closest('.mkt-tile-preview-slot');
-    var tile = (btn && btn.closest('.mkt-tile')) || (tilePreview && tilePreview.closest('.mkt-tile'));
+    // Dispatcher for grid-tile clicks. Four paths:
+    //   1. .mkt-tile-chip → render only that size
+    //   2. .mkt-tile-clear → wipe cached renders for this tile
+    //   3. .mkt-tile-btn[data-act] → customise / render-all action
+    //   4. click on .mkt-tile-preview-slot → open customise modal
+    // Each closest-match check is cheap; the early-out on the first
+    // match keeps dispatch O(1).
+    var chip = ev.target && ev.target.closest && ev.target.closest('.mkt-tile-chip');
+    var clr  = !chip && ev.target && ev.target.closest && ev.target.closest('.mkt-tile-clear');
+    var btn  = !chip && !clr && ev.target && ev.target.closest && ev.target.closest('.mkt-tile-btn');
+    var tilePreview = !btn && !chip && !clr && ev.target && ev.target.closest && ev.target.closest('.mkt-tile-preview-slot');
+    var tile = (chip && chip.closest('.mkt-tile'))
+            || (clr  && clr.closest('.mkt-tile'))
+            || (btn  && btn.closest('.mkt-tile'))
+            || (tilePreview && tilePreview.closest('.mkt-tile'));
     var tid  = tile && tile.getAttribute('data-template-id');
     if(!tid) return;
-    var act = btn ? btn.getAttribute('data-act') : 'customise';
-    if(!act) return;
 
     var t = findTemplate(tid);
     if(!t){
       if(typeof showToast === 'function') showToast('Template not found: ' + tid);
       return;
     }
+
+    if(chip){
+      // Per-size render: same toast-only path as the full Render-all
+      // button below, just narrowed to one size_label. Keeps credit
+      // spend tight — useful when the user only cares about (e.g.) the
+      // 1024² version of a template that ships at 256/512/1024.
+      var sizeLabel = chip.getAttribute('data-size');
+      if(sizeLabel){
+        // Optimistic clear of any prior error — user re-trying.
+        clearTileError(tid);
+        runRender(t, [sizeLabel], null, /*toastOnly*/ true);
+      }
+      return;
+    }
+
+    if(clr){
+      clearTile(t);
+      return;
+    }
+
+    var act = btn ? btn.getAttribute('data-act') : 'customise';
+    if(!act) return;
 
     if(act === 'customise'){
       openCustomiseModal(t);
@@ -748,9 +871,97 @@
       // prompts. The Customise modal is for fine-tuning; this button is
       // for "give me the full set right now". Renders sequentially via
       // SSE so the toast can show progress.
+      clearTileError(tid);
       runRender(t, t.sizes.map(function(s){ return s.label; }), null, /*toastOnly*/ true);
       return;
     }
+  }
+
+  /** Wipe cached renders for a tile via DELETE /api/marketing/renders.
+   *  Removes both the marketing_renders rows AND their Storage objects
+   *  server-side; on success we drop the renders array on state.kits
+   *  and re-paint the tile. The kit row stays — saved vars (positioning
+   *  overrides) survive a clear so the next render uses them. */
+  function clearTile(template){
+    if(!template) return;
+    if(typeof window.confirm === 'function'){
+      if(!window.confirm('Clear cached renders for "'+template.name+'"? The next Render will produce a fresh asset.')) return;
+    }
+    var pid = projectId();
+    if(!pid) return;
+    var qs = 'project_id=' + encodeURIComponent(pid) + '&template_id=' + encodeURIComponent(template.id);
+    fetch('/api/marketing/renders?' + qs, { method: 'DELETE', credentials: 'same-origin' })
+      .then(function(res){
+        if(!res.ok) return res.json().catch(function(){ return {}; }).then(function(b){
+          throw new Error((b && b.message) || ('HTTP ' + res.status));
+        });
+        return res.json().catch(function(){ return {}; });
+      })
+      .then(function(j){
+        // Drop renders locally so the next paint shows the Preview state
+        // again. Server is source of truth, but we don't need to re-fetch
+        // /kits — the local mutation is exact.
+        for(var i = 0; i < (state.kits||[]).length; i++){
+          if(state.kits[i].template_id === template.id){
+            state.kits[i] = Object.assign({}, state.kits[i], { renders: [] });
+            break;
+          }
+        }
+        clearTileError(template.id);
+        // Replace the tile's preview <img> with a fresh placeholder div
+        // so the "PREVIEW" badge styling re-engages — much cheaper than
+        // re-rendering the whole grid.
+        var tile = findTile(template.id);
+        if(tile){
+          var img = tile.querySelector('img.mkt-tile-preview');
+          if(img){
+            var slot = document.createElement('div');
+            slot.className = 'mkt-tile-preview-slot';
+            slot.innerHTML = '<span class="mkt-tile-badge mkt-tile-badge-preview">Preview</span>';
+            img.parentNode.replaceChild(slot, img);
+          }
+          // Strip the chip ✓ marks and the clear button — both keyed off
+          // kit.renders, which is now empty.
+          var chips = tile.querySelectorAll('.mkt-tile-chip.is-done');
+          for(var ci = 0; ci < chips.length; ci++){
+            chips[ci].classList.remove('is-done');
+            var tk = chips[ci].querySelector('.mkt-tile-chip-tick');
+            if(tk) tk.remove();
+          }
+          var clr = tile.querySelector('.mkt-tile-clear');
+          if(clr) clr.remove();
+        }
+        if(typeof showToast === 'function'){
+          showToast('Cleared ' + ((j && j.deleted) || 0) + ' render(s) for ' + template.name);
+        }
+      })
+      .catch(function(err){
+        if(typeof showToast === 'function') showToast('Clear failed: ' + (err.message || err));
+      });
+  }
+
+  /** Per-tile error helpers — set/clear via state.tileErrors and
+   *  patch the existing tile DOM in place. setTileError flips the
+   *  banner's textContent + .is-active class; clearTileError reverses it.
+   *  Both are no-ops when the tile isn't currently mounted. */
+  function setTileError(templateId, msg){
+    if(!state.tileErrors) state.tileErrors = {};
+    state.tileErrors[templateId] = msg || 'Render failed';
+    var tile = findTile(templateId);
+    if(!tile) return;
+    var box = tile.querySelector('.mkt-tile-error');
+    if(!box) return;
+    box.textContent = msg || 'Render failed';
+    box.classList.add('is-active');
+  }
+  function clearTileError(templateId){
+    if(state.tileErrors) delete state.tileErrors[templateId];
+    var tile = findTile(templateId);
+    if(!tile) return;
+    var box = tile.querySelector('.mkt-tile-error');
+    if(!box) return;
+    box.textContent = '';
+    box.classList.remove('is-active');
   }
 
   function findTemplate(id){
@@ -809,13 +1020,16 @@
     // layer doesn't show character sliders.
     var usedSlots = collectUsedSlots(template);
 
-    // Form is intentionally lean — language / colorMode / layoutVariant
-    // were exposed in earlier iterations but didn't deliver visible
-    // value to the user (most templates don't have multi-language CTA
-    // strings or A/B/C layouts authored). They're still in the saved
-    // vars (with defaults) so server-side resolveVars sees them; we
-    // just don't ask the user. Future v1.1 brings back layoutVariant
-    // when more templates ship variants.
+    // layoutVariant is exposed when a template authors meaningful
+    // alternates (today: promo.square_lobby_tile ships A/B/C; future
+    // wide-banner templates can ship char-left vs char-right). Hidden
+    // for templates with no variants — toggling does nothing visible
+    // and confuses users. Detection: check assetLayers for a layer
+    // with a `variants` block. We don\'t have that field on
+    // TemplateSummary today, so fall back to the schema's options
+    // count (3 always means all three are at least declared).
+    var variantOpts = (schema.layoutVariant && schema.layoutVariant.options) || ['A','B','C'];
+    var hasMultiVariants = variantOpts.length > 1;
     body.innerHTML = ''
       + formField('gameName',      'Game name',      'text',
           pickStr(vars.gameName, ''))
@@ -828,6 +1042,10 @@
       + formSelect('ctaText',      'Call to action',
           (schema.ctaText && schema.ctaText.options) || ['PLAY NOW'],
           pickStr(vars.ctaText, schema.ctaText ? schema.ctaText.default : 'PLAY NOW'))
+      + (hasMultiVariants ? formSelect('layoutVariant', 'Layout variant',
+          variantOpts,
+          pickStr(vars.layoutVariant, schema.layoutVariant ? schema.layoutVariant.default : 'A'),
+          'Templates with authored alternates use this to pick a different arrangement (e.g. character on the right vs. left).') : '')
       + (hasChar ? formCheckbox('includeCharacter', 'Include character', charOn,
           'Hides the hero figure when a tighter layout reads better.') : '')
       // hasRender flag drives the right copy under the Positioning header
@@ -937,11 +1155,50 @@
     return { w: sizeW, h: sizeH };
   }
 
-  function _resolvePadding(pad){
-    if(pad == null)                return { top: 0, right: 0, bottom: 0, left: 0 };
-    if(typeof pad === 'number')    return { top: pad, right: pad, bottom: pad, left: pad };
-    if(Array.isArray(pad))         return { top: pad[0]||0, right: pad[1]||0, bottom: pad[2]||0, left: pad[3]||0 };
+  // Mirror of compose.ts:resolveDim — number → px, "50%" → fraction of axis.
+  function _resolveDim(s, axisPx){
+    if(typeof s === 'number') return s;
+    if(typeof s !== 'string') return 0;
+    var m = /^(-?\d+(?:\.\d+)?)\s*%$/.exec(s.trim());
+    if(m) return (parseFloat(m[1]) / 100) * axisPx;
+    var n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+  /** Mirror of compose.ts:resolvePadding — accepts numbers, "50%" strings,
+   *  or 4-tuples mixing the two. Each side resolves against its matching
+   *  axis (top/bottom against h, left/right against w) so a "50%" right
+   *  padding always carves exactly half regardless of aspect ratio. */
+  function _resolvePadding(pad, w, h){
+    if(pad == null) return { top: 0, right: 0, bottom: 0, left: 0 };
+    if(typeof pad === 'number' || typeof pad === 'string'){
+      var v = _resolveDim(pad, w);
+      return { top: v, right: v, bottom: v, left: v };
+    }
+    if(Array.isArray(pad)){
+      return {
+        top:    _resolveDim(pad[0], h),
+        right:  _resolveDim(pad[1], w),
+        bottom: _resolveDim(pad[2], h),
+        left:   _resolveDim(pad[3], w),
+      };
+    }
     return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+  /** Apply the layer's `whenAlone` overrides when the project has no
+   *  character — mirrors compose.ts:applyWhenAlone. Lets the client
+   *  draw correct drag handles before any server render fires (the
+   *  customise modal opens with the same fallback layout the engine
+   *  will produce). */
+  function _applyWhenAlone(layer, hasCharacter){
+    if(hasCharacter || !layer.whenAlone) return layer;
+    var out = {};
+    for(var k in layer){ if(Object.prototype.hasOwnProperty.call(layer, k)) out[k] = layer[k]; }
+    var w = layer.whenAlone;
+    if(w.anchor   != null) out.anchor   = w.anchor;
+    if(w.scale    != null) out.scale    = w.scale;
+    if(w.padding  != null) out.padding  = w.padding;
+    if(w.fit      != null) out.fit      = w.fit;
+    return out;
   }
 
   function _anchorIn(anchor, bx, by, bw, bh, cw, ch){
@@ -958,7 +1215,7 @@
   }
 
   function _computeAssetBbox(layer, nat, sizeW, sizeH, override){
-    var pad   = _resolvePadding(layer.padding);
+    var pad   = _resolvePadding(layer.padding, sizeW, sizeH);
     var boxX  = pad.left;
     var boxY  = pad.top;
     var boxW  = sizeW - pad.left - pad.right;
@@ -1006,9 +1263,19 @@
     if(!template || !Array.isArray(template.assetLayers) || template.assetLayers.length === 0) return null;
     var size = _pickBiggestImageSize(template);
     if(!size) return null;
+    // hasCharacter mirrors the server's gate so the client preview
+    // matches the upcoming render. Falls back to true on first paint
+    // (state.readiness can be null briefly during the kits fetch) — a
+    // false-positive just shows the char-aware layout for one frame.
+    var r = state.readiness || {};
+    var hasCharacter = !!(r.hasCharacter || r.hasCharacterTransparent);
     var boxes = [];
     for(var i = 0; i < template.assetLayers.length; i++){
-      var L = template.assetLayers[i];
+      var L = _applyWhenAlone(template.assetLayers[i], hasCharacter);
+      // Skip character layers entirely when there's no character to
+      // render — otherwise the modal would show an orphan drag handle
+      // anchored to a slot that the upcoming render is going to skip.
+      if(!hasCharacter && (L.slot === 'character' || L.slot === 'character.transparent')) continue;
       var ov = (overrides && overrides[L.slot]) || null;
       var nat = _assumedNat(L.slot, size.w, size.h);
       var b = _computeAssetBbox(L, nat, size.w, size.h, ov);
@@ -1077,8 +1344,9 @@
       +       '<div id="mkt-modal-left">'
       +         '<form id="mkt-modal-form" autocomplete="off"></form>'
       +         '<div id="mkt-modal-actions">'
-      +           '<button class="mkt-tile-btn"         id="mkt-modal-save"   type="button">Save</button>'
-      +           '<button class="mkt-tile-btn primary" id="mkt-modal-render" type="button">Render selected sizes</button>'
+      +           '<button class="mkt-tile-btn"         id="mkt-modal-save"      type="button">Save</button>'
+      +           '<button class="mkt-tile-btn"         id="mkt-modal-apply-all" type="button" title="Save these character + logo offsets onto every other kit with a similar aspect ratio. The next render of those kits picks them up.">Apply to similar</button>'
+      +           '<button class="mkt-tile-btn primary" id="mkt-modal-render"    type="button">Render selected sizes</button>'
       +         '</div>'
       +       '</div>'
       +       '<div id="mkt-modal-right">'
@@ -1102,8 +1370,9 @@
         if(ov && ov.style.display === 'flex') closeCustomiseModal();
       }
     });
-    document.getElementById('mkt-modal-save').addEventListener('click',   onModalSave);
-    document.getElementById('mkt-modal-render').addEventListener('click', onModalRender);
+    document.getElementById('mkt-modal-save').addEventListener('click',      onModalSave);
+    document.getElementById('mkt-modal-apply-all').addEventListener('click', onModalApplyToSimilar);
+    document.getElementById('mkt-modal-render').addEventListener('click',    onModalRender);
 
     // Live preview: re-render on slider change (debounced) so the user
     // sees the asset move without clicking Render. The smallest size
@@ -1465,6 +1734,120 @@
     runRender(template, sizes, vars, /*toastOnly*/ false);
   }
 
+  /** Aspect-ratio bucket for a template, used by `onModalApplyToSimilar`
+   *  so the user's positioning copies only to templates of similar
+   *  shape. A wide-banner offset doesn't read on a portrait IG story
+   *  and vice versa — bucketing keeps the action's behaviour
+   *  predictable. */
+  function templateOrientation(template){
+    if(!template || !template.sizes || !template.sizes.length) return 'square';
+    var s = template.sizes[0];
+    var aspect = s.w / s.h;
+    if(aspect >= 1.30) return 'wide';     // banners, headers, lobby tiles, leaderboards
+    if(aspect <= 0.77) return 'portrait';  // stories, side-rails, app store screenshots
+    return 'square';                       // 1:1 ± a hair
+  }
+  function orientationLabel(o){
+    return o === 'wide' ? 'wide-banner' : o === 'portrait' ? 'portrait' : 'square';
+  }
+
+  /** Apply this template's character/logo offsets + character toggle to
+   *  every kit whose template shares the current orientation. Iterates
+   *  PUTs to /api/marketing/kits/[id] one by one — no batch endpoint
+   *  exists yet, but the operation is O(few) and cheap. Existing kit
+   *  vars are preserved (text, CTA, language); only the layerOverrides
+   *  + includeCharacter fields get rewritten. */
+  function onModalApplyToSimilar(){
+    var tid = modalState.templateId;
+    if(!tid) return;
+    var template = findTemplate(tid);
+    if(!template) return;
+    var orientation = templateOrientation(template);
+    var label = orientationLabel(orientation);
+
+    // Pick the bucket of templates we'll write to. Same orientation,
+    // exclude the current one (already saved via Save).
+    var buddies = [];
+    for(var i = 0; i < (state.templates||[]).length; i++){
+      var t = state.templates[i];
+      if(t.id === tid) continue;
+      if(templateOrientation(t) !== orientation) continue;
+      buddies.push(t);
+    }
+    if(buddies.length === 0){
+      if(typeof showToast === 'function') showToast('No other ' + label + ' templates to apply to.');
+      return;
+    }
+
+    // Pull the modal's current values now so the user sees what's about
+    // to ship.
+    var vars  = readModalVars();
+    var ovr   = vars.layerOverrides || {};
+    var inc   = !!vars.includeCharacter;
+    var slots = Object.keys(ovr).filter(function(k){ return ovr[k] && (ovr[k].dx || ovr[k].dy || ovr[k].scale); });
+    if(slots.length === 0 && (typeof vars.includeCharacter !== 'boolean')){
+      if(typeof showToast === 'function') showToast('Adjust at least one position slider before applying.');
+      return;
+    }
+
+    if(typeof window.confirm === 'function'){
+      var msg = 'Apply current character + logo positions to ' + buddies.length + ' other ' + label + ' template(s)?';
+      if(!window.confirm(msg)) return;
+    }
+
+    var btn = document.getElementById('mkt-modal-apply-all');
+    if(btn){ btn.disabled = true; btn.textContent = 'Applying…'; }
+
+    // Walk buddies sequentially so the toast progress count stays
+    // honest. Failures are tolerated — a single 500 doesn't abort the
+    // batch; the toast at the end shows succeeded vs. attempted.
+    var pid       = projectId();
+    var done      = 0;
+    var attempted = buddies.length;
+
+    function step(idx){
+      if(idx >= buddies.length){
+        if(btn){ btn.disabled = false; btn.textContent = 'Apply to similar'; }
+        if(typeof showToast === 'function'){
+          showToast('Applied to ' + done + ' / ' + attempted + ' ' + label + ' template(s).');
+        }
+        return;
+      }
+      var bud     = buddies[idx];
+      var budKit  = findKit(bud.id);
+      var budVars = (budKit && budKit.vars) || {};
+      // Merge: keep budVars text-side fields, overwrite the layout bits.
+      var nextVars = Object.assign({}, budVars, {
+        includeCharacter: inc,
+        layerOverrides:   ovr,
+      });
+      fetch('/api/marketing/kits/' + encodeURIComponent(bud.id), {
+        method:      'PUT',
+        credentials: 'same-origin',
+        headers:     { 'Content-Type': 'application/json' },
+        body:        JSON.stringify({ project_id: pid, vars: nextVars }),
+      }).then(function(r){
+        if(r.ok) done++;
+        return r.json().catch(function(){ return {}; });
+      }).then(function(b){
+        // Update local kit cache so subsequent customise opens reflect
+        // the new vars without a /kits round-trip.
+        if(b && b.kit){
+          var ix = -1;
+          for(var k = 0; k < (state.kits||[]).length; k++){
+            if(state.kits[k].template_id === b.kit.template_id){ ix = k; break; }
+          }
+          if(ix >= 0) state.kits[ix] = b.kit;
+          else (state.kits = state.kits || []).push(b.kit);
+        }
+        step(idx + 1);
+      }).catch(function(){
+        step(idx + 1);
+      });
+    }
+    step(0);
+  }
+
   // ─── Render trigger ────────────────────────────────────────────────────────
   //
   // POST /api/marketing/render returns SSE. We use fetch+ReadableStream
@@ -1575,9 +1958,16 @@
           var msg = (ev.data && ev.data.message) || 'Render failed';
           if(prog && !toastOnly) prog.textContent = msg;
           if(typeof showToast === 'function' && toastOnly) showToast(msg);
+          // Persist on the tile so the user can see which template failed
+          // after the toast vanishes / they close the modal.
+          setTileError(template.id, msg);
         } else if(ev.event === 'complete'){
           if(prog && !toastOnly) prog.textContent = (ev.data.renders || []).length + ' rendered · done';
           if(toastOnly && typeof showToast === 'function') showToast('Rendered ' + (ev.data.renders||[]).length + ' size(s)');
+          // Successful complete clears any prior tile error so a stale
+          // "Render failed" badge doesn't outlive the failure that
+          // triggered it.
+          clearTileError(template.id);
         }
       }
 
@@ -1989,7 +2379,32 @@
     + '.mkt-tile-preview,.mkt-tile-preview-empty,.mkt-tile-preview-slot{width:100%;aspect-ratio:1/1;background:#0a0a10;border-radius:6px;object-fit:cover;display:block;position:relative;overflow:hidden}'
     + '.mkt-tile-preview-empty,.mkt-tile-preview-slot{background:linear-gradient(135deg,#1a1a24 0%,#222230 100%)}'
     + '.mkt-tile-name{font-size:12px;color:#e8e6e2;font-weight:500;margin-top:2px}'
-    + '.mkt-tile-sizes{font-size:10px;color:#7a7a94;font-family:"DM Mono",monospace;letter-spacing:0.02em}'
+    // Size chips — replaces the static "256² · 512² · 1024² PNG" line.
+    // Each chip is clickable; the gold-tinted .is-done border + tick
+    // marks sizes already in the cache. Wraps on narrow tile widths.
+    + '.mkt-tile-chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-family:"DM Mono",monospace;font-size:10px}'
+    + '.mkt-tile-chip{display:inline-flex;align-items:center;gap:3px;background:#13131a;border:1px solid #2a2a3a;color:#9090b0;border-radius:4px;padding:3px 7px;cursor:pointer;font-family:inherit;font-size:10px;letter-spacing:0.02em;transition:border-color .12s,background .12s,color .12s;line-height:1.2}'
+    + '.mkt-tile-chip:hover{background:#1a1a24;border-color:#3a3a4f;color:#e0deda}'
+    + '.mkt-tile-chip.is-done{background:rgba(201,168,76,0.10);border-color:rgba(201,168,76,0.35);color:#e8c96d}'
+    + '.mkt-tile-chip-tick{font-size:9px;color:#7ac98a;line-height:1}'
+    + '.mkt-tile-formats{margin-left:auto;color:#5a5a78;font-size:9px;letter-spacing:.06em}'
+    // Cutout state badge (top-right of preview).
+    + '.mkt-tile-cutout{position:absolute;top:8px;right:8px;z-index:3;font-family:"DM Mono",monospace;font-size:9px;letter-spacing:.04em;padding:2px 6px;border-radius:4px;line-height:1.4;pointer-events:auto}'
+    + '.mkt-tile-cutout.is-ready{background:rgba(122,201,138,0.10);border:1px solid rgba(122,201,138,0.35);color:#7ac98a}'
+    + '.mkt-tile-cutout.is-pending{background:rgba(201,168,76,0.10);border:1px solid rgba(201,168,76,0.35);color:#e8c96d}'
+    // Per-tile clear (✕) — only renders when the tile has cached output.
+    // Hidden by default and revealed on tile-hover so it doesn\'t add
+    // visual noise to a freshly-loaded grid.
+    + '.mkt-tile-clear{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.10);color:#e0deda;font-size:11px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;font-family:inherit;z-index:4;transition:background .12s,border-color .12s,color .12s}'
+    + '.mkt-tile:hover .mkt-tile-clear{display:flex}'
+    + '.mkt-tile-clear:hover{background:rgba(239,122,122,0.20);border-color:rgba(239,122,122,0.60);color:#ef7a7a}'
+    // When both a cutout badge and a clear ✕ exist, the clear wins the
+    // top-right slot; the cutout badge slides under it on hover.
+    + '.mkt-tile:hover .mkt-tile-cutout{top:36px}'
+    // Per-tile error banner — red strip below the chip row. .is-active
+    // gates display so an empty banner doesn\'t reserve vertical space.
+    + '.mkt-tile-error{display:none;font-family:"DM Mono",monospace;font-size:10px;color:#ef7a7a;background:rgba(239,122,122,0.08);border:1px solid rgba(239,122,122,0.30);border-radius:4px;padding:4px 7px;line-height:1.35;letter-spacing:.02em}'
+    + '.mkt-tile-error.is-active{display:block}'
     + '.mkt-tile-actions{display:flex;gap:6px;margin-top:auto}'
     + '.mkt-tile-btn{flex:1;background:#1a1a24;border:1px solid #2a2a3a;color:#e0deda;border-radius:5px;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:500;transition:background .12s,border-color .12s}'
     + '.mkt-tile-btn:hover{background:#222230;border-color:#3a3a4f}'
@@ -2090,7 +2505,12 @@
     + '.mkt-onboard-progress-text{font-size:10px;color:#7a7a94;font-family:DM Mono,monospace;letter-spacing:0.06em;margin-top:8px;text-transform:uppercase}'
     + '.mkt-onboard-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}'
     + '@media (max-width:780px){.mkt-onboard-cards{grid-template-columns:1fr}}'
-    + '.mkt-onboard-card{display:flex;align-items:center;gap:14px;background:#13131a;border:1px solid #2a2a3a;border-radius:10px;padding:16px 18px;transition:border-color 0.15s,transform 0.15s}'
+    + '.mkt-onboard-card{display:flex;align-items:center;gap:14px;background:#13131a;border:1px solid #2a2a3a;border-radius:10px;padding:16px 18px;transition:border-color 0.15s,transform 0.15s,background 0.15s;text-align:left;font-family:Space Grotesk,sans-serif;color:inherit}'
+    // Button-flavour of the card — same visual but with hover lift +
+    // pointer cursor so the user knows it\'s clickable.
+    + 'button.mkt-onboard-card-btn{cursor:pointer;width:100%}'
+    + 'button.mkt-onboard-card-btn:hover{transform:translateY(-1px);border-color:rgba(201,168,76,0.45);background:linear-gradient(135deg,rgba(201,168,76,0.06) 0%,#13131a 70%)}'
+    + 'button.mkt-onboard-card-btn:focus-visible{outline:2px solid rgba(201,168,76,0.5);outline-offset:2px}'
     + '.mkt-onboard-card.is-done{border-color:rgba(122,201,138,0.35);background:linear-gradient(135deg,rgba(122,201,138,0.06) 0%,#13131a 60%)}'
     + '.mkt-onboard-card.is-pending{border-color:rgba(201,168,76,0.18)}'
     + '.mkt-onboard-card-icon{width:42px;height:42px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#0a0a10;border:1px solid #2a2a3a;border-radius:8px;font-size:20px}'

@@ -140,9 +140,17 @@ export async function renderTemplate(
 
   const renderedLayers: RenderedLayerBox[] = []
 
+  // hasCharacter is the gate for `whenAlone` fallback. Computed once
+  // per render so the per-layer dispatch stays cheap. Either slot
+  // resolving to a Buffer counts — character.transparent fully
+  // satisfies the "has a character" test, since the engine itself
+  // falls back from .transparent → character when the cutout is
+  // missing.
+  const hasCharacter = !!(assets.character || assets['character.transparent'])
+
   for (const rawLayer of template.layers) {
     const layer = applyVariant(rawLayer, vars)
-    const box = await drawLayer(ctx, layer, vars, assets, size)
+    const box = await drawLayer(ctx, layer, vars, assets, size, hasCharacter)
     if (box) renderedLayers.push(box)
   }
 
@@ -168,14 +176,15 @@ export async function renderTemplate(
 // ─── Layer dispatch ─────────────────────────────────────────────────────────
 
 async function drawLayer(
-  ctx:    SKRSContext2D,
-  layer:  Layer,
-  vars:   ResolvedVars,
-  assets: ResolvedAssets,
-  size:   TemplateSize,
+  ctx:           SKRSContext2D,
+  layer:         Layer,
+  vars:          ResolvedVars,
+  assets:        ResolvedAssets,
+  size:          TemplateSize,
+  hasCharacter:  boolean,
 ): Promise<RenderedLayerBox | null> {
   switch (layer.type) {
-    case 'asset':
+    case 'asset': {
       // Honour the user's "include character" toggle. Both
       // `character` and `character.transparent` slots are skipped when
       // the toggle is off — same template can therefore render with-
@@ -183,7 +192,16 @@ async function drawLayer(
       if (!vars.includeCharacter && (layer.slot === 'character' || layer.slot === 'character.transparent')) {
         return null
       }
-      return drawAssetLayer(ctx, layer, assets, size, vars)
+      // Layout-convention helper: when the project has no character at
+      // all (or the user toggled it off), the wide-banner templates'
+      // logo layer falls back to its `whenAlone` overrides so the logo
+      // re-centres instead of clinging to the right half. effectiveHas
+      // tracks both gates — toggle-off is functionally identical to
+      // missing-asset for layout purposes.
+      const effectiveHas = hasCharacter && vars.includeCharacter
+      const resolved = applyWhenAlone(layer, effectiveHas)
+      return drawAssetLayer(ctx, resolved, assets, size, vars)
+    }
     case 'gradient': drawGradientLayer(ctx, layer, vars, size); return null
     case 'shape':    drawShapeLayer(ctx, layer, vars, size);    return null
     case 'text':     drawTextLayer(ctx, layer, vars, size);     return null
@@ -543,8 +561,32 @@ function resolvePadding(
   h:   number,
 ): { top: number; right: number; bottom: number; left: number } {
   if (pad == null) return { top: 0, right: 0, bottom: 0, left: 0 }
-  if (typeof pad === 'number') return { top: pad, right: pad, bottom: pad, left: pad }
-  return { top: pad[0], right: pad[1], bottom: pad[2], left: pad[3] }
+  // Each side resolves against its matching axis — top/bottom against
+  // height, left/right against width — so a `"50%"` left padding always
+  // carves exactly half the canvas regardless of the template's
+  // aspect ratio. Used by char-left / logo-right wide banners.
+  const sideW = (s: number | string): number => resolveDim(s, w)
+  const sideH = (s: number | string): number => resolveDim(s, h)
+  if (typeof pad === 'number' || typeof pad === 'string') {
+    const v = typeof pad === 'number' ? pad : sideW(pad)
+    return { top: v, right: v, bottom: v, left: v }
+  }
+  return {
+    top:    sideH(pad[0]),
+    right:  sideW(pad[1]),
+    bottom: sideH(pad[2]),
+    left:   sideW(pad[3]),
+  }
+}
+
+/** When the project has no character asset, merge the layer's
+ *  `whenAlone` overrides on top so a logo declared as `middle-right`
+ *  for the char-left/logo-right layout snaps back to `middle-center`
+ *  for a logo-only render. Pure: returns a new layer object so the
+ *  template definition stays immutable across calls. */
+function applyWhenAlone(layer: AssetLayer, hasCharacter: boolean): AssetLayer {
+  if (hasCharacter || !layer.whenAlone) return layer
+  return { ...layer, ...layer.whenAlone } as AssetLayer
 }
 
 /** Position content of size (cw, ch) inside box (bx, by, bw, bh) per

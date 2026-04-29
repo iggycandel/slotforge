@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { normalizeAssetKey } from '@/lib/storage/asset-keys'
 import type { AssetType, GeneratedAsset } from '@/types/assets'
 
 const BUCKET = 'project-assets'
@@ -149,5 +150,38 @@ export async function getProjectAssets(projectId: string): Promise<GeneratedAsse
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(`[storage] Failed to fetch assets: ${error.message}`)
-  return (data ?? []) as GeneratedAsset[]
+  const rows = (data ?? []) as GeneratedAsset[]
+
+  // Translate any rows that landed under a legacy editor PSD key (`bg`,
+  // `char`, `reelFrame`, `sym_H1`, …) to the canonical AssetType the
+  // Art workspace and downstream consumers index by. Without this,
+  // assets uploaded via the old Flow-side right-click path stayed
+  // invisible to the Art grid even though the bytes were in Storage.
+  // Pure pass-through for rows whose `type` is already canonical, so
+  // the cost is one Map lookup per row.
+  //
+  // We dedupe by canonical type when both a legacy and a canonical row
+  // exist for the same project — the canonical row wins (it represents
+  // the more recent or more deliberately-tagged upload). If only the
+  // legacy row exists we expose it under its canonical type so Art's
+  // type-keyed grouping picks it up.
+  const seenCanonical = new Set<string>()
+  const out: GeneratedAsset[] = []
+  // First pass: keep canonical-typed rows verbatim.
+  for (const r of rows) {
+    const canon = normalizeAssetKey(r.type)
+    if (canon === r.type) {
+      out.push(r)
+      seenCanonical.add(r.type)
+    }
+  }
+  // Second pass: relabel orphaned legacy rows to their canonical type.
+  for (const r of rows) {
+    const canon = normalizeAssetKey(r.type)
+    if (canon === r.type) continue   // already handled above
+    if (seenCanonical.has(canon)) continue   // canonical row wins
+    out.push({ ...r, type: canon as AssetType })
+    seenCanonical.add(canon)
+  }
+  return out
 }

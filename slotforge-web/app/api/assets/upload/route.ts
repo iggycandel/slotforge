@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@supabase/supabase-js'
 import { assertProjectAccess } from '@/lib/supabase/authz'
+import { normalizeAssetKey } from '@/lib/storage/asset-keys'
 
 // Use the service role key so uploads bypass RLS
 const supabaseAdmin = createClient(
@@ -160,14 +161,24 @@ export async function POST(req: NextRequest) {
     .getPublicUrl(storagePath)
 
   // Save asset record to generated_assets so it shows up in the asset grid.
-  // Use the ORIGINAL assetKey (with dots, e.g. "bonuspick.bg") as the type
-  // so feature-namespaced slots round-trip correctly. Storage filename is
-  // sanitized but the DB key is preserved.
-  const theme = (formData.get('theme') as string | null) || 'custom'
+  //
+  // The DB type is normalised to the canonical AssetType when the
+  // incoming assetKey is a legacy editor PSD key. Without this, a
+  // right-click upload from the Flow workspace lands as
+  // `type='bg'` (the editor's PSD key) while Marketing's readiness
+  // probe + the Art workspace's grouping both filter on
+  // `type='background_base'` — so the freshly-uploaded asset is
+  // invisible to every workspace except the one that uploaded it.
+  // See lib/storage/asset-keys.ts for the full map + rationale.
+  // Feature-namespaced keys (e.g. "bonuspick.bg") and per-screen
+  // overrides (`bg_splash` etc.) pass through unchanged — they're
+  // either already canonical or genuinely editor-internal.
+  const dbType = normalizeAssetKey(assetKey)
+  const theme  = (formData.get('theme') as string | null) || 'custom'
   const assetRecord = {
     id:         crypto.randomUUID(),
     project_id: projectId,
-    type:       assetKey,  // original key — preserves feature namespace dots
+    type:       dbType,
     url:        publicUrl,
     prompt:     'User uploaded image',
     theme,
