@@ -842,17 +842,17 @@
                   </select>
                 </div>
                 <div class="pf" id="custom-theme-wrap" style="display:none"><div class="lbl">Custom Theme</div><input class="fi" id="custom-theme" placeholder="Describe your theme"></div>
-                <div class="pf"><div class="lbl">Target Audience</div>
+                <div class="pf"><div class="lbl">Target Audience <span class="lbl-opt">— optional</span></div>
                   <select class="fsel" id="game-audience">
                     <option value="casual">Casual Players</option><option value="core">Core Slots Players</option><option value="highroller">High Rollers</option><option value="mobile">Mobile-First Players</option><option value="social">Social Casino</option>
                   </select>
                 </div>
               </div>
               <div class="pfr">
-                <div class="pf"><div class="lbl">Age Rating</div>
+                <div class="pf"><div class="lbl">Age Rating <span class="lbl-opt">— optional</span></div>
                   <select class="fsel" id="game-rating"><option>18+</option><option>21+</option></select>
                 </div>
-                <div class="pf"><div class="lbl">Platform</div>
+                <div class="pf"><div class="lbl">Platform <span class="lbl-opt">— optional</span></div>
                   <select class="fsel" id="game-platform"><option>Mobile + Desktop</option><option>Mobile Only</option><option>Desktop Only</option></select>
                 </div>
               </div>
@@ -864,18 +864,18 @@
             <div class="psh" data-s="story-body"><span class="pi">📖</span><span class="pl">Game Story &amp; Narrative <span class="lbl-opt">— optional</span></span><span class="pch">▾</span></div>
             <div class="psb" id="story-body">
               <div class="pf">
-                <div class="lbl">Setting / World</div>
+                <div class="lbl">Setting / World <span class="lbl-opt">— optional</span></div>
                 <input class="fi" id="game-setting" placeholder="e.g. The dusty plains of the Wild West, where bulls run free and fortunes are made…">
               </div>
               <div class="pf">
-                <div class="lbl">Game Story</div>
+                <div class="lbl">Game Story <span class="lbl-opt">— optional</span></div>
                 <textarea class="fta" id="game-story" rows="4" placeholder="Describe the narrative arc of the game. Who is the player? What are they seeking? What happens in the bonus rounds? (2–4 sentences recommended)"></textarea>
               </div>
               <div class="pfr">
-                <div class="pf"><div class="lbl">Mood / Tone</div>
+                <div class="pf"><div class="lbl">Mood / Tone <span class="lbl-opt">— optional</span></div>
                   <select class="fsel" id="game-mood"><option>Epic &amp; Adventurous</option><option>Fun &amp; Playful</option><option>Dark &amp; Mysterious</option><option>Luxurious &amp; Premium</option><option>Nostalgic &amp; Retro</option><option>Festive &amp; Celebratory</option><option>Tense &amp; Exciting</option></select>
                 </div>
-                <div class="pf"><div class="lbl">Bonus Round Narrative</div>
+                <div class="pf"><div class="lbl">Bonus Round Narrative <span class="lbl-opt">— optional</span></div>
                   <input class="fi" id="game-bonus-narrative" placeholder="e.g. Free Spins = the bull stampede begins">
                 </div>
               </div>
@@ -895,23 +895,23 @@
                     <option value="">— select an art style —</option>
                   </select>
                 </div>
-                <div class="pf"><div class="lbl">Visual Inspiration</div>
+                <div class="pf"><div class="lbl">Visual Inspiration <span class="lbl-opt">— optional</span></div>
                   <input class="fi" id="game-art-ref" placeholder="e.g. Spaghetti westerns, dust-storm palette, worn leather…">
                 </div>
               </div>
               <div class="pfr">
-                <div class="pf"><div class="lbl">Music Style</div>
+                <div class="pf"><div class="lbl">Music Style <span class="lbl-opt">— optional</span></div>
                   <select class="fsel" id="game-music">
                     <option>Orchestral / Epic</option><option>Country / Western</option><option>Celtic / Folk</option><option>Electronic / Synth</option><option>Jazz / Swing</option><option>Rock / Metal</option><option>Ambient / Atmospheric</option><option>Pop / Upbeat</option>
                   </select>
                 </div>
-                <div class="pf"><div class="lbl">SFX Style</div>
+                <div class="pf"><div class="lbl">SFX Style <span class="lbl-opt">— optional</span></div>
                   <select class="fsel" id="game-sfx">
                     <option>Punchy &amp; Satisfying</option><option>Subtle &amp; Elegant</option><option>Cartoony &amp; Exaggerated</option><option>Realistic</option>
                   </select>
                 </div>
               </div>
-              <div class="pf"><div class="lbl">Art Direction Notes</div>
+              <div class="pf"><div class="lbl">Art Direction Notes <span class="lbl-opt">— optional</span></div>
                 <textarea class="fta" id="game-art-notes" placeholder="Additional notes for the art team: lighting references, specific restrictions, cultural considerations…"></textarea>
               </div>
             </div>
@@ -945,8 +945,8 @@
                   </div>
                 </div>
                 <div class="pf" style="flex:1">
-                  <div class="lbl">Size</div><select class="fsel" id="logo-size"><option>Large</option><option>Medium</option><option>Small</option></select>
-                  <div class="lbl" style="margin-top:7px">Visible on</div><select class="fsel"><option>All screens</option><option>Splash only</option><option>Splash + Base</option></select>
+                  <div class="lbl">Size <span class="lbl-opt">— optional</span></div><select class="fsel" id="logo-size"><option>Large</option><option>Medium</option><option>Small</option></select>
+                  <div class="lbl" style="margin-top:7px">Visible on <span class="lbl-opt">— optional</span></div><select class="fsel"><option>All screens</option><option>Splash only</option><option>Splash + Base</option></select>
                 </div>
               </div>
             </div>
@@ -959,29 +959,31 @@
               <div class="tog-row"><div class="tog" id="char-tog"></div><span class="tog-lbl" id="char-tog-lbl">Include character</span></div>
               <div class="cf" id="char-cf">
                 <div class="pfr">
-                  <div class="pf"><div class="lbl">Character Name</div><input class="fi" id="char-name" placeholder="e.g. The Bull Rider"></div>
-                  <div class="pf"><div class="lbl">Character Role</div>
+                  <div class="pf"><div class="lbl">Character Name <span class="lbl-opt">— optional</span></div><input class="fi" id="char-name" placeholder="e.g. The Bull Rider"></div>
+                  <div class="pf"><div class="lbl">Character Role <span class="lbl-opt">— optional</span></div>
                     <select class="fsel" id="char-role"><option>Host / Guide</option><option>Protagonist</option><option>Antagonist</option><option>Mascot</option><option>Dealer</option></select>
                   </div>
                 </div>
-                <div class="pf"><div class="lbl">Character Description</div>
+                <div class="pf"><div class="lbl">Character Description <span class="lbl-opt">— optional</span></div>
                   <textarea class="fta" id="char-desc" placeholder="Describe the character's appearance, personality, and role in the game. How do they interact with the player? Do they have animations or voiceover?"></textarea>
                 </div>
                 <div class="pfr">
                   <div class="pf"><div class="lbl">Scale</div><select class="fsel" id="char-scale"><option>Full Height</option><option>Half Height</option><option>Bust Only</option></select></div>
-                  <div class="pf"><div class="lbl">Visible on</div><select class="fsel"><option>All screens</option><option>Base only</option></select></div>
-                  <div class="pf"><div class="lbl">Has Voiceover</div><select class="fsel" id="char-vo"><option>No</option><option>Yes — Full VO</option><option>Yes — Grunts only</option></select></div>
+                  <div class="pf"><div class="lbl">Visible on <span class="lbl-opt">— optional</span></div><select class="fsel"><option>All screens</option><option>Base only</option></select></div>
+                  <div class="pf"><div class="lbl">Has Voiceover <span class="lbl-opt">— optional</span></div><select class="fsel" id="char-vo"><option>No</option><option>Yes — Full VO</option><option>Yes — Grunts only</option></select></div>
                 </div>
-                <div class="pf"><div class="lbl">Animation States</div>
+                <div class="pf"><div class="lbl">Animation States <span class="lbl-opt">— optional</span></div>
                   <input class="fi" id="char-anims" placeholder="e.g. Idle, Win Reaction, Big Win Celebration, Free Spins Dance, Lose Shrug">
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Message Label -->
+          <!-- Message Label (optional — most jurisdictions require something
+               like the regulator + responsible-gambling line, but the actual
+               text + position is up to the studio's compliance review). -->
           <div class="ps">
-            <div class="psh"><span class="pi">💬</span><span class="pl">Message Label</span></div>
+            <div class="psh"><span class="pi">💬</span><span class="pl">Message Label <span class="lbl-opt">— optional</span></span></div>
             <div class="psb" id="s-msg">
               <div class="pf"><div class="lbl">Text</div><input class="fi" id="msg-txt" value="18+ · Play Responsibly · gamblingtherapy.org"></div>
               <div class="pfr">
@@ -1060,7 +1062,7 @@
           <div class="psb">
             <div class="pfr">
               <div class="pf"><div class="lbl">Number of Paylines</div><input class="fi" type="number" value="20" min="1" max="1024" placeholder="e.g. 20"></div>
-              <div class="pf"><div class="lbl">Pay Direction</div><select class="fsel"><option>Left to Right</option><option>Right to Left</option><option>Both Ways</option></select></div>
+              <div class="pf"><div class="lbl">Pay Direction <span class="lbl-opt">— optional</span></div><select class="fsel"><option>Left to Right</option><option>Right to Left</option><option>Both Ways</option></select></div>
             </div>
           </div>
         </div>
