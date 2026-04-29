@@ -761,29 +761,51 @@
    *  showing their status, and a strong CTA into the Art workspace.
    *  All styles live in MARKETING_CSS under .mkt-onboard*. */
   function renderReadinessEmpty(r){
-    var assetCards = [
-      { key: 'bg',   label: 'Background',  hint: 'The base-game scene',   ok: !!r.hasBackground, icon: '🏞' },
-      { key: 'logo', label: 'Logo',         hint: 'Your game wordmark',    ok: !!r.hasLogo,       icon: '✦'  },
-      { key: 'char', label: 'Character',    hint: 'Hero figure',           ok: !!r.hasCharacter,  icon: '🦸' },
+    // Two essentials gate the kit (BG + Logo). Character is recommended
+    // but not required — every wide-banner template falls back to a
+    // logo-centred composition when no character is present, and a lot
+    // of slot themes (3-reel classics, fruit machines, etc.) don't ship
+    // a hero figure at all. The optional card stays visible so users
+    // who DO want a character know where to add one, but it doesn't
+    // count against the progress bar or block the kit.
+    var essentials = [
+      { key: 'bg',   label: 'Background',  hint: 'The base-game scene',   ok: !!r.hasBackground, icon: '🏞', required: true },
+      { key: 'logo', label: 'Logo',         hint: 'Your game wordmark',    ok: !!r.hasLogo,       icon: '✦',  required: true },
     ];
-    var doneCount = assetCards.filter(function(c){ return c.ok; }).length;
+    var optional = [
+      { key: 'char', label: 'Character',    hint: 'Hero figure — banners centre on the logo when omitted', ok: !!r.hasCharacter, icon: '🦸', required: false },
+    ];
+    var doneEssentials  = essentials.filter(function(c){ return c.ok; }).length;
+    var totalEssentials = essentials.length;
+    var assetCards      = essentials.concat(optional);
 
     var cardsHtml = assetCards.map(function(c){
-      // Pre-compute the status badge so the chained-string concat
-      // below stays a single expression — the leading-`+` pattern
-      // breaks JS when wrapped around a multi-line conditional.
-      var statusHtml = c.ok
-        ? '<span class="mkt-onboard-tick" title="Ready">✓</span>'
-        : '<span class="mkt-onboard-pending" title="Not yet">●</span>';
-      // Each card is now a button → switches to the Assets workspace so
-      // the user can generate the missing asset directly. Going to a
-      // single hub today; a future iteration will deep-link to the
-      // specific asset tab once AssetsWorkspace exposes that API.
-      var hint = c.ok ? c.hint : (c.hint + ' · click to generate');
+      // Status badge varies by (required, ok):
+      //   • required + ok   → green ✓ (Ready)
+      //   • required + !ok  → hollow ● (Pending — blocks readiness)
+      //   • optional + ok   → green ✓ (Ready, optional card)
+      //   • optional + !ok  → muted "Optional" pill (does NOT block)
+      // Mixing visual languages keeps the hierarchy honest about what
+      // actually gates the grid view.
+      var statusHtml;
+      if (c.ok) {
+        statusHtml = '<span class="mkt-onboard-tick" title="Ready">✓</span>';
+      } else if (c.required) {
+        statusHtml = '<span class="mkt-onboard-pending" title="Required">●</span>';
+      } else {
+        statusHtml = '<span class="mkt-onboard-optional" title="Optional — recommended">Optional</span>';
+      }
+      // Each card is a button → switches to the Assets workspace so the
+      // user can generate the missing asset directly. Going to a single
+      // hub today; a future iteration will deep-link to the specific
+      // asset tab once AssetsWorkspace exposes that API.
+      var hint = c.ok ? c.hint : (c.hint + (c.required ? ' · click to generate' : ' · click to add (optional)'));
+      var stateClass = c.ok ? 'is-done' : (c.required ? 'is-pending' : 'is-optional');
+      var aria = c.label + (c.ok ? ' — ready' : (c.required ? ' — generate now' : ' — optional, recommended'));
       return ''
-        + '<button type="button" class="mkt-onboard-card mkt-onboard-card-btn ' + (c.ok ? 'is-done' : 'is-pending') + '"'
+        + '<button type="button" class="mkt-onboard-card mkt-onboard-card-btn ' + stateClass + '"'
         +   ' onclick="if(typeof switchWorkspace===\'function\')switchWorkspace(\'assets\')"'
-        +   ' aria-label="' + escapeAttr(c.label + (c.ok ? ' — ready' : ' — generate now')) + '">'
+        +   ' aria-label="' + escapeAttr(aria) + '">'
         +   '<div class="mkt-onboard-card-icon">' + c.icon + '</div>'
         +   '<div class="mkt-onboard-card-meta">'
         +     '<div class="mkt-onboard-card-title">' + escapeHtml(c.label) + '</div>'
@@ -793,16 +815,17 @@
         + '</button>';
     }).join('');
 
+    var pctReady = Math.round((doneEssentials / totalEssentials) * 100);
     return ''
       + '<div class="mkt-onboard">'
       +   '<div class="mkt-onboard-hero">'
       +     '<div class="mkt-onboard-eyebrow">Marketing kit · Setup</div>'
-      +     '<div class="mkt-onboard-title">Three assets unlock your kit</div>'
-      +     '<div class="mkt-onboard-sub">Once your background, logo, and character are generated in the Art workspace, this view fills with renderable templates — lobby tiles, social posts, store pages, and more.</div>'
+      +     '<div class="mkt-onboard-title">Two assets unlock your kit</div>'
+      +     '<div class="mkt-onboard-sub">A background and a logo are all the kit needs to start rendering — lobby tiles, social posts, store pages, and more. A hero character is optional and lifts wide banners; templates auto-centre the logo when one isn\'t present.</div>'
       +     '<div class="mkt-onboard-progress">'
-      +       '<div class="mkt-onboard-progress-fill" style="width:' + Math.round((doneCount/3)*100) + '%"></div>'
+      +       '<div class="mkt-onboard-progress-fill" style="width:' + pctReady + '%"></div>'
       +     '</div>'
-      +     '<div class="mkt-onboard-progress-text">' + doneCount + ' of 3 ready</div>'
+      +     '<div class="mkt-onboard-progress-text">' + doneEssentials + ' of ' + totalEssentials + ' essentials ready</div>'
       +   '</div>'
       +   '<div class="mkt-onboard-cards">' + cardsHtml + '</div>'
       +   '<div class="mkt-onboard-cta">'
@@ -2258,8 +2281,16 @@
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
+  /** Marketing kit readiness — gates the grid vs. the onboard empty
+   *  state. Only BACKGROUND and LOGO are required: every wide-banner
+   *  template has a `whenAlone` fallback that re-centres the logo
+   *  when the project has no character, so a character is genuinely
+   *  optional (and many slot themes don't have one — the user told
+   *  us this directly). The character tile still appears in the
+   *  empty state as a "recommended, not required" card so users with
+   *  a hero figure aren't left wondering where to add it. */
   function isReady(r){
-    return !!(r && r.hasBackground && r.hasLogo && r.hasCharacter);
+    return !!(r && r.hasBackground && r.hasLogo);
   }
 
   function fetchJSON(url){
@@ -2521,6 +2552,13 @@
     + '.mkt-onboard-card-status{flex-shrink:0}'
     + '.mkt-onboard-tick{display:flex;width:24px;height:24px;align-items:center;justify-content:center;background:#7ac98a;color:#0a0a10;border-radius:50%;font-weight:800;font-size:13px}'
     + '.mkt-onboard-pending{display:flex;width:14px;height:14px;align-items:center;justify-content:center;background:transparent;border:1.5px solid rgba(201,168,76,0.5);color:transparent;border-radius:50%}'
+    // Optional card — calmer styling. The pill says "Optional" plainly
+    // so the user reads it as "do this if you want, kit works without".
+    + '.mkt-onboard-card.is-optional{border-style:dashed;border-color:rgba(255,255,255,0.10);background:rgba(255,255,255,0.015)}'
+    + '.mkt-onboard-card.is-optional .mkt-onboard-card-icon{border-color:rgba(255,255,255,0.08);background:#0a0a10;opacity:.85}'
+    + '.mkt-onboard-card.is-optional .mkt-onboard-card-title{color:#b0b0c0}'
+    + 'button.mkt-onboard-card-btn.is-optional:hover{transform:translateY(-1px);border-color:rgba(201,168,76,0.35);border-style:solid;background:linear-gradient(135deg,rgba(201,168,76,0.04) 0%,rgba(255,255,255,0.015) 70%)}'
+    + '.mkt-onboard-optional{font-family:DM Mono,monospace;font-size:9px;letter-spacing:.10em;text-transform:uppercase;color:#7a7a94;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:999px;padding:3px 9px;line-height:1.2;font-weight:600}'
     + '.mkt-onboard-cta{display:flex;justify-content:flex-start;margin-top:24px}'
     + '.mkt-onboard-btn{background:#c9a84c;border:none;color:#0a0a10;padding:13px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;letter-spacing:0.02em;transition:background 0.15s,transform 0.12s,box-shadow 0.15s;box-shadow:0 6px 20px rgba(201,168,76,0.22)}'
     + '.mkt-onboard-btn:hover{background:#d4b65c;transform:translateY(-1px);box-shadow:0 8px 24px rgba(201,168,76,0.32)}'
