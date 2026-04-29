@@ -95,9 +95,25 @@ function computeLayout(){
   //   Height: 2000px minus JP bar, reel frame borders, UI strip, msg label, logo margin
   const availW_P = 984 - PAD*2 - FRAME*2;
   const availH_P = 2000 - MSG_H_P - JP_H_P - FRAME*2 - UI_BOTTOM_P - 60/*logo top margin*/;
-  const cellP = Math.max(60, Math.min(200, Math.floor(Math.min(availW_P/cols, availH_P/rows))));
-  const gridW_P = cols*cellP + (cols-1)*GAP;
-  const gridH_P = rows*cellP + (rows-1)*GAP;
+  // Portrait uses RECTANGULAR cells — slightly taller than wide. With
+  // square cells the 5×N grid was width-bound at ~185 px, leaving the
+  // reel area at only 30% of the 2000-tall canvas (the user's report:
+  // "in portrait, reel set looks very small"). Modern slot designs
+  // for mobile portrait use cells in the 4:5 / 5:6 / 1:1.35 region —
+  // tall enough to fill the screen, square enough that symbol art
+  // doesn't look stretched. We cap the height ratio at 1.35× so cells
+  // never feel "lanky" even on tall grids; cellH then clamps to the
+  // available height to honour the existing UI / logo / JP allotment.
+  const cellW_P = Math.max(60, Math.min(200, Math.floor(availW_P / cols)));
+  const cellH_P = Math.max(
+    cellW_P,
+    Math.min(
+      Math.floor((availH_P - (rows - 1) * GAP) / rows),
+      Math.floor(cellW_P * 1.35),
+    ),
+  );
+  const gridW_P = cols*cellW_P + (cols-1)*GAP;
+  const gridH_P = rows*cellH_P + (rows-1)*GAP;
   const reelW_P = gridW_P + PAD*2;
   const reelH_P = gridH_P + PAD*2;
   const frameW_P = reelW_P + FRAME*2;
@@ -259,8 +275,11 @@ function computeLayout(){
     msgLabel:  {x:0, y:1125-MSG_H_L, w:2000, h:MSG_H_L},
   };
 
-  // Store the computed cell size for use in makeSymbolCell
-  EL_COMPUTED._cellSize = {portrait: cellP, landscape: cellL};
+  // Store the computed cell size for use in makeSymbolCell. Portrait
+  // is now rectangular (cellW_P × cellH_P with cellH up to 1.35×
+  // cellW); the legacy single-number consumers want the WIDTH so reel
+  // motion / spacing stays grid-aligned. Landscape stays square.
+  EL_COMPUTED._cellSize = {portrait: cellW_P, landscape: cellL};
 }
 
 // ── PER-VIEWPORT, PER-SCREEN USER POSITION OVERRIDES ──
@@ -1937,28 +1956,46 @@ function buildCanvas(){
       // (rare — mid-layout race) so we never compute NaN cells.
       const GAP_X=RS.padX??0;
       const GAP_Y=RS.padY??0;
+      // Cells fill the reel area edge-to-edge. Portrait now uses
+      // rectangular cells (cellH up to 1.35× cellW) so the grid
+      // dominates the canvas instead of leaving 70% empty space —
+      // the user's "reel set looks very small" report. The previous
+      // single-number CELL = min(_fitW, _fitH) made cells square,
+      // which shrank the grid back to width-bound dimensions and
+      // wasted the extra reel-area height. cellW + cellH track each
+      // axis independently; designers who need true square cells can
+      // always upload square symbol art (object-fit: contain in
+      // makeSymbolCell letter-boxes the asset).
       const _fitW = (pos.w - (cols-1)*GAP_X) / Math.max(1, cols);
       const _fitH = (pos.h - (rows-1)*GAP_Y) / Math.max(1, rows);
-      const _fitCell = Math.floor(Math.min(_fitW, _fitH));
-      const FIT_CELL = _fitCell > 0 ? _fitCell : (EL_COMPUTED._cellSize?.[vp] || 164);
-      const CELL = Math.round(FIT_CELL * (RS.scale || 1));
+      const _fitCellW = Math.floor(_fitW);
+      const _fitCellH = Math.floor(_fitH);
+      const fallbackCell = (EL_COMPUTED._cellSize?.[vp] || 164);
+      const CELL_W = (_fitCellW > 0 ? _fitCellW : fallbackCell);
+      const CELL_H = (_fitCellH > 0 ? _fitCellH : fallbackCell);
+      // RS.scale stays a uniform scalar — overlap / scale tweaks
+      // shouldn't introduce non-uniform stretch. Per-axis scale
+      // is a future feature if needed.
+      const SCALE = (RS.scale || 1);
+      const CELL_W_S = Math.round(CELL_W * SCALE);
+      const CELL_H_S = Math.round(CELL_H * SCALE);
       const OV=RS.overlap||{id:null,amount:0};
       // Allow scaled/overlapped content to bleed outside the reelArea bounds
-      const _needsOverflow = (RS.scale||1) !== 1 || (OV.id && OV.amount > 0);
+      const _needsOverflow = SCALE !== 1 || (OV.id && OV.amount > 0);
       el.style.overflow = _needsOverflow ? 'visible' : 'hidden';
-      const gridW=cols*CELL+(cols-1)*GAP_X;
-      const gridH=rows*CELL+(rows-1)*GAP_Y;
+      const gridW=cols*CELL_W_S+(cols-1)*GAP_X;
+      const gridH=rows*CELL_H_S+(rows-1)*GAP_Y;
       const offX=Math.round((pos.w-gridW)/2);
       const offY=Math.round((pos.h-gridH)/2);
       for(let row=0;row<rows;row++){
         for(let col=0;col<cols;col++){
           const idx=row*cols+col;
-          const dispW=Math.round(CELL);
-          const dispH=Math.round(CELL);
+          const dispW=CELL_W_S;
+          const dispH=CELL_H_S;
           const cell=makeSymbolCell(idx,dispW,dispH);
           cell.style.position='absolute';
-          const slotX=offX+col*(CELL+GAP_X);
-          const slotY=offY+row*(CELL+GAP_Y);
+          const slotX=offX+col*(CELL_W_S+GAP_X);
+          const slotY=offY+row*(CELL_H_S+GAP_Y);
           cell.style.left=(slotX)+'px';
           cell.style.top=(slotY)+'px';
           cell.style.width=dispW+'px';
