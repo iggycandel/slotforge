@@ -755,6 +755,29 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // ─── User upload ─────────────────────────────────────────────────────────────
 
   const handleUpload = useCallback(async (assetType: AssetType, file: File) => {
+    // Surface upload failures the way the user actually sees them: the
+    // failedTypes Map drives both the per-tile red state AND the retry
+    // banner at the top of the grid. addLog alone is invisible unless
+    // the activity panel is open, which the user isn't necessarily
+    // looking at when picking a file.
+    const setFailure = (msg: string) => {
+      setFailedTypes(prev => { const m = new Map(prev); m.set(assetType, msg); return m })
+      addLog(`Upload error (${assetType}): ${msg}`)
+    }
+    const clearFailure = () => {
+      setFailedTypes(prev => { const m = new Map(prev); m.delete(assetType); return m })
+    }
+
+    // Belt-and-braces client-side cap. The route enforces 12 MB but
+    // checking here gives an instant, useful error message instead of
+    // a round-trip + opaque 413.
+    const MAX_CLIENT_BYTES = 12 * 1024 * 1024
+    if (file.size > MAX_CLIENT_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(1)
+      setFailure(`File is ${mb} MB — max 12 MB. Try exporting at a lower resolution.`)
+      return
+    }
+
     const fd = new FormData()
     fd.append('file', file)
     fd.append('projectId', projectId)
@@ -763,13 +786,22 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
     addLog(`Uploading ${assetType}…`)
     try {
       const res  = await fetch('/api/assets/upload', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok || json.error) { addLog(`Upload error: ${json.error ?? 'Failed'}`); return }
-      const newAsset: GeneratedAsset = json.asset ?? {
+      // Defensive parse — a 413 from the platform (before our route
+      // runs) ships HTML, not JSON, and would otherwise throw inside
+      // res.json() with a confusing "Unexpected token <" message.
+      const json = await res.json().catch(() => ({} as Record<string, unknown>))
+      if (!res.ok || json.error) {
+        const msg = (json.message as string)
+                  ?? (json.error as string)
+                  ?? `Upload failed (HTTP ${res.status})`
+        setFailure(msg)
+        return
+      }
+      const newAsset: GeneratedAsset = (json.asset as GeneratedAsset | undefined) ?? {
         id:         crypto.randomUUID(),
         project_id: projectId,
         type:       assetType,
-        url:        json.url,
+        url:        json.url as string,
         prompt:     'User uploaded image',
         theme:      theme || 'custom',
         provider:   'upload' as const,
@@ -779,13 +811,14 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
       setAssetHistory(prev => ({ ...prev, [assetType]: [newAsset, ...(prev[assetType] ?? [])] }))
       setSelected(assetType)
       setRightTab('inspector')
+      clearFailure()
       // Sync the new URL into the editor iframe (see onAddToCanvas
       // comment on Props — without this the iframe's EL_ASSETS stays
       // stale and the upload disappears on project reload).
       if (newAsset.url) onAddToCanvas?.(assetType, newAsset.url)
       addLog(`✓ Uploaded ${assetType}`)
     } catch (err) {
-      addLog(`Upload error: ${err instanceof Error ? err.message : 'Failed'}`)
+      setFailure(err instanceof Error ? err.message : 'Network error')
     }
   }, [projectId, theme, addLog, onAddToCanvas])
 

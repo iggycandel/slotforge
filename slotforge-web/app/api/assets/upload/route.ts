@@ -42,15 +42,17 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ files })
 }
 
-// Maximum upload size — 5 MB. v120 / H2: route handlers don't honour
+// Maximum upload size — 12 MB. v120 / H2: route handlers don't honour
 // next.config.js's serverActions.bodySizeLimit, so without an explicit
 // check a large blob could still be POSTed and burn Storage credit
 // before failing on Supabase's own 50 MB cap. AI-generated assets at
-// 1024x1024 PNG land in the 0.5–2 MB range; user uploads (logos,
-// references) are typically smaller. 5 MB leaves headroom for the
-// occasional high-res reference image without becoming a vector for
-// abuse.
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+// 1024×1024 PNG land in the 0.5–2 MB range; user uploads of high-res
+// character art (1360×3368 PNGs from Pixa et al.) routinely hit
+// 5–10 MB once you keep the alpha channel. 12 MB covers those
+// without becoming an abuse vector — Vercel's platform body cap
+// kicks in well below this for free / hobby plans, so the gate is
+// belt-and-braces rather than the only defence.
+const MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 
 /** Sniff magic bytes to determine the actual file type. The Browser-
  *  supplied file.type is trivially spoofable — claiming "image/png"
