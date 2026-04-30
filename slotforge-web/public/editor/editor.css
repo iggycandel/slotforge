@@ -185,17 +185,70 @@ input.rs-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;backg
 .cel{position:absolute;user-select:none}
 .cel:not(.locked){cursor:move}
 .cel.locked{cursor:default}
-.cel.selected{box-shadow:0 0 0 2px #c9a84c}
-.cel:not(.locked):not(.selected):hover{box-shadow:0 0 0 1px #c9a84c55}
-.rh{position:absolute;width:22px;height:22px;background:#c9a84c;border:2px solid #1a1a26;border-radius:4px;z-index:10000;pointer-events:all}
-.rh.tl{top:-11px;left:-11px;cursor:nw-resize}
-.rh.tc{top:-11px;left:calc(50% - 11px);cursor:n-resize}
-.rh.tr{top:-11px;right:-11px;cursor:ne-resize}
-.rh.ml{top:calc(50% - 11px);left:-11px;cursor:w-resize}
-.rh.mr{top:calc(50% - 11px);right:-11px;cursor:e-resize}
-.rh.bl{bottom:-11px;left:-11px;cursor:sw-resize}
-.rh.bc{bottom:-11px;left:calc(50% - 11px);cursor:s-resize}
-.rh.br{bottom:-11px;right:-11px;cursor:se-resize}
+/* Miro-style selection: thin gold outline. Was a 2px shadow that
+   read as a gel-button border on a black canvas; 1.5px sits closer
+   to the canvas-tool look the user asked for. */
+.cel.selected{box-shadow:0 0 0 1.5px #c9a84c}
+.cel:not(.locked):not(.selected):hover{box-shadow:0 0 0 1px #c9a84c66}
+/* Resize / rotate handles — Miro-style: small white circles with a
+   thin gold border, positioned ON the bbox edge (the centre of the
+   handle sits exactly on the corner / midpoint, not offset outside).
+   Was: 22px gold squares inset by their full size, which read as
+   chunky toolbar buttons rather than precision drag points. The
+   white-on-gold colour pair matches Miro's "scrim" approach — easy
+   to spot on any canvas content (dark or light) without disappearing
+   into the border. */
+.rh{
+  position:absolute;
+  width:11px;
+  height:11px;
+  background:#fff;
+  border:1.5px solid #c9a84c;
+  border-radius:50%;
+  z-index:10000;
+  pointer-events:all;
+  box-shadow:0 1px 3px rgba(0,0,0,0.35);
+  transition:transform .1s ease, background .1s;
+}
+.rh:hover{transform:scale(1.25);background:#fff7e0}
+.rh.tl{top:-6px;left:-6px;cursor:nwse-resize}
+.rh.tc{top:-6px;left:calc(50% - 6px);cursor:ns-resize}
+.rh.tr{top:-6px;right:-6px;cursor:nesw-resize}
+.rh.ml{top:calc(50% - 6px);left:-6px;cursor:ew-resize}
+.rh.mr{top:calc(50% - 6px);right:-6px;cursor:ew-resize}
+.rh.bl{bottom:-6px;left:-6px;cursor:nesw-resize}
+.rh.bc{bottom:-6px;left:calc(50% - 6px);cursor:ns-resize}
+.rh.br{bottom:-6px;right:-6px;cursor:nwse-resize}
+/* Rotation handle — circle below bottom-centre, attached by a thin
+   stalk. Drag to rotate; hold Shift to snap to 15°. Curved-arrow
+   icon as a CSS background so the SVG inlines without an extra
+   request. The ::before pseudo-element draws the stalk connecting
+   the handle back to the bbox bottom-centre — purely decorative,
+   pointer-events:none so dragging the stalk doesn't trigger the
+   handle. Was: a default-positioned `.rh` that stacked invisibly
+   under `.tl` (no `.rot` CSS existed). */
+.rh.rot{
+  width:20px;
+  height:20px;
+  bottom:-36px;
+  left:calc(50% - 10px);
+  cursor:grab;
+  background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c9a84c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12a9 9 0 1 0 9-9'/><path d='M3 4v5h5'/></svg>") center / 13px 13px no-repeat;
+  border-color:#c9a84c;
+}
+.rh.rot:active{cursor:grabbing}
+.rh.rot:hover{transform:scale(1.15);background-color:#fff7e0}
+.rh.rot::before{
+  content:'';
+  position:absolute;
+  bottom:18px;
+  left:50%;
+  transform:translateX(-50%);
+  width:1.5px;
+  height:18px;
+  background:#c9a84c;
+  pointer-events:none;
+}
 .sel-rect{position:absolute;border:1.5px solid #4ac8f0;background:#4ac8f01a;border-radius:2px;pointer-events:none;z-index:9997}
 .ov-layer{position:absolute;inset:0;z-index:200;opacity:0;pointer-events:none;transition:opacity .25s}
 .ov-layer.vis{opacity:1;pointer-events:all}
