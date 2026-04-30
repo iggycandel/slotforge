@@ -1079,6 +1079,7 @@ function startOvMove(ev,ovId,subId){
   document.addEventListener('mouseup',onUp);
 }
 function startOvResize(ev,ovId,subId){
+  if(typeof _isPanGesture==='function' && _isPanGesture(ev)) return;
   ev.stopPropagation(); ev.preventDefault();
   const t0=getOvTransform(ovId,subId);
   const el=document.getElementById(`${ovId}-${subId}`);
@@ -2139,7 +2140,7 @@ function buildCanvas(){
       }
       el.addEventListener('click',e=>{e.stopPropagation();if(TOOL==='pan')return;selectEl(k);});
       el.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();openCtxPanel(k,e.clientX,e.clientY);selectEl(k);});
-      el.addEventListener('mousedown',e=>{if(e.button===2||TOOL==='pan')return;selectEl(k);startJpGroupMove(e);});
+      el.addEventListener('mousedown',e=>{if(e.button===2||_isPanGesture(e))return;selectEl(k);startJpGroupMove(e);});
 
     }else if(k==='logo'){
       el.style.overflow='hidden'; el.style.borderRadius='14px';
@@ -2262,7 +2263,10 @@ function buildCanvas(){
       if(!def.locked){
         el.addEventListener('mousedown', e=>{
           if(e.button===2) return;
-          if(TOOL==='pan') return;
+          // Skip object drag for any pan gesture (hand tool, middle
+          // mouse, spacebar). Returning without stopPropagation lets
+          // the event bubble up to canvas-wrap which handles pan.
+          if(_isPanGesture(e)) return;
           startMove(e,k);
         });
         el.addEventListener('click', e=>{
@@ -2382,7 +2386,13 @@ function selectEl(k){
   if(!isLocked(k)){
     ['tl','tc','tr','ml','mr','bl','bc','br'].forEach(pos=>{
       const h=document.createElement('div');h.className='rh '+pos;h.dataset.pos=pos;
-      h.addEventListener('mousedown',e=>startResize(e,k,pos));
+      h.addEventListener('mousedown',e=>{
+        // Pan gestures take precedence over resize so middle-mouse /
+        // spacebar drags pan the canvas even if the cursor lands on
+        // a handle.
+        if(_isPanGesture(e)) return;
+        startResize(e,k,pos);
+      });
       el.appendChild(h);
     });
     // Rotation handle — small circle on a stalk above top-centre. Lives
@@ -2393,7 +2403,10 @@ function selectEl(k){
     const rot = document.createElement('div');
     rot.className = 'rh rot';
     rot.title = 'Drag to rotate · Shift snaps to 15°';
-    rot.addEventListener('mousedown', ev => startRotate(ev, k));
+    rot.addEventListener('mousedown', ev => {
+      if(_isPanGesture(ev)) return;
+      startRotate(ev, k);
+    });
     el.appendChild(rot);
   }
   
@@ -2435,6 +2448,9 @@ function deselect(){
 // ═══ MOVE ═══
 function startMove(e,k){
   if(e.target.classList.contains('rh'))return;
+  // Defence-in-depth: even if a caller forgot to gate on
+  // _isPanGesture, never let a pan input start an object move.
+  if(_isPanGesture(e)) return;
   e.preventDefault();e.stopPropagation();
   selectEl(k);
   const sx=e.clientX,sy=e.clientY;
@@ -2476,6 +2492,7 @@ function startMove(e,k){
 const JP_GROUP_KEYS = ['jpRow','jpGrand','jpMajor','jpMinor','jpMini'];
 function startJpGroupMove(e){
   if(e.target.classList.contains('rh')) return;
+  if(_isPanGesture(e)) return; // pan beats group-move
   e.preventDefault(); e.stopPropagation();
   const sx=e.clientX, sy=e.clientY;
   const origPos={};
@@ -2535,6 +2552,7 @@ function isAspectLockedByDefault(k){
 }
 
 function startResize(e,k,handle){
+  if(_isPanGesture(e)) return; // pan beats resize even on a handle
   e.preventDefault();e.stopPropagation();
   // Remap visible handle → logical handle when the layer has a flip
   // applied. The .cel div carries `transform: scaleX(-1)` /
@@ -2673,6 +2691,7 @@ function startResize(e,k,handle){
 // ═══ ROTATE ═══
 // Drag the rotation handle (above top-centre). Shift snaps to 15°.
 function startRotate(e, k){
+  if(_isPanGesture(e)) return; // pan beats rotate even on the handle
   e.preventDefault(); e.stopPropagation();
   const orig = getTransform(k);
   const pos  = getPos(k);
@@ -3020,6 +3039,24 @@ document.getElementById('canvas-wrap').addEventListener('wheel',e=>{e.preventDef
 // canvas-wrap must be overflow:hidden with flex centering; we shift gf-outer via translate
 let _panStart=null, _panOX=0, _panOY=0;
 
+/** Returns true if the mousedown event should pan the canvas instead
+ *  of dragging / resizing / rotating an object. Used by every layer-
+ *  level mousedown handler so middle-mouse and space-held gestures
+ *  fall through to the canvas-wrap pan handler regardless of what's
+ *  under the cursor. Without this guard, hitting a .cel with middle
+ *  mouse triggered startMove (which stops propagation) and the pan
+ *  handler on canvas-wrap never saw the event. */
+function _isPanGesture(e){
+  if(typeof TOOL!=='undefined' && TOOL==='pan') return true;
+  if(e.button === 1) return true; // middle mouse
+  if(e.button === 0){
+    const cw=document.getElementById('canvas-wrap');
+    if(cw && cw.dataset.tempPan) return true; // spacebar held
+  }
+  return false;
+}
+window._isPanGesture = _isPanGesture;
+
 function applyPanOffset(){
   const outer=document.getElementById('gf-outer');
   if(outer) outer.style.transform=`translate(${_panOX}px,${_panOY}px)`;
@@ -3071,7 +3108,7 @@ function startMarqueeSelect(e){
 }
 
 document.getElementById('canvas-wrap').addEventListener('mousedown',e=>{
-  const isPan=TOOL==='pan'||(e.button===1)||(e.button===0&&document.getElementById('canvas-wrap').dataset.tempPan);
+  const isPan=_isPanGesture(e);
   // Rubber-band marquee: left-click on canvas background in move mode
   if(!isPan&&e.button===0&&TOOL==='move'&&!e.target.closest('.cel')&&!e.target.closest('.ov-layer')){
     e.preventDefault();
@@ -10518,7 +10555,9 @@ function _wireSlotEvents(el, key, opts){
   if (opts.singleton) {
     el.addEventListener('mousedown', function(e){
       if (e.button === 2) return;
-      if (typeof TOOL !== 'undefined' && TOOL === 'pan') return;
+      // Pan gestures (hand tool, middle mouse, spacebar) bubble up
+      // to canvas-wrap instead of starting a layer drag.
+      if (typeof _isPanGesture === 'function' && _isPanGesture(e)) return;
       if (e.target && e.target.classList && e.target.classList.contains('rh')) return;
       if (isLocked(key)) return;
       if (typeof startMove === 'function') startMove(e, key);
