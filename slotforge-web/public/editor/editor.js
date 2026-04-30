@@ -7573,7 +7573,12 @@ function _makeStripCell(sym, cellW, cellH, symIdx){
   if(key && EL_ASSETS[key]){
     const img = document.createElement('img');
     img.src = EL_ASSETS[key];
-    img.style.cssText = `width:90%;height:90%;object-fit:contain;pointer-events:none;transform:scale(${oStyle.scale});position:relative;z-index:${oStyle.z}`;
+    // Match makeSymbolCell exactly (100% fill) — the previous 90%
+    // shrunk strip symbols 10% relative to the static cells, so when
+    // the strip vanished and the static cells reappeared, every
+    // symbol grew back to full size in one frame. That snap is part
+    // of the "symbols quickly jump positions" the user reported.
+    img.style.cssText = `width:100%;height:100%;object-fit:contain;pointer-events:none;transform:scale(${oStyle.scale});position:relative;z-index:${oStyle.z}`;
     div.appendChild(img);
   } else if(sym){
     const col = SYM_COLS[symIdx % SYM_COLS.length];
@@ -7639,16 +7644,38 @@ function simSpin(turbo){
   document.getElementById('sim-stop-btn').style.display = '';
   document.getElementById('sim-spin-btn').textContent = '◉ Spinning…';
 
-  // Get reel area dimensions from the computed layout
+  // Reel-area geometry must match what buildCanvas actually rendered,
+  // otherwise the spin strip starts at one pitch and the static cells
+  // sit at another → symbols visibly jump positions when the strip
+  // spawns. Earlier this read EL_COMPUTED._cellSize (a pre-scale,
+  // viewport-bounded fallback), GAP defaults of 8, and RS.scale
+  // directly — none of which agree with the reelArea renderer at
+  // line ~2030. Now we mirror that renderer exactly:
+  //   • pos = the LIVE reelArea bbox (getPos honours per-screen
+  //     overrides + per-viewport fallback)
+  //   • GAP_X/GAP_Y default to 0 (cells touch by default; the user's
+  //     Reel Settings sliders push them apart from there)
+  //   • CELL = floor(min((pos.w−gaps)/cols, (pos.h−gaps)/rows)) →
+  //     square cells fit to the area
+  //   • SCALE = effectiveReelScale() — honours the per-viewport scale
+  //     toggle (RS.scaleP / RS.scaleL when linkScale === false)
   const vpKey = P.viewport==='desktop'?'landscape':P.viewport;
-  const reelPos = EL_COMPUTED[vpKey]?.reelArea;
+  const reelPos = (typeof getPos==='function' ? getPos('reelArea') : null)
+                || EL_COMPUTED[vpKey]?.reelArea;
   if(!reelPos){ simStop(); return; }
 
-  const RS_sim  = P.reelSettings||{scale:1,padX:8,padY:8,overlap:{id:null,amount:0}};
-  const BASE_CELL_SIM = EL_COMPUTED._cellSize?.[vpKey] || 120;
-  const CELL    = Math.round(BASE_CELL_SIM*(RS_sim.scale||1));
-  const GAP_X   = RS_sim.padX??8;
-  const GAP_Y   = RS_sim.padY??8;
+  const RS_sim  = P.reelSettings||{scale:1,padX:0,padY:0,overlap:{id:null,amount:0}};
+  const GAP_X   = RS_sim.padX ?? 0;
+  const GAP_Y   = RS_sim.padY ?? 0;
+  const _fitW_sim = (reelPos.w - (cols-1)*GAP_X) / Math.max(1, cols);
+  const _fitH_sim = (reelPos.h - (rows-1)*GAP_Y) / Math.max(1, rows);
+  const _fitCell_sim = Math.floor(Math.min(_fitW_sim, _fitH_sim));
+  const _fallback_sim = (EL_COMPUTED._cellSize?.[vpKey] || 120);
+  const BASE_CELL_SIM = _fitCell_sim > 0 ? _fitCell_sim : _fallback_sim;
+  const SCALE_SIM = (typeof effectiveReelScale === 'function')
+                    ? effectiveReelScale()
+                    : (RS_sim.scale || 1);
+  const CELL    = Math.round(BASE_CELL_SIM * SCALE_SIM);
 
   // Compute grid offset (same formula as reelArea renderer)
   const gridW_sim = cols*CELL+(cols-1)*GAP_X;
@@ -7803,7 +7830,11 @@ function _updateCell(idx, symIdx){
   cell.innerHTML='';
   if(EL_ASSETS[key]){
     const img=document.createElement('img'); img.src=EL_ASSETS[key];
-    img.style.cssText=`width:90%;height:90%;object-fit:contain;pointer-events:none;transform:scale(${oStyle.scale});position:relative;z-index:${oStyle.z}`;
+    // 100% fill to match makeSymbolCell — keeps symbol size constant
+    // across the static→spin→static handoff (was 90%, which made
+    // symbols visibly shrink for the duration of the strip + then
+    // again when _updateCell repainted the static cell after spin).
+    img.style.cssText=`width:100%;height:100%;object-fit:contain;pointer-events:none;transform:scale(${oStyle.scale});position:relative;z-index:${oStyle.z}`;
     cell.appendChild(img);
   } else {
     // SVG placeholder with symbol name
