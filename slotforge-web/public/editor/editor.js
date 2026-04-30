@@ -1282,18 +1282,16 @@ function applyZoom(){
   const gf=document.getElementById('gf');
   gf.style.transform='scale('+ZOOM+') translate(-'+vp.cx+'px,-'+vp.cy+'px)';
   gf.style.transformOrigin='top left';
-  // Aspect-fit canvas-wrap to the canvas-at-zoom height so a
-  // wide-landscape canvas doesn't leave a tall grey strip below
-  // itself. The editor's canvas-wrap normally takes the full
-  // remaining vertical space of #main, which is portrait-shaped —
-  // when landscape's 16:9 canvas fits inside it, ~60% of the wrap is
-  // empty grey grid pattern. Capping wrap height at canvas + 60 px
-  // breathing room shrinks the wrap, and the body's bg-base shows
-  // through the now-empty area below — much cleaner than a stretch
-  // of unused grid background. The cap doesn't kick in for portrait
-  // (canvas height usually exceeds the wrap, so max-height is moot).
-  const wrap=document.getElementById('canvas-wrap');
-  if(wrap) wrap.style.maxHeight=(h+60)+'px';
+  // Expose 1/ZOOM as a CSS variable so resize / rotate handles
+  // (children of #gf, scaled along with everything else) can inverse-
+  // scale themselves and stay 11 px on screen regardless of canvas
+  // zoom. Without this, at ZOOM=0.25 the 11 px handles render as
+  // 2.75 px and become un-grabbable. Set on #gf so it cascades to
+  // every .cel and .rh inside, and on document root as a fallback
+  // for anything that lives outside #gf.
+  const inv = (ZOOM > 0 ? 1 / ZOOM : 1);
+  gf.style.setProperty('--inv-zoom', String(inv));
+  document.documentElement.style.setProperty('--inv-zoom', String(inv));
   document.getElementById('zoom-indicator').textContent=Math.round(ZOOM*100)+'%';
 }
 
