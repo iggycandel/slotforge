@@ -1915,20 +1915,46 @@
       <!-- Scale + Gap -->
       <div class="rs-section">
         <div class="rs-section-title">Layout</div>
-        <div class="rs-row">
+
+        <!-- Link-scale toggle. When checked (default), Scale below
+             drives both portrait + landscape. When unchecked, the
+             single Scale slider is replaced by Portrait + Landscape
+             sliders, each scaling its own viewport independently. -->
+        <div class="rs-row" style="gap:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#a8a8c0;cursor:pointer;user-select:none;flex:1">
+            <input type="checkbox" id="rs-link-scale" checked style="margin:0;cursor:pointer">
+            Same scale in portrait + landscape
+          </label>
+        </div>
+
+        <!-- Single (linked) scale slider — visible when link-scale is on -->
+        <div class="rs-row" id="rs-scale-row-single">
           <span class="rs-label">Scale</span>
           <input type="range" class="rs-slider" id="rs-scale" min="40" max="200" step="1" value="100">
           <span class="rs-val" id="rs-scale-val">1.0×</span>
         </div>
+
+        <!-- Per-viewport scale sliders — visible when link-scale is off -->
+        <div class="rs-row" id="rs-scale-row-p" style="display:none">
+          <span class="rs-label">Portrait</span>
+          <input type="range" class="rs-slider" id="rs-scale-p" min="40" max="200" step="1" value="100">
+          <span class="rs-val" id="rs-scale-p-val">1.0×</span>
+        </div>
+        <div class="rs-row" id="rs-scale-row-l" style="display:none">
+          <span class="rs-label">Landscape</span>
+          <input type="range" class="rs-slider" id="rs-scale-l" min="40" max="200" step="1" value="100">
+          <span class="rs-val" id="rs-scale-l-val">1.0×</span>
+        </div>
+
         <div class="rs-row">
           <span class="rs-label">Gap X</span>
-          <input type="range" class="rs-slider" id="rs-padx" min="0" max="120" step="1" value="8">
-          <span class="rs-val" id="rs-padx-val">8px</span>
+          <input type="range" class="rs-slider" id="rs-padx" min="0" max="120" step="1" value="0">
+          <span class="rs-val" id="rs-padx-val">0px</span>
         </div>
         <div class="rs-row">
           <span class="rs-label">Gap Y</span>
-          <input type="range" class="rs-slider" id="rs-pady" min="0" max="120" step="1" value="8">
-          <span class="rs-val" id="rs-pady-val">8px</span>
+          <input type="range" class="rs-slider" id="rs-pady" min="0" max="120" step="1" value="0">
+          <span class="rs-val" id="rs-pady-val">0px</span>
         </div>
       </div>
 

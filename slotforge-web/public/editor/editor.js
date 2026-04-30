@@ -1262,20 +1262,38 @@ function parseReel(v){const sp={megaways:[6,6],'243':[5,3],'1024':[5,4]};if(sp[v
 let ZOOM=1,SEL_KEY=null,SEL_KEYS=new Set();
 function fitZoom(){
   const wrap=document.getElementById('canvas-wrap');
-  const aw=wrap.clientWidth-60,ah=wrap.clientHeight-60;
+  // Tighter padding (was 60) lets the canvas claim more of the wrap.
+  // Cap raised 1.4 → 2.0 so a small canvas (typically landscape, which
+  // is width-bound while the wrap is portrait-shaped) can scale up
+  // when the geometry permits.
+  const aw=wrap.clientWidth-30,ah=wrap.clientHeight-30;
   if(aw<=0||ah<=0){setTimeout(fitZoom,80);return;}
   const vp=VP[P.viewport];
-  ZOOM=Math.min(aw/vp.cw,ah/vp.ch,1.4);
+  ZOOM=Math.min(aw/vp.cw,ah/vp.ch,2.0);
   applyZoom();
 }
 function applyZoom(){
   const vp=VP[P.viewport];
   const outer=document.getElementById('gf-outer');
-  outer.style.width=Math.round(vp.cw*ZOOM)+'px';
-  outer.style.height=Math.round(vp.ch*ZOOM)+'px';
+  const w=Math.round(vp.cw*ZOOM);
+  const h=Math.round(vp.ch*ZOOM);
+  outer.style.width=w+'px';
+  outer.style.height=h+'px';
   const gf=document.getElementById('gf');
   gf.style.transform='scale('+ZOOM+') translate(-'+vp.cx+'px,-'+vp.cy+'px)';
   gf.style.transformOrigin='top left';
+  // Aspect-fit canvas-wrap to the canvas-at-zoom height so a
+  // wide-landscape canvas doesn't leave a tall grey strip below
+  // itself. The editor's canvas-wrap normally takes the full
+  // remaining vertical space of #main, which is portrait-shaped —
+  // when landscape's 16:9 canvas fits inside it, ~60% of the wrap is
+  // empty grey grid pattern. Capping wrap height at canvas + 60 px
+  // breathing room shrinks the wrap, and the body's bg-base shows
+  // through the now-empty area below — much cleaner than a stretch
+  // of unused grid background. The cap doesn't kick in for portrait
+  // (canvas height usually exceeds the wrap, so max-height is moot).
+  const wrap=document.getElementById('canvas-wrap');
+  if(wrap) wrap.style.maxHeight=(h+60)+'px';
   document.getElementById('zoom-indicator').textContent=Math.round(ZOOM*100)+'%';
 }
 
@@ -1292,6 +1310,32 @@ function _getSymOverlapStyle(symId) {
     return { scale: 1 + ov.amount/100, z: 10 };
   }
   return { scale: 1, z: 1 };
+}
+
+/** Resolve the reel-set scale that should apply to the current
+ *  viewport, honouring the per-viewport scale toggle.
+ *
+ *  Default behaviour (linkScale === true): a single global RS.scale
+ *  drives both viewports — toggling between portrait and landscape
+ *  shows the same physical reel size, matching the user's "size
+ *  should be the same in both portrait and landscape" requirement
+ *  from a couple of rounds back.
+ *
+ *  Unlocked behaviour (linkScale === false): portrait reads
+ *  RS.scaleP, landscape reads RS.scaleL. Either falls back to
+ *  RS.scale so a project that hasn't been touched by the toggle
+ *  stays at its current visual size when the toggle is enabled.
+ *  This satisfies the user's follow-up: "the user should be able
+ *  to scale only in one of those screen modes if wanted". */
+function effectiveReelScale() {
+  const RS = P.reelSettings || {};
+  const base = RS.scale ?? 1;
+  if (RS.linkScale === false) {
+    const vp = P.viewport === 'landscape' || P.viewport === 'desktop'
+      ? 'landscape' : 'portrait';
+    return (vp === 'landscape' ? RS.scaleL : RS.scaleP) ?? base;
+  }
+  return base;
 }
 
 function makeSymbolCell(idx, cellW, cellH){
@@ -1840,7 +1884,11 @@ function buildCanvas(){
 
   const _RS = P.reelSettings||{};
   const _OV = _RS.overlap||{};
-  const _gfNeedsOverflow = (_RS.scale||1) !== 1 || (_OV.id && _OV.amount > 0);
+  // Honour per-viewport scale: a project may have linkScale=false +
+  // landscape's scaleL = 1 but portrait's scaleP > 1. The overflow
+  // need depends on the CURRENT viewport's effective scale, not the
+  // global scale.
+  const _gfNeedsOverflow = effectiveReelScale() !== 1 || (_OV.id && _OV.amount > 0);
   gf.style.overflow = _gfNeedsOverflow ? 'visible' : '';
   const gfOuter = document.getElementById('gf-outer');
   if(gfOuter) gfOuter.style.overflow = _gfNeedsOverflow ? 'visible' : '';
@@ -2007,10 +2055,13 @@ function buildCanvas(){
       const _fitCell = Math.floor(Math.min(_fitW, _fitH));
       const fallbackCell = (EL_COMPUTED._cellSize?.[vp] || 164);
       const CELL = (_fitCell > 0 ? _fitCell : fallbackCell);
-      // RS.scale stays a uniform scalar — overlap / scale tweaks
-      // shouldn't introduce non-uniform stretch. Per-axis scale
-      // is a future feature if needed.
-      const SCALE = (RS.scale || 1);
+      // Effective scale honours the per-viewport toggle. When
+      // `linkScale` is the default (true), both viewports share
+      // RS.scale. When unlinked, portrait reads RS.scaleP and
+      // landscape reads RS.scaleL, with RS.scale as the fallback so
+      // a project that hasn't been touched by the toggle stays at
+      // its current visual size.
+      const SCALE = effectiveReelScale();
       const CELL_S = Math.round(CELL * SCALE);
       const OV=RS.overlap||{id:null,amount:0};
       // Allow scaled/overlapped content to bleed outside the reelArea bounds
@@ -12958,16 +13009,35 @@ function hideSnapGuides(){
   function rsSync(){
     var RS = P.reelSettings;
     var sc = document.getElementById('rs-scale');
+    var scP = document.getElementById('rs-scale-p');
+    var scL = document.getElementById('rs-scale-l');
+    var linkChk = document.getElementById('rs-link-scale');
     var px = document.getElementById('rs-padx');
     var py = document.getElementById('rs-pady');
     var oa = document.getElementById('rs-overlap-amt');
     var os = document.getElementById('rs-overlap-sym');
     var ewS = document.getElementById('ew-symbol-id');
     var hnsS = document.getElementById('hns-symbol-id');
-    
+
     if(sc){ sc.value = Math.round((RS.scale||1)*100); document.getElementById('rs-scale-val').textContent = (RS.scale||1).toFixed(1)+'×'; }
-    if(px){ px.value = RS.padX??8; document.getElementById('rs-padx-val').textContent = (RS.padX??8)+'px'; }
-    if(py){ py.value = RS.padY??8; document.getElementById('rs-pady-val').textContent = (RS.padY??8)+'px'; }
+    // Per-viewport sliders fall back to the global scale when no
+    // override is stored — so flipping the toggle on for the first
+    // time gives both viewports the same starting point as the
+    // linked scale they were already showing.
+    if(scP){ var sp = (RS.scaleP ?? RS.scale ?? 1); scP.value = Math.round(sp*100); document.getElementById('rs-scale-p-val').textContent = sp.toFixed(1)+'×'; }
+    if(scL){ var sl = (RS.scaleL ?? RS.scale ?? 1); scL.value = Math.round(sl*100); document.getElementById('rs-scale-l-val').textContent = sl.toFixed(1)+'×'; }
+    if(linkChk){
+      var linked = RS.linkScale !== false; // default true
+      linkChk.checked = linked;
+      var rowSingle = document.getElementById('rs-scale-row-single');
+      var rowP = document.getElementById('rs-scale-row-p');
+      var rowL = document.getElementById('rs-scale-row-l');
+      if(rowSingle) rowSingle.style.display = linked ? '' : 'none';
+      if(rowP)      rowP.style.display      = linked ? 'none' : '';
+      if(rowL)      rowL.style.display      = linked ? 'none' : '';
+    }
+    if(px){ px.value = RS.padX??0; document.getElementById('rs-padx-val').textContent = (RS.padX??0)+'px'; }
+    if(py){ py.value = RS.padY??0; document.getElementById('rs-pady-val').textContent = (RS.padY??0)+'px'; }
     if(oa){ oa.value = RS.overlap?.amount||0; document.getElementById('rs-overlap-amt-val').textContent = (RS.overlap?.amount||0)+'%'; }
     
     // Rebuild select nodes organically
@@ -13068,6 +13138,38 @@ function hideSnapGuides(){
   wire('rs-scale', function(e){
     P.reelSettings.scale = parseFloat(e.target.value)/100;
     document.getElementById('rs-scale-val').textContent = P.reelSettings.scale.toFixed(1)+'×';
+    buildCanvas(); markDirty();
+  });
+  // Per-viewport scale handlers — only consulted by effectiveReelScale
+  // when linkScale is false. Always written so the user can flip the
+  // toggle back on later without losing their per-viewport values.
+  wire('rs-scale-p', function(e){
+    P.reelSettings.scaleP = parseFloat(e.target.value)/100;
+    document.getElementById('rs-scale-p-val').textContent = P.reelSettings.scaleP.toFixed(1)+'×';
+    buildCanvas(); markDirty();
+  });
+  wire('rs-scale-l', function(e){
+    P.reelSettings.scaleL = parseFloat(e.target.value)/100;
+    document.getElementById('rs-scale-l-val').textContent = P.reelSettings.scaleL.toFixed(1)+'×';
+    buildCanvas(); markDirty();
+  });
+  // Link-scale toggle — flips the visible slider rows + writes
+  // P.reelSettings.linkScale. When toggling ON, we DON'T touch
+  // scaleP / scaleL; the user can flip back off and recover them.
+  // When toggling OFF, we seed scaleP / scaleL from the current
+  // global scale so both viewports start matched.
+  var linkChk = document.getElementById('rs-link-scale');
+  if(linkChk) linkChk.addEventListener('change', function(e){
+    if(!P.reelSettings) P.reelSettings = {};
+    var on = !!e.target.checked;
+    P.reelSettings.linkScale = on;
+    if(!on){
+      // Seed unlocked sliders from the current global scale so the
+      // initial state matches what the user was just looking at.
+      if(P.reelSettings.scaleP == null) P.reelSettings.scaleP = P.reelSettings.scale ?? 1;
+      if(P.reelSettings.scaleL == null) P.reelSettings.scaleL = P.reelSettings.scale ?? 1;
+    }
+    rsSync();
     buildCanvas(); markDirty();
   });
   wire('rs-padx', function(e){
