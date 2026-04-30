@@ -4775,33 +4775,91 @@ document.addEventListener('click',()=>{document.querySelectorAll('.dropdown').fo
     ...menubar.querySelectorAll('.menu-item')
   ].filter(el => el !== ovWrap && el.id !== 'vp-menu-item' && el.id !== 'menu-overflow-wrap');
 
+  function _cloneOverflowItem(child){
+    // Shared rendering for items appearing in the ⋯ dropdown.
+    // Strips the inline icon span (`.di`) so the menu reads as a
+    // clean text list — the previous menu had ~15 different UTF
+    // glyphs (✦ ⬡ ⌫ ⧉ ⊡ ⊞ ⊟ ⊹ ⌨ 📖 📚 …) that read as visual
+    // noise without aiding scan. The keyboard-shortcut `.dk` span
+    // is preserved on the right so power users still see ⌘E etc.
+    const clone = child.cloneNode(true);
+    clone.removeAttribute('id'); // avoid duplicate ids in DOM
+    clone.querySelector('.di')?.remove();
+    clone.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      // Close the overflow first so the underlying handler's own close
+      // logic doesn't race with ours.
+      ovDd.classList.remove('show');
+      ovWrap.querySelector('.menu-btn')?.classList.remove('open');
+      document.getElementById(child.id)?.click();
+    });
+    return clone;
+  }
   function _populateOverflowDd(hiddenGroups){
     ovDd.innerHTML = '';
+    // 0. Search-all entry. Discoverability for the ⌘K palette —
+    // users who don't read shortcut tooltips see "Search commands"
+    // as the first item and learn the keystroke from the right-side
+    // hint. Click → opens palette.
+    if(typeof toggleCommandPalette === 'function'){
+      const search = document.createElement('div');
+      search.className = 'dd-item ov-search';
+      search.innerHTML = '<span class="ov-search-lbl">Search commands…</span><span class="dk">⌘K</span>';
+      search.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        ovDd.classList.remove('show');
+        ovWrap.querySelector('.menu-btn')?.classList.remove('open');
+        toggleCommandPalette();
+      });
+      ovDd.appendChild(search);
+      const sep0 = document.createElement('div');
+      sep0.className = 'dd-sep';
+      ovDd.appendChild(sep0);
+    }
+    // 1. Frequent section at the top — the curated high-value
+    // commands buried inside File / View / Docs / Help. CMD_FREQUENT_IDS
+    // is the single source of truth shared with the ⌘K palette.
+    const freqIds = (typeof CMD_FREQUENT_IDS !== 'undefined') ? CMD_FREQUENT_IDS : [];
+    const hide    = (typeof CMD_HIDE !== 'undefined') ? CMD_HIDE : new Set();
+    const freqEls = freqIds
+      .map(id => document.getElementById(id))
+      .filter(el => el && el.classList.contains('dd-item') && !hide.has(el.id));
+    if(freqEls.length){
+      const head = document.createElement('div');
+      head.className = 'ov-section';
+      head.textContent = 'Frequent';
+      ovDd.appendChild(head);
+      freqEls.forEach(el => ovDd.appendChild(_cloneOverflowItem(el)));
+      const sep = document.createElement('div');
+      sep.className = 'dd-sep';
+      ovDd.appendChild(sep);
+    }
+    // 2. Per-source-menu sections, skipping hidden ids and the
+    // commands already shown in Frequent.
+    const usedAbove = new Set(freqEls.map(el => el.id));
     hiddenGroups.forEach((g) => {
       const label = g.querySelector('.menu-btn')?.textContent?.trim() || '';
+      const orig  = g.querySelector('.dropdown');
+      if(!orig) return;
+      const candidates = [...orig.children].filter(c => {
+        if(c.classList.contains('dd-item') && c.id && !hide.has(c.id) && !usedAbove.has(c.id)) return true;
+        if(c.classList.contains('dd-sep')) return true;
+        return false;
+      });
+      // Skip the whole group if every actionable item was filtered out
+      // (avoids an empty section heading floating above a separator).
+      const hasActionable = candidates.some(c => c.classList.contains('dd-item'));
+      if(!hasActionable) return;
       const header = document.createElement('div');
       header.className = 'ov-section';
       header.textContent = label;
       ovDd.appendChild(header);
-      const orig = g.querySelector('.dropdown');
-      if(!orig) return;
-      [...orig.children].forEach(child => {
-        if(child.classList.contains('dd-item') && child.id){
-          const clone = child.cloneNode(true);
-          clone.removeAttribute('id'); // avoid duplicate ids in DOM
-          clone.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            // Close the overflow first so the underlying handler's own close
-            // logic doesn't race with ours.
-            ovDd.classList.remove('show');
-            ovWrap.querySelector('.menu-btn')?.classList.remove('open');
-            document.getElementById(child.id)?.click();
-          });
-          ovDd.appendChild(clone);
-        } else if(child.classList.contains('dd-sep')){
+      candidates.forEach(child => {
+        if(child.classList.contains('dd-item')){
+          ovDd.appendChild(_cloneOverflowItem(child));
+        } else {
           ovDd.appendChild(child.cloneNode(false));
         }
-        // skip dd-sub — the ov-section header already labels the group
       });
     });
   }
@@ -14428,76 +14486,270 @@ window._sfBridge = (function(){
 })();
 
 
-/* ── COMMAND PALETTE LOGIC ── */
-const CMD_COMMANDS = [
-  { label: 'New Project', icon: '✦', action: () => { if(document.getElementById('m-new')) document.getElementById('m-new').click(); }},
-  { label: 'Save Project', icon: '💾', action: () => { if(window._sfBridge && typeof window._sfBridge.triggerSave === 'function') window._sfBridge.triggerSave(); }},
-  { label: 'Export JSON', icon: '📤', action: () => { if(typeof gfdExportJSON === 'function') gfdExportJSON(); }},
-  { label: 'Simulate Spin', icon: '▶', action: () => { if(document.getElementById('sim-spin-btn')) document.getElementById('sim-spin-btn').click(); }},
-  { label: 'Toggle Grid', icon: '⊹', action: () => { if(document.getElementById('m-grid-toggle')) document.getElementById('m-grid-toggle').click(); }},
-  { label: 'Open Settings', icon: '⚙', action: () => { if(typeof openProjectSettings === 'function') openProjectSettings(); }},
-  { label: 'Generate GDD', icon: '📋', action: () => { if(typeof openGDDModal === 'function') openGDDModal(); }},
-  { label: 'Switch to Canvas', icon: '🎨', action: () => { if(typeof switchWorkspace === 'function') switchWorkspace('canvas'); }},
-  { label: 'Switch to Flow', icon: '🔀', action: () => { if(typeof switchWorkspace === 'function') switchWorkspace('flow'); }},
+/* ── COMMAND PALETTE + ⋯ OVERFLOW MENU ──────────────────────────────────
+ * Single source of truth: the existing menu items in #menubar
+ * (.dd-item with an id). We walk those at open-time so any item added
+ * to the dropdowns is automatically searchable + appears in ⋯ — no
+ * need to maintain a parallel CMD_COMMANDS list (the previous 9-item
+ * hardcoded array drifted out of sync with the actual menus the
+ * second any new item landed in spinative.html).
+ *
+ * Two curated sets live alongside the walker:
+ *   CMD_HIDE  — ids to suppress everywhere (the ⋯ menu and ⌘K).
+ *               Either redundant with dedicated UI nearby (Save,
+ *               Undo/Redo, workspace-switch shortcuts → tabs) or
+ *               stale (Tutorial-coming-soon, About, Show Welcome,
+ *               full-page-reload "New Project").
+ *   CMD_FREQUENT — ids surfaced as a "Frequent" section at the top
+ *               of both ⋯ and the ⌘K empty-query state. These are
+ *               the buried high-value commands users would actually
+ *               reach for: Project Settings, Export, Asset Checklist,
+ *               Version History, Math Summary, Keyboard Shortcuts. */
+const CMD_HIDE = new Set([
+  // duplicates of dedicated chrome
+  'm-save-menu',         // Save button is right next to ⋯
+  'm-undo', 'm-redo',    // dedicated ↩ / ↪ buttons
+  // stale / marginal
+  'm-tutorial',          // "(coming soon)"
+  'm-about',
+  'm-show-welcome',
+  'm-new',               // full-page reload + clears localStorage; use Dashboard
+]);
+const CMD_FREQUENT_IDS = [
+  'm-project',     // Project Settings ⌘,
+  'm-export-open', // Export… ⌘E
+  'm-checklist',   // Asset Checklist
+  'm-versions',    // Version History
+  'm-gen-math',    // Generate Math Summary
+  'm-kbd',         // Keyboard Shortcuts ?
 ];
 
-document.addEventListener('keydown', (e) => {
-  if((e.metaKey || e.ctrlKey) && e.key === 'k') {
-    e.preventDefault();
-    toggleCommandPalette();
-  }
-  if(e.key === 'Escape' && document.getElementById('cmd-palette-backdrop') && document.getElementById('cmd-palette-backdrop').classList.contains('show')) {
-    toggleCommandPalette();
-  }
-});
-
-function toggleCommandPalette() {
-  const backdrop = document.getElementById('cmd-palette-backdrop');
-  if(!backdrop) return;
-  const isShowing = backdrop.classList.contains('show');
-  if(isShowing) {
-    backdrop.classList.remove('show');
-  } else {
-    backdrop.classList.add('show');
-    renderCmdResults('');
-    const inp = document.getElementById('cmd-input');
-    inp.value = '';
-    setTimeout(() => inp.focus(), 50);
-  }
+/** Recent-commands store (last 6 invoked, MRU first). Persisted in
+ *  localStorage so the palette stays useful across sessions. Stored
+ *  as command ids; resolved against the live menu at render-time so
+ *  removed/renamed items vanish gracefully. */
+const CMD_RECENT_KEY = 'sf_cmd_recent_v1';
+function _cmdRecent(){
+  try { return JSON.parse(localStorage.getItem(CMD_RECENT_KEY) || '[]'); }
+  catch { return []; }
+}
+function _cmdRecentPush(id){
+  if(!id) return;
+  const list = _cmdRecent().filter(x => x !== id);
+  list.unshift(id);
+  while(list.length > 6) list.pop();
+  try { localStorage.setItem(CMD_RECENT_KEY, JSON.stringify(list)); } catch {}
 }
 
-(function initProFeaturesCmd(){
-    document.getElementById('cmd-input')?.addEventListener('input', (e) => {
-      renderCmdResults(e.target.value.toLowerCase());
+/** Walk every .dropdown in #menubar and return a flat command array.
+ *  Skipping rules mirror the overflow renderer so the two views stay
+ *  aligned — what's hidden from one is hidden from the other. */
+function _cmdHarvestAll(){
+  const items = [];
+  const menubar = document.getElementById('menubar');
+  if(!menubar) return items;
+  menubar.querySelectorAll('.menu-item').forEach(group => {
+    if(group.id === 'menu-overflow-wrap' || group.id === 'vp-menu-item') return;
+    const groupLabel = group.querySelector('.menu-btn')?.textContent?.trim() || '';
+    const dd = group.querySelector('.dropdown');
+    if(!dd) return;
+    let curSection = '';
+    [...dd.children].forEach(child => {
+      if(child.classList.contains('dd-sub')){
+        curSection = child.textContent?.trim() || '';
+        return;
+      }
+      if(!child.classList.contains('dd-item')) return;
+      // Items without an id are inline-onclick (e.g. workspace-switch
+      // shortcuts in Docs). They have no addressable handler we can
+      // simulate-click reliably across cloned copies, so we skip
+      // them — those workspace switches duplicate the tab strip
+      // anyway and would land in CMD_HIDE if they had ids.
+      const id = child.id;
+      if(!id) return;
+      if(CMD_HIDE.has(id)) return;
+      // Pull a clean label: the .di icon + .dk shortcut spans are
+      // siblings of the label text, not wrapping it. textContent
+      // would include them; cloneNode + strip is simpler.
+      const probe = child.cloneNode(true);
+      const keyEl = probe.querySelector('.dk');
+      const key = keyEl ? keyEl.textContent.trim() : '';
+      probe.querySelector('.di')?.remove();
+      probe.querySelector('.dk')?.remove();
+      const label = probe.textContent.replace(/\s+/g, ' ').trim();
+      items.push({
+        id, label, key,
+        group: groupLabel,
+        section: curSection,
+        action: () => document.getElementById(id)?.click(),
+      });
     });
+  });
+  return items;
+}
 
-    document.getElementById('cmd-palette-backdrop')?.addEventListener('click', (e) => {
-      if(e.target.id === 'cmd-palette-backdrop') toggleCommandPalette();
-    });
-});
-
-function renderCmdResults(query) {
-  const container = document.getElementById('cmd-results');
-  if(!container) return;
-  
-  const filtered = CMD_COMMANDS.filter(c => c.label.toLowerCase().includes(query));
-  
-  container.innerHTML = '';
-  if(filtered.length === 0) {
-    container.innerHTML = '<div style="padding:14px 18px;color:#666;font-style:italic">No commands found.</div>';
+document.addEventListener('keydown', (e) => {
+  // ⌘K opens the palette globally. Re-press to dismiss.
+  if((e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey){
+    e.preventDefault();
+    toggleCommandPalette();
     return;
   }
-  
-  filtered.forEach((cmd, idx) => {
-    const div = document.createElement('div');
-    div.className = 'cmd-item' + (idx === 0 ? ' active' : '');
-    div.innerHTML = `<span class="cmd-item-ico">${cmd.icon}</span><span class="cmd-item-lbl">${cmd.label}</span>`;
-    div.addEventListener('click', () => {
-      cmd.action();
+  if(e.key === 'Escape'){
+    const bd = document.getElementById('cmd-palette-backdrop');
+    if(bd && bd.classList.contains('show')){
+      e.preventDefault();
       toggleCommandPalette();
-    });
-    container.appendChild(div);
+    }
+  }
+});
+
+function toggleCommandPalette(){
+  const backdrop = document.getElementById('cmd-palette-backdrop');
+  if(!backdrop) return;
+  if(backdrop.classList.contains('show')){
+    backdrop.classList.remove('show');
+    return;
+  }
+  backdrop.classList.add('show');
+  const inp = document.getElementById('cmd-input');
+  if(inp){ inp.value = ''; setTimeout(() => inp.focus(), 30); }
+  renderCmdResults('');
+}
+
+(function initCmdPalette(){
+  const inp = document.getElementById('cmd-input');
+  const backdrop = document.getElementById('cmd-palette-backdrop');
+  if(!inp || !backdrop) return;
+
+  inp.addEventListener('input', (e) => {
+    renderCmdResults((e.target.value || '').toLowerCase());
   });
+
+  // Keyboard navigation lives on the input (which holds focus while
+  // the palette is open) so we don't have to reason about whether a
+  // global handler is competing with native shortcuts.
+  inp.addEventListener('keydown', (e) => {
+    const items = [...document.querySelectorAll('#cmd-results .cmd-item:not(.cmd-section)')];
+    if(items.length === 0) return;
+    const cur = items.findIndex(el => el.classList.contains('active'));
+    if(e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)){
+      e.preventDefault();
+      const nx = (cur + 1) % items.length;
+      _cmdSetActive(items, nx);
+    } else if(e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)){
+      e.preventDefault();
+      const nx = (cur - 1 + items.length) % items.length;
+      _cmdSetActive(items, nx);
+    } else if(e.key === 'Enter'){
+      e.preventDefault();
+      const target = items[cur >= 0 ? cur : 0];
+      target?.click();
+    }
+  });
+
+  backdrop.addEventListener('click', (e) => {
+    if(e.target === backdrop) toggleCommandPalette();
+  });
+})();
+
+function _cmdSetActive(items, idx){
+  items.forEach((el,i) => el.classList.toggle('active', i === idx));
+  items[idx]?.scrollIntoView({block:'nearest'});
+}
+
+function _cmdMakeRow(cmd){
+  const div = document.createElement('div');
+  div.className = 'cmd-item';
+  div.dataset.cmdId = cmd.id;
+  // Group · section is rendered as a small caption on the right so
+  // the user can see WHERE a command lives without us pre-grouping.
+  // The shortcut (if any) goes in the same caption slot, replacing
+  // the breadcrumb when present — shortcut is more actionable.
+  const where = cmd.key ? '' : (cmd.section ? cmd.group + ' · ' + cmd.section : cmd.group);
+  div.innerHTML = `<span class="cmd-item-lbl">${_cmdEsc(cmd.label)}</span>`
+                + (cmd.key
+                    ? `<span class="cmd-item-key">${_cmdEsc(cmd.key)}</span>`
+                    : `<span class="cmd-item-where">${_cmdEsc(where)}</span>`);
+  div.addEventListener('click', () => {
+    _cmdRecentPush(cmd.id);
+    toggleCommandPalette();
+    cmd.action();
+  });
+  div.addEventListener('mouseenter', () => {
+    document.querySelectorAll('#cmd-results .cmd-item').forEach(el => el.classList.remove('active'));
+    div.classList.add('active');
+  });
+  return div;
+}
+function _cmdEsc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function _cmdMakeSection(label){
+  const div = document.createElement('div');
+  div.className = 'cmd-section';
+  div.textContent = label;
+  return div;
+}
+
+function renderCmdResults(query){
+  const container = document.getElementById('cmd-results');
+  if(!container) return;
+  container.innerHTML = '';
+  const all = _cmdHarvestAll();
+  const byId = new Map(all.map(c => [c.id, c]));
+
+  if(!query){
+    // Empty-query state: Recent (if any) → Frequent → All (grouped).
+    const recent = _cmdRecent().map(id => byId.get(id)).filter(Boolean);
+    if(recent.length){
+      container.appendChild(_cmdMakeSection('Recent'));
+      recent.forEach(c => container.appendChild(_cmdMakeRow(c)));
+    }
+    const freq = CMD_FREQUENT_IDS.map(id => byId.get(id)).filter(Boolean)
+                                 .filter(c => !recent.some(r => r.id === c.id));
+    if(freq.length){
+      container.appendChild(_cmdMakeSection('Frequent'));
+      freq.forEach(c => container.appendChild(_cmdMakeRow(c)));
+    }
+    // All others, grouped by source menu.
+    const used = new Set([...recent.map(c=>c.id), ...freq.map(c=>c.id)]);
+    const rest = all.filter(c => !used.has(c.id));
+    const groups = new Map();
+    rest.forEach(c => {
+      if(!groups.has(c.group)) groups.set(c.group, []);
+      groups.get(c.group).push(c);
+    });
+    [...groups.entries()].forEach(([groupLabel, list]) => {
+      container.appendChild(_cmdMakeSection(groupLabel));
+      list.forEach(c => container.appendChild(_cmdMakeRow(c)));
+    });
+    _cmdSetActive([...container.querySelectorAll('.cmd-item:not(.cmd-section)')], 0);
+    return;
+  }
+
+  // Ranked filter. Score: starts-with > word-start > substring.
+  // Same matching rule across label + section + group so typing
+  // "export" surfaces every export command regardless of which
+  // menu it lives under.
+  const q = query.trim().toLowerCase();
+  const scored = [];
+  all.forEach(c => {
+    const hay = `${c.label}\n${c.section}\n${c.group}`.toLowerCase();
+    if(!hay.includes(q)) return;
+    let score = 100;
+    const lab = c.label.toLowerCase();
+    if(lab.startsWith(q)) score = 0;
+    else if(new RegExp('(?:^|\\s)' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).test(lab)) score = 1;
+    else if(lab.includes(q)) score = 2;
+    else score = 3;
+    scored.push({ cmd: c, score });
+  });
+  scored.sort((a,b) => a.score - b.score);
+  if(scored.length === 0){
+    container.innerHTML = '<div class="cmd-empty">No commands match.</div>';
+    return;
+  }
+  scored.forEach(({cmd}) => container.appendChild(_cmdMakeRow(cmd)));
+  _cmdSetActive([...container.querySelectorAll('.cmd-item:not(.cmd-section)')], 0);
 }
 
 

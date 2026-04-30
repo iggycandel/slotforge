@@ -53,9 +53,15 @@ body{font-family:var(--font-ui);background:var(--bg-base);color:var(--text-main)
 /* Menubar overflow ("⋯") — populated by _updateMenubarOverflow() in editor.js.
    The dropdown is wider because it stacks every hidden menu vertically. */
 #menu-overflow-wrap .menu-btn{font-size:16px;font-weight:600;line-height:1;padding:4px 10px;color:var(--accent-gold)}
-#menu-overflow{min-width:240px;max-height:70vh;overflow-y:auto}
+#menu-overflow{min-width:280px;max-height:70vh;overflow-y:auto}
 #menu-overflow .ov-section{font-size:9px;color:var(--accent-gold);padding:6px 10px 2px;letter-spacing:.1em;text-transform:uppercase;font-weight:700}
 #menu-overflow .ov-section:not(:first-child){border-top:1px solid #2e2e40;margin-top:4px;padding-top:8px}
+/* Top-of-menu "Search commands…" entry: visually distinct from
+   regular items so users notice it. The ⌘K hint on the right
+   teaches the shortcut. */
+#menu-overflow .ov-search{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;color:var(--accent-gold);font-weight:600}
+#menu-overflow .ov-search:hover{background:#c9a84c12}
+#menu-overflow .ov-search-lbl{flex:1}
 #topbar{display:flex;align-items:center;background:var(--bg-panel-solid);border-bottom:1px solid var(--border-light);flex-shrink:0;height:44px;position:relative;z-index:400;box-shadow: 0 2px 12px rgba(0,0,0,0.2)}
 .logo{font-size:14px;font-weight:700;color:var(--accent-gold);letter-spacing:.08em;text-transform:uppercase;padding:0 18px;border-right:1px solid var(--border-light);height:100%;display:flex;align-items:center;flex-shrink:0}
 #screen-tabs{display:flex;height:100%;overflow-x:auto;flex:1}
@@ -868,11 +874,23 @@ svg.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:non
 .cmd-ico { font-size:16px; color:var(--text-muted); }
 #cmd-input { flex:1; background:transparent; border:none; color:var(--text-main); font-size:16px; font-family:var(--font-ui); outline:none; }
 .cmd-k { font-size:10px; color:var(--text-muted); background:var(--bg-raised); border:1px solid var(--border-light); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); text-transform:uppercase; font-weight:600; }
-#cmd-results { max-height:340px; overflow-y:auto; padding:8px 0; }
-.cmd-item { padding:10px 18px; display:flex; align-items:center; gap:12px; cursor:pointer; font-size:13px; color:var(--text-muted); transition:background 0.1s; font-family:var(--font-ui); }
-.cmd-item.active, .cmd-item:hover { background:var(--bg-raised-hover); color:var(--accent-gold); }
+#cmd-results { max-height:380px; overflow-y:auto; padding:6px 0; }
+.cmd-item { padding:9px 18px; display:flex; align-items:center; gap:12px; cursor:pointer; font-size:13px; color:var(--text-muted); transition:background 0.08s; font-family:var(--font-ui); }
+/* Active is keyboard / hover state — styled identically. JS removes
+   `.active` from siblings as the user arrow-keys through results. */
+.cmd-item.active { background:var(--bg-raised-hover); color:var(--accent-gold); }
 .cmd-item-ico { font-size:16px; width:20px; text-align:center; }
-.cmd-item-lbl { flex:1; font-weight:500; }
+.cmd-item-lbl { flex:1; font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Right-side caption: shows the keyboard shortcut when the command
+   has one; falls back to "Group · Section" so the user sees where
+   the command lives in the desktop-style menu hierarchy. */
+.cmd-item-key { font-size:10px; color:var(--text-muted); background:var(--bg-raised); border:1px solid var(--border-light); padding:2px 7px; border-radius:4px; font-family:var(--font-mono); font-weight:600; flex-shrink:0; letter-spacing:.02em; }
+.cmd-item-where { font-size:10px; color:var(--text-faint, #6a6a82); font-family:var(--font-mono); flex-shrink:0; opacity:.75 }
+/* Section heading separating Recent / Frequent / per-menu groups.
+   Tiny uppercase caption — same visual weight as a .dd-sub. */
+.cmd-section { padding:10px 18px 4px; font-size:9px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text-faint, #5a5a72); pointer-events:none; }
+.cmd-section + .cmd-item { padding-top:6px; }
+.cmd-empty { padding:18px; color:var(--text-faint, #6a6a82); font-style:italic; font-size:12px; text-align:center; font-family:var(--font-ui); }
 
 /* ── PRO INTERACTION FEATURES ── */
 #rp-resize-handle { width:4px; cursor:ew-resize; background:transparent; transition:background var(--trans-fast); z-index:100; flex-shrink:0; margin-left:-4px; position:relative; }
