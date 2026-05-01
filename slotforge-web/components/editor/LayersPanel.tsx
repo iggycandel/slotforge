@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Layers, GripVertical, Minus, ChevronDown, Eye, EyeOff, Lock, Unlock, Copy, Trash2, Plus } from 'lucide-react'
+import { Layers, GripVertical, Minus, ChevronDown, Eye, EyeOff, Lock, Unlock, Copy, Trash2, Plus, Search, X } from 'lucide-react'
 
 // ─── Design tokens (match AssetsPanel) ───────────────────────────────────────
 const T = {
@@ -102,6 +102,17 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
 
   // Blend mode dropdown state
   const [blendOpen, setBlendOpen] = useState<string | null>(null) // key of layer with open dropdown
+
+  // Filter / search across the current screen's layer list. Substring
+  // match against the visible label — case-insensitive, no fuzzy
+  // ranking. With ~20+ layers on a real project (per-symbol slots,
+  // jackpot bars, jp-row group, win-screen overlays …) typing two
+  // characters typically narrows to the right layer instantly.
+  const [filter, setFilter] = useState('')
+  const filterInputRef = useRef<HTMLInputElement>(null)
+  const visibleLayers = filter.trim()
+    ? layers.filter(l => l.label.toLowerCase().includes(filter.trim().toLowerCase()))
+    : layers
 
   const panelRef   = useRef<HTMLDivElement>(null)
   const dragging   = useRef(false)
@@ -248,16 +259,64 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
 
       {!minimized && (
         <>
-          {/* ── Toolbar: Add Layer ── */}
+          {/* ── Toolbar: Filter + Add Layer ── */}
           <div style={{
             display:      'flex',
             alignItems:   'center',
-            justifyContent: 'flex-end',
-            gap:          4,
+            gap:          6,
             padding:      '4px 8px',
             borderBottom: `1px solid ${T.border}`,
             flexShrink:   0,
           }}>
+            {/* Search input. Debounce-free — the list is in-memory and
+                small enough that filtering on every keystroke is fine.
+                Esc clears (matches the rest of the editor's Esc-to-bail
+                convention). */}
+            <div style={{
+              flex:           1,
+              display:        'flex',
+              alignItems:     'center',
+              gap:            5,
+              background:     T.surface,
+              border:         `1px solid ${T.border}`,
+              borderRadius:   5,
+              padding:        '3px 6px',
+              minWidth:       0,
+            }}>
+              <Search style={{ width: 11, height: 11, color: T.textFaint, flexShrink: 0 }} />
+              <input
+                ref={filterInputRef}
+                type="text"
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') { setFilter(''); (e.target as HTMLInputElement).blur() } }}
+                placeholder="Filter layers"
+                aria-label="Filter layers"
+                style={{
+                  flex:        1,
+                  background:  'transparent',
+                  border:      'none',
+                  outline:     'none',
+                  color:       T.textPrimary,
+                  fontSize:    11,
+                  fontFamily:  T.font,
+                  minWidth:    0,
+                }}
+              />
+              {filter && (
+                <button
+                  onClick={() => setFilter('')}
+                  title="Clear filter"
+                  aria-label="Clear filter"
+                  style={{
+                    ...iconBtnStyle,
+                    width: 16, height: 16, color: T.textFaint,
+                  }}
+                >
+                  <X style={{ width: 10, height: 10 }} />
+                </button>
+              )}
+            </div>
             <button
               onClick={() => sendOp('addLayer')}
               title="New layer"
@@ -273,12 +332,29 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
                 fontSize:     11,
                 cursor:       'pointer',
                 fontFamily:   T.font,
+                flexShrink:   0,
               }}
             >
               <Plus style={{ width: 11, height: 11 }} />
-              New Layer
+              New
             </button>
           </div>
+
+          {/* Filter status — visible only when a filter is active so the
+              user knows the list is not the full list. */}
+          {filter.trim() && (
+            <div style={{
+              padding:      '4px 10px',
+              fontSize:     10,
+              color:        T.textFaint,
+              background:   T.bg,
+              borderBottom: `1px solid ${T.border}`,
+              fontFamily:   T.font,
+              flexShrink:   0,
+            }}>
+              {visibleLayers.length} of {layers.length} layer{layers.length === 1 ? '' : 's'}
+            </div>
+          )}
 
           {/* ── Layers list ── */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
@@ -286,8 +362,12 @@ export function LayersPanel({ toolbarHeight = 44, rightOffset = 320 }: Props) {
               <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: T.textFaint }}>
                 No layers yet.<br />Open a project to see layers here.
               </div>
+            ) : visibleLayers.length === 0 ? (
+              <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: T.textFaint }}>
+                No layers match &ldquo;{filter}&rdquo;.
+              </div>
             ) : (
-              layers.map(layer => (
+              visibleLayers.map(layer => (
                 <div
                   key={layer.key}
                   onClick={() => { sendOp('select', layer.key); setBlendOpen(null) }}

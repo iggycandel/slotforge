@@ -3007,6 +3007,51 @@ document.addEventListener('keydown',e=>{
   if(e.key==='+'||e.key==='='){if(!e.metaKey&&!e.ctrlKey){ZOOM=Math.min(2,ZOOM+0.15);applyZoom();}}
   if(e.key==='-'){if(!e.metaKey&&!e.ctrlKey){ZOOM=Math.max(0.1,ZOOM-0.15);applyZoom();}}
   if(e.key==='0'&&!e.metaKey&&!e.ctrlKey){fitZoom();resetPan();}
+  // Digit 1-9 → switch to the Nth visible screen tab. Mirrors the order
+  // of `flattenTabs(computeTabs())` so what the user counts in the
+  // Screens panel matches what `1` lands on. Skip when an input has
+  // focus (the user is typing a value, not navigating).
+  if(/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey
+     && !e.target.matches('input,textarea,select,[contenteditable]')){
+    try {
+      const flat = flattenTabs(computeTabs());
+      const idx = parseInt(e.key, 10) - 1;
+      if(flat[idx]){
+        e.preventDefault();
+        switchScreen(flat[idx].key);
+        return;
+      }
+    } catch(err){ /* ignore — fall through to other handlers */ }
+  }
+  // [ / ] → previous / next screen in the same flat ordering. Wraps
+  // around at the ends. Bare `[`/`]` don't conflict with the layer
+  // z-order shortcut (which requires Cmd / Ctrl).
+  if((e.key==='[' || e.key===']') && !e.metaKey && !e.ctrlKey && !e.altKey
+     && !e.target.matches('input,textarea,select,[contenteditable]')){
+    e.preventDefault();
+    try {
+      const flat = flattenTabs(computeTabs());
+      if(flat.length){
+        const cur = flat.findIndex(t => t.key === P.screen);
+        const dir = e.key === ']' ? 1 : -1;
+        const nx  = ((cur < 0 ? 0 : cur) + dir + flat.length) % flat.length;
+        switchScreen(flat[nx].key);
+      }
+    } catch(err){ /* ignore */ }
+    return;
+  }
+  // , / . → previous / next viewport (Portrait → Landscape → Desktop
+  // → Portrait). Bare keys don't collide with Cmd+, (Project Settings).
+  if((e.key===',' || e.key==='.') && !e.metaKey && !e.ctrlKey && !e.altKey
+     && !e.target.matches('input,textarea,select,[contenteditable]')){
+    e.preventDefault();
+    const order = ['portrait','landscape','desktop'];
+    const cur = order.indexOf(P.viewport);
+    const dir = e.key === '.' ? 1 : -1;
+    const nx  = ((cur < 0 ? 0 : cur) + dir + order.length) % order.length;
+    setViewport(order[nx]);
+    return;
+  }
   if(e.key==='Escape'){setTool('move');return;}
   if(!SEL_KEY||P.screen==='project')return;
   const step=e.shiftKey?10:1;

@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Eye, EyeOff, Lock, Unlock, Copy, Trash2, Plus, ChevronDown, ChevronsRight, ChevronsLeft, Layers as LayersIcon, Image as AssetsIcon } from 'lucide-react'
+import { Eye, EyeOff, Lock, Unlock, Copy, Trash2, Plus, ChevronDown, ChevronsRight, ChevronsLeft, Layers as LayersIcon, Image as AssetsIcon, Search, X } from 'lucide-react'
 import { AssetsPanel } from '../generate/AssetsPanel'
 import type { AssetType } from '@/types/assets'
 
@@ -92,6 +92,16 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
 
   // Context menu state
   const [ctxMenu, setCtxMenu] = useState<{ key: string; x: number; y: number } | null>(null)
+
+  // Filter / search across the current screen's layer list. Substring
+  // match against the visible label — case-insensitive, no fuzzy
+  // ranking. With ~20+ layers on a real project (per-symbol slots,
+  // jackpot bars, jp-row group, win-screen overlays, ov-* nodes …)
+  // typing two characters narrows to the right layer instantly.
+  const [layerFilter, setLayerFilter] = useState('')
+  const visibleLayers = layerFilter.trim()
+    ? layers.filter(l => l.label.toLowerCase().includes(layerFilter.trim().toLowerCase()))
+    : layers
 
   // (drag-to-reorder removed — use ▲▼ z-order buttons instead)
 
@@ -292,7 +302,7 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
       {activeTab === 'layers' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {/* Layers toolbar */}
+          {/* Layers toolbar — screen label + filter input + actions */}
           <div style={{
             display:       'flex',
             alignItems:    'center',
@@ -301,11 +311,21 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
             borderBottom:  `1px solid ${T.border}`,
             flexShrink:    0,
             background:    T.surface,
+            gap:           8,
           }}>
-            <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 500 }}>
+            <span style={{
+              fontSize:    11,
+              color:       T.textMuted,
+              fontWeight:  500,
+              flexShrink:  0,
+              overflow:    'hidden',
+              textOverflow:'ellipsis',
+              whiteSpace:  'nowrap',
+              maxWidth:    100,
+            }}>
               {screen || 'Base Game'}
             </span>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
               <button
                 onClick={() => sendOp('addGroup')}
                 title="New group"
@@ -326,6 +346,62 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
             </div>
           </div>
 
+          {/* Filter input — second toolbar row. Narrow panels (280px)
+              don't have room for both a label + filter on one line, so
+              we drop the search into its own row. Hidden when there
+              are zero layers (the empty state has nothing to filter). */}
+          {layers.length > 0 && (
+            <div style={{
+              display:      'flex',
+              alignItems:   'center',
+              gap:          5,
+              padding:      '4px 10px',
+              borderBottom: `1px solid ${T.border}`,
+              background:   T.bg,
+              flexShrink:   0,
+            }}>
+              <Search style={{ width: 11, height: 11, color: T.textFaint, flexShrink: 0 }} />
+              <input
+                type="text"
+                value={layerFilter}
+                onChange={e => setLayerFilter(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setLayerFilter('')
+                    ;(e.target as HTMLInputElement).blur()
+                  }
+                }}
+                placeholder="Filter layers"
+                aria-label="Filter layers"
+                style={{
+                  flex:       1,
+                  background: 'transparent',
+                  border:     'none',
+                  outline:    'none',
+                  color:      T.textPrimary,
+                  fontSize:   11,
+                  fontFamily: T.font,
+                  minWidth:   0,
+                }}
+              />
+              {layerFilter && (
+                <>
+                  <span style={{ fontSize: 9, color: T.textFaint, fontFamily: T.font, flexShrink: 0 }}>
+                    {visibleLayers.length} / {layers.length}
+                  </span>
+                  <button
+                    onClick={() => setLayerFilter('')}
+                    title="Clear filter (Esc)"
+                    aria-label="Clear filter"
+                    style={{ ...iconBtn, width: 16, height: 16, color: T.textFaint }}
+                  >
+                    <X style={{ width: 10, height: 10 }} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Layer list */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '2px 0' }}>
             {layers.length === 0 ? (
@@ -333,8 +409,26 @@ export function RightPanel({ projectId, orgSlug, onAddToCanvas, width = 320, ass
                 No layers yet.<br />
                 <span style={{ fontSize: 11 }}>Open a project to see layers.</span>
               </div>
+            ) : visibleLayers.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: T.textFaint, lineHeight: 1.7 }}>
+                No layers match &ldquo;{layerFilter}&rdquo;.<br />
+                <button
+                  onClick={() => setLayerFilter('')}
+                  style={{
+                    marginTop:    8,
+                    background:   'transparent',
+                    border:       `1px solid ${T.border}`,
+                    color:        T.textMuted,
+                    borderRadius: 4,
+                    padding:      '3px 10px',
+                    fontSize:     11,
+                    cursor:       'pointer',
+                    fontFamily:   T.font,
+                  }}
+                >Clear filter</button>
+              </div>
             ) : (
-              layers.map(layer => (
+              visibleLayers.map(layer => (
                 <div
                   key={layer.key}
                   onClick={() => { sendOp('select', layer.key); setBlendOpen(null); setCtxMenu(null) }}
