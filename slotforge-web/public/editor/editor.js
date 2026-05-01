@@ -14931,9 +14931,17 @@ setTimeout(() => {
 (function initProFeatures2(){
 
     // 1. History Panel Logic
-    // We add a 'history' trigger to Cmd+K or you can type 'history' to open it
-    CMD_COMMANDS.push({ label: 'View History', icon: '⟲', action: () => { toggleHistoryPanel(); } });
-    
+    // (Was: CMD_COMMANDS.push({label:'View History', …}). That const
+    // array was removed when the ⌘K palette migrated to dynamic menu
+    // walking — every palette entry now derives from a .dd-item[id]
+    // in #menubar. Pushing into CMD_COMMANDS threw a ReferenceError
+    // that aborted this entire IIFE — including everything below it,
+    // which knocked out the screen-thumbs panel registration.
+    // To restore palette access to the in-memory history viewer, add
+    // a `<div class="dd-item" id="m-history-pro">View History</div>`
+    // into the View / Edit dropdown in spinative.html and wire its
+    // click to toggleHistoryPanel; the palette will pick it up.)
+
     function toggleHistoryPanel() {
         const hp = document.getElementById('hist-panel');
         if(!hp) return;
