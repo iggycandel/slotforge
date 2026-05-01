@@ -50,8 +50,7 @@ const C = {
 } as const
 
 const TOOLBAR_H = 44
-const SIDEBAR_W   = 240
-const SCREENS_W   = 132 // left rail showing the project's screens
+const SIDEBAR_W = 240
 const PANEL_W   = 320
 
 // ─── Asset group definitions ─────────────────────────────────────────────────
@@ -313,51 +312,6 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
   // which by checking FEATURE_SLOT_KEYS and route label/regen accordingly.
   const [selected,    setSelected]    = useState<string | null>(null)
   const [activeGroup, setActiveGroup] = useState<string | null>(null)
-
-  // Screens picker — a flat list pushed by the iframe on every
-  // computeTabs() rebuild (see _sfPostScreensList in editor.js). Same
-  // source of truth as the Flow workspace's #screen-thumbs-panel, so
-  // what we render here always matches what Flow shows. Click sends
-  // SF_SET_SCREEN back to the iframe; the iframe runs switchScreen()
-  // and the next rebuild echoes the new active key back to us.
-  const [screensList, setScreensList] = useState<Array<{
-    kind:    'group' | 'screen'
-    key?:    string
-    label:   string
-    dot?:    string
-    indent?: number
-    isActive?: boolean
-  }>>([])
-  const [activeScreenKey, setActiveScreenKey] = useState<string | null>(null)
-  useEffect(() => {
-    function onMsg(e: MessageEvent){
-      if(e.data?.type !== 'SF_SCREENS_LIST') return
-      setScreensList(Array.isArray(e.data.screens) ? e.data.screens : [])
-      setActiveScreenKey(typeof e.data.activeKey === 'string' ? e.data.activeKey : null)
-    }
-    window.addEventListener('message', onMsg)
-    // The iframe emits SF_SCREENS_LIST whenever it rebuilds tabs, but
-    // we may have mounted AFTER its last push (e.g. user opened the
-    // project directly into Art via deep-link). Request one explicitly
-    // on mount so the rail isn't stuck on its empty placeholder until
-    // the next rebuild trigger.
-    function requestScreens(){
-      const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="Spinative Editor"]')
-      iframe?.contentWindow?.postMessage({ type: 'SF_REQUEST_SCREENS_LIST' }, window.location.origin)
-    }
-    requestScreens()
-    // The iframe might still be loading on the first tick — retry once
-    // after a short delay so a slow first paint doesn't leave us empty.
-    const retryId = window.setTimeout(requestScreens, 400)
-    return () => {
-      window.removeEventListener('message', onMsg)
-      window.clearTimeout(retryId)
-    }
-  }, [])
-  const setIframeScreen = useCallback((key: string) => {
-    const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="Spinative Editor"]')
-    iframe?.contentWindow?.postMessage({ type: 'SF_SET_SCREEN', key }, window.location.origin)
-  }, [])
   // Left-sidebar tab: 'assets' (the legacy navigator), 'inputs' (the
   // consolidated Prompt Inputs panel introduced in v109), or
   // 'typography' (embeds the TypographyWorkspace as the main-pane
@@ -1350,21 +1304,6 @@ export function AssetsWorkspace({ projectId, orgSlug, projectName, initialAssets
         overflow: 'hidden',
       }}>
 
-        {/* ── SCREENS RAIL ───────────────────────────────────────────────── */}
-        {/* The Flow workspace already shows a vertical screens panel on
-            the left of the canvas; the user wanted the same picker
-            available from Art so they can flick between screens while
-            uploading / generating without bouncing back to Flow.
-            Source of truth is the iframe's computeTabs() — pushed via
-            SF_SCREENS_LIST whenever the iframe rebuilds tabs. Click
-            sends SF_SET_SCREEN back; the iframe handles the actual
-            switchScreen() and the next push echoes the new active key. */}
-        <ScreensRail
-          screens={screensList}
-          activeKey={activeScreenKey}
-          onSelect={setIframeScreen}
-        />
-
         {/* ── LEFT SIDEBAR ────────────────────────────────────────────────── */}
         {/* Two modes on one column:
               Assets — the legacy navigator (progress pill + group buttons +
@@ -2020,135 +1959,6 @@ function LeftSidebar({
 // no full-page workspace switch. Coming back is just clicking Assets
 // or Inputs again.
 type SidebarMode = 'assets' | 'inputs' | 'typography'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ScreensRail — vertical list of screens on the far left of Art, mirroring
-// the Flow workspace's #screen-thumbs-panel. Driven by the iframe via
-// SF_SCREENS_LIST messages.
-// ─────────────────────────────────────────────────────────────────────────────
-type ScreenItem = {
-  kind:    'group' | 'screen'
-  key?:    string
-  label:   string
-  dot?:    string
-  indent?: number
-  isActive?: boolean
-}
-function ScreensRail({
-  screens, activeKey, onSelect,
-}: {
-  screens:   ScreenItem[]
-  activeKey: string | null
-  onSelect:  (key: string) => void
-}) {
-  // Empty-state: the iframe hasn't pushed yet (very early in the
-  // session, or the bridge wrapper hasn't installed). Show a tiny
-  // placeholder so the column doesn't appear broken — most users
-  // will see this for under a frame.
-  return (
-    <aside
-      style={{
-        width:        SCREENS_W,
-        minWidth:     SCREENS_W,
-        display:      'flex',
-        flexDirection:'column',
-        overflow:     'hidden',
-        background:   C.bg,
-        borderRight:  `1px solid ${C.border}`,
-        flexShrink:   0,
-      }}
-      aria-label="Screens"
-    >
-      <div style={{
-        padding:       '10px 12px 8px',
-        fontSize:      9,
-        fontWeight:    700,
-        letterSpacing: '.12em',
-        textTransform: 'uppercase',
-        color:         C.gold,
-        borderBottom:  `1px solid ${C.border}`,
-        flexShrink:    0,
-      }}>
-        Screens
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-        {screens.length === 0 ? (
-          <div style={{
-            padding:    '12px',
-            fontSize:   10,
-            color:      C.txMuted,
-            fontStyle:  'italic',
-            textAlign:  'center',
-            lineHeight: 1.5,
-          }}>
-            Loading screens…
-          </div>
-        ) : (
-          screens.map((s, i) => {
-            if(s.kind === 'group'){
-              return (
-                <div key={`grp-${i}`} style={{
-                  padding:       '8px 10px 2px',
-                  fontSize:      8,
-                  fontWeight:    700,
-                  letterSpacing: '.1em',
-                  textTransform: 'uppercase',
-                  color:         C.txMuted,
-                  display:       'flex',
-                  alignItems:    'center',
-                  gap:           5,
-                }}>
-                  <span style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: s.dot || C.txMuted, flexShrink: 0,
-                  }}/>
-                  {s.label}
-                </div>
-              )
-            }
-            const isActive = !!s.isActive || (!!s.key && s.key === activeKey)
-            return (
-              <button
-                key={s.key || `s-${i}`}
-                onClick={() => s.key && onSelect(s.key)}
-                title={s.label}
-                style={{
-                  display:      'flex',
-                  alignItems:   'center',
-                  gap:          7,
-                  width:        '100%',
-                  padding:      `5px 10px 5px ${10 + (s.indent || 0) * 10}px`,
-                  background:   isActive ? C.goldBg : 'transparent',
-                  border:       'none',
-                  borderLeft:   isActive ? `2px solid ${C.gold}` : '2px solid transparent',
-                  color:        isActive ? C.gold : C.txMuted,
-                  fontSize:     11,
-                  fontWeight:   isActive ? 600 : 500,
-                  fontFamily:   C.font,
-                  cursor:       'pointer',
-                  textAlign:    'left',
-                  letterSpacing:'.01em',
-                  whiteSpace:   'nowrap',
-                  overflow:     'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                <span style={{
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: s.dot || C.txMuted, flexShrink: 0,
-                  boxShadow: isActive ? `0 0 0 2px ${C.goldBg}` : 'none',
-                }}/>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {s.label}
-                </span>
-              </button>
-            )
-          })
-        )}
-      </div>
-    </aside>
-  )
-}
 
 function SidebarTabSwitcher({
   mode, onChange,

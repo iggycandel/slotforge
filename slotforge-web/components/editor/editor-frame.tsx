@@ -17,7 +17,7 @@ const PANEL_W           = 320
 const PANEL_W_COLLAPSED = 36
 
 // Version string — bump on every editor.js deploy for cache-busting.
-const EDITOR_VERSION = 'v160'
+const EDITOR_VERSION = 'v161'
 
 // ─── Pre-flight payload sanitisation ─────────────────────────────────────────
 //
